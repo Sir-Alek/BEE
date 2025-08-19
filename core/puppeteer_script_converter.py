@@ -1,137 +1,562 @@
 import os
-from tkinter import filedialog, messagebox
+import shutil
+from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, Y, Canvas, Label, Listbox, Scrollbar, filedialog, messagebox, ttk, Toplevel, Frame, Checkbutton, BooleanVar, Button
 import re
 import time
 import json
 
 
 class PuppeteerToBehaveConverter:
-    def __init__(self, base_dir):
+    
+    def __init__(self, base_dir, master):
         self.base_dir = base_dir
-        self.behave_dir = os.path.join(base_dir, "behave")
-        self.recordings_dir = os.path.join(base_dir, "grabaciones")
-        self._create_project_structure()
+        self.master = master
+        self.projects_dir = os.path.join(base_dir, "behave", "proyectos")
+        self.selected_actions = []
 
     def _create_project_structure(self):
         """Crea la estructura de directorios necesaria para Behave"""
-        os.makedirs(self.behave_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.behave_dir, "features"), exist_ok=True)
-        os.makedirs(os.path.join(self.behave_dir, "features", "steps"), exist_ok=True)
-        os.makedirs(os.path.join(self.behave_dir, "pages"), exist_ok=True)
-        os.makedirs(os.path.join(self.behave_dir, "resources", "data"), exist_ok=True)
-        os.makedirs(self.recordings_dir, exist_ok=True)        
+        os.makedirs(self.base_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "features"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "features", "steps"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "pages"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "resources", "data"), exist_ok=True)
         
     def parse_fill(self, line):
         """Parsea una línea de acción de relleno (fill)"""
-        # Adaptado para manejar tanto page.type como page.fill
-        match = re.search(r'page\.(?:type|fill)\(["\'](.*?)["\'],\s*["\'](.*?)["\']\)', line) or \
-                re.search(r'page\.locator\(["\'](.*?)["\']\)\.(?:type|fill)\(["\'](.*?)["\']\)', line)
-        if match:
-            return {
-                'selector': match.group(1),
-                'value': match.group(2)
-            }
-        return None        
-    
+        patterns = [
+            r'page\.(?:type|fill)\((["\'])(.*?)\1,\s*(["\'])(.*?)\3\)',
+            r'page\.locator\((["\'])(.*?)\1\)\.(?:type|fill)\((["\'])(.*?)\3\)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, line)
+            if match:
+                return {
+                    'selector': match.group(2),
+                    'value': match.group(4)
+                }
+        return None   
+
     def convert_script(self):
         """Convierte el script grabado (JS) a estructura Behave"""
-        js_file = filedialog.askopenfilename(
-            initialdir=self.recordings_dir,
-            filetypes=[("JavaScript Files", "*.js")],
-            title="Seleccionar grabación de Puppeteer"
-        )
-        if not js_file:
-            return
-
-        try:
-            with open(js_file, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Extraer el nombre base del archivo (sin extensión)
-            base_name = os.path.splitext(os.path.basename(js_file))[0]
-            class_name = base_name.capitalize() + "Page"
-            feature_path = os.path.join(self.behave_dir, "features", f"{base_name}.feature")
-
-            # Verificar si ya existe el feature
-            feature_exists = os.path.exists(feature_path)
-            existing_feature_content = ""
-            
-            if feature_exists:
-                with open(feature_path, "r", encoding="utf-8") as f:
-                    existing_feature_content = f.read()
-                print(f"Feature existente encontrado: {feature_path}")
-            else:
-                # Generar archivo .feature con lógica BDD
-                feature_content = self._generate_bdd_feature(content, base_name)
-                with open(feature_path, "w", encoding="utf-8") as f:
-                    f.write(feature_content)
-                print(f"Nuevo feature creado: {feature_path}")
-
-            # Generar steps adaptados (al feature existente o al nuevo)
-            steps_content = self._generate_adaptive_steps(base_name, class_name, content, existing_feature_content if feature_exists else None)
-            steps_path = os.path.join(self.behave_dir, "features", "steps", f"{base_name}_steps.py")
-            with open(steps_path, "w", encoding="utf-8") as f:
-                f.write(steps_content)
-
-            # Generar page object
-            page_content = self._generate_page_object(class_name, content)          
-            page_path = os.path.join(self.behave_dir, "pages", f"{base_name}_page.py")
-            with open(page_path, "w", encoding="utf-8") as f:
-                f.write(page_content)
-
-            # Generar archivo JSON en resources/data (opcional, ya que el input es JSON)
-            json_content = self._generate_json_data(content)
-            json_path = os.path.join(self.behave_dir, "resources", "data", f"{base_name}.json")
-            with open(json_path, "w", encoding="utf-8") as f:
-                f.write(json_content)
-
-            status_msg = "Feature existente reutilizado" if feature_exists else "Nuevo feature creado"
-            messagebox.showinfo("Éxito", f"{status_msg}. Archivos generados en:\n{self.behave_dir}")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo convertir:\n{str(e)}")
-
-    def _generate_bdd_feature(self, script_content, base_name):
-        """Genera feature con el formato exacto solicitado"""
-        lines = script_content.split('\n')
+        # Primero seleccionar el proyecto
+        if not os.path.exists(self.projects_dir):
+            os.makedirs(self.projects_dir, exist_ok=True)
         
-        # Analizar el script manteniendo el orden original
+        projects = [d for d in os.listdir(self.projects_dir) 
+                   if os.path.isdir(os.path.join(self.projects_dir, d))]
+        
+        if not projects:
+            messagebox.showinfo("No hay proyectos", "No se encontraron proyectos existentes.")
+            return
+        
+        # Crear ventana de selección de proyectos
+        selection_window = Toplevel()
+        selection_window.title("Seleccionar Proyecto")
+        selection_window.geometry("500x400")
+        selection_window.transient(self.master)
+        selection_window.grab_set()
+        
+        # Centrar ventana
+        selection_window.update_idletasks()
+        x = self.master.winfo_x() + (self.master.winfo_width() - selection_window.winfo_width()) // 2
+        y = self.master.winfo_y() + (self.master.winfo_height() - selection_window.winfo_height()) // 2
+        selection_window.geometry(f"+{x}+{y}")
+        
+        frame = Frame(selection_window, padx=20, pady=20)
+        frame.pack(fill=BOTH, expand=True)
+        
+        Label(frame, text="Selecciona un proyecto:", font=("Arial", 12)).pack(pady=(0, 10))
+        
+        # Listbox para proyectos
+        listbox = Listbox(frame, font=("Arial", 11), height=15)
+        scrollbar = Scrollbar(frame, orient=VERTICAL)
+        
+        for project in sorted(projects):
+            listbox.insert(END, project)
+        
+        listbox.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=listbox.yview)
+        
+        listbox.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        project_path = None
+        
+        def on_select_project():
+            nonlocal project_path
+            selection = listbox.curselection()
+            if selection:
+                project_name = projects[selection[0]]
+                project_path = os.path.join(self.projects_dir, project_name)
+                selection_window.destroy()
+                select_script(project_path)
+            else:
+                messagebox.showwarning("Selección requerida", "Por favor selecciona un proyecto.", parent=selection_window)
+                
+        def on_cancel_project():
+            selection_window.destroy()
+        
+        # Frame para botones
+        btn_frame = Frame(frame)
+        btn_frame.pack(pady=(20, 0))
+        
+        Button(btn_frame, text="Seleccionar", command=on_select_project, width=12).pack(side=LEFT, padx=10)
+        Button(btn_frame, text="Cancelar", command=on_cancel_project, width=12).pack(side=LEFT, padx=10)
+        
+        # Doble clic para seleccionar
+        listbox.bind('<Double-Button-1>', lambda e: on_select_project())
+        
+        def select_script(project_path):
+            # Luego seleccionar el script dentro de ese proyecto
+            scripts_dir = os.path.join(project_path, "scripts")
+            
+            # Verificar si existe la carpeta de scripts
+            if not os.path.exists(scripts_dir):
+                messagebox.showerror("Error", f"No se encontró la carpeta 'scripts' en el proyecto seleccionado.")
+                return
+                
+            # Obtener lista de archivos JS en la carpeta scripts
+            js_files = [f for f in os.listdir(scripts_dir) if f.endswith('.js')]
+            
+            if not js_files:
+                messagebox.showerror("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts' del proyecto.")
+                return
+                
+            # Crear ventana de selección de scripts
+            script_window = Toplevel()
+            script_window.title("Seleccionar script de Interacciones")
+            script_window.geometry("500x400")
+            script_window.transient(self.master)
+            script_window.grab_set()
+            
+            # Centrar ventana
+            script_window.update_idletasks()
+            x = self.master.winfo_x() + (self.master.winfo_width() - script_window.winfo_width()) // 2
+            y = self.master.winfo_y() + (self.master.winfo_height() - script_window.winfo_height()) // 2
+            script_window.geometry(f"+{x}+{y}")            
+            
+            script_frame = Frame(script_window, padx=20, pady=20)
+            script_frame.pack(fill=BOTH, expand=True)
+            
+            Label(script_frame, text="Selecciona un script:", font=("Arial", 12)).pack(pady=(0, 10))
+            
+            # Listbox para mostrar los archivos
+            script_listbox = Listbox(script_frame, height=15, font=("Arial", 11))
+            script_scrollbar = Scrollbar(script_frame, orient=VERTICAL)
+            
+            for file in sorted(js_files):
+                script_listbox.insert(END, file)
+                
+            script_listbox.config(yscrollcommand=script_scrollbar.set)
+            script_scrollbar.config(command=script_listbox.yview)
+            
+            script_listbox.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
+            script_scrollbar.pack(side=RIGHT, fill=Y)
+            
+            selected_file = None
+            
+            def on_select_script():
+                nonlocal selected_file
+                selection = script_listbox.curselection()
+                if selection:
+                    selected_file = js_files[selection[0]]
+                    script_window.destroy()
+                    process_script(project_path, selected_file)
+                else:
+                    messagebox.showwarning("Selección requerida", "Por favor selecciona un script.", parent=script_window)
+                    
+            def on_cancel_script():
+                script_window.destroy()
+            
+            # Frame para botones
+            script_btn_frame = Frame(script_frame)
+            script_btn_frame.pack(pady=(20, 0))
+            
+            Button(script_btn_frame, text="Seleccionar", command=on_select_script, width=12).pack(side=LEFT, padx=10)
+            Button(script_btn_frame, text="Cancelar", command=on_cancel_script, width=12).pack(side=LEFT, padx=10)
+            
+            # Doble clic para seleccionar
+            script_listbox.bind('<Double-Button-1>', lambda e: on_select_script())
+            
+        def process_script(project_path, selected_file):
+            js_file = os.path.join(project_path, "scripts", selected_file)
+
+            try:
+                with open(js_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                if content is None or content == "":
+                    content = "// Archivo vacío"
+
+                actions = self._extract_all_actions(content)
+                if not self._show_action_selection(actions):
+                    return
+
+                filtered_content = self._filter_content_by_actions(content, self.selected_actions)
+                self._process_conversion(js_file, filtered_content, project_path)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo convertir:\n{str(e)}")
+        
+        # Esperar a que se cierre la ventana de selección de proyecto
+        self.master.wait_window(selection_window)
+         
+    def _find_project_path(self, js_file_path):
+        """Busca la carpeta del proyecto basada en la ubicación del script"""
+        # Normalizar la ruta para manejar correctamente las barras
+        js_file_path = os.path.normpath(js_file_path)
+        
+        # Buscar la carpeta 'proyectos' en la ruta
+        parts = js_file_path.split(os.sep)
+        try:
+            proyectos_index = parts.index('proyectos')
+            if proyectos_index + 1 < len(parts):
+                project_path = os.path.join(*parts[:proyectos_index + 2])
+                return project_path
+        except ValueError:
+            pass
+        
+        return None            
+
+    def _extract_all_actions(self, script_content):
+        """Extrae todas las acciones del script para mostrarlas en la selección"""
         actions = []
-        url = None
+        lines = script_content.split('\n')
         
         for line in lines:
             line = line.strip()
-            if "page.goto(" in line:
-                url_match = re.search(r'page\.goto\(["\'](.*?)["\']\)', line) 
-                if url_match:
-                    url = url_match.group(1)
-                    actions.append(("given", f'Acceder a la pagina "{url}"'))
-                    continue  
-            elif "page.click(" in line:
-                selector_match = re.search(r'click\(["\'](.*?)["\']\)', line)
-                if selector_match:
-                    selector = selector_match.group(1)
-                    if selector.startswith('button.') or selector.startswith('a.'):
-                        element_type = "botón" if selector.startswith('button.') else "enlace"
-                        actions.append(("click", f'clic en {element_type} "{selector}"'))
-                    elif selector.startswith('#'):
-                        element_id = selector.replace("#", "")
-                        actions.append(("click", f'clic en "{element_id}"'))
-                    else:
-                        actions.append(("click", f'clic en elemento "{selector}"'))
-            elif "page.type(" in line or "page.fill(" in line:
-                fill_match = self.parse_fill(line)
-                if fill_match:
-                    field = fill_match['selector'].replace("#", "")
-                    value = fill_match['value']
-                    actions.append(("fill", f'Ingresar "{field}" con "{value}"'))
-            elif "page.select(" in line:
-                select_match = re.search(r'select\(["\'](.*?)["\'],\s*["\'](.*?)["\']\)', line)
-                if select_match:
-                    field = select_match.group(1).replace("#", "")
-                    option = select_match.group(2)
-                    actions.append(("select", f'Seleccionar "{option}" en "{field}"'))
+            if not line:
+                continue
+                
+            action = None
+            try:
+                if "page.goto(" in line:
+                    url_match = re.search(r'page\.goto\((["\'])(.*?)\1', line)
+                    if url_match:
+                        action = ("Navegación", f'Ir a URL: {url_match.group(2)}')
 
+                elif "page.click(" in line:
+                    selector_match = re.search(r'page\.click\((["\'])(.*?)\1', line)
+                    if selector_match:
+                        selector = selector_match.group(2)
+                        action = ("Click", f'Click en: {selector}')
+
+                elif "page.type(" in line or "page.fill(" in line:
+                    type_match = re.search(r'page\.(?:type|fill)\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if type_match:
+                        selector = type_match.group(2)
+                        value = type_match.group(4)
+                        action = ("Rellenar", f'Rellenar campo {selector} con: {value}')
+
+                elif "page.select(" in line:
+                    select_match = re.search(r'page\.select\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if select_match:
+                        selector = select_match.group(2)
+                        option = select_match.group(4)
+                        action = ("Seleccionar", f'Seleccionar {option} en: {selector}')
+
+            except Exception as e:
+                print(f"Error procesando línea para selección: {line}\n{str(e)}")
+                continue
+            
+            if action:
+                actions.append({
+                    "type": action[0],
+                    "description": action[1],
+                    "original_line": line
+                })
+        
+        return actions
+
+    def _show_action_selection(self, actions):
+        """Muestra ventana para seleccionar acciones a convertir"""
+        if not actions:
+            return True
+            
+        self.selected_actions = []
+        selection_window = Toplevel()
+        selection_window.title("Seleccionar acciones para conversión")
+        selection_window.geometry("900x550")
+        
+        # Frame principal con menos espacio vertical
+        main_frame = Frame(selection_window, padx=10, pady=5)
+        main_frame.pack(expand=True, fill="both")
+        
+        # Canvas y scrollbar
+        canvas = Canvas(main_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = Frame(canvas)
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Empaquetado con menos espacio
+        canvas.pack(side="left", fill="both", expand=True, pady=(0,5))
+        scrollbar.pack(side="right", fill="y")
+        
+        # Contenido de la tabla
+        check_vars = []
+        for i, action in enumerate(actions):
+            frame = Frame(scrollable_frame)
+            frame.pack(fill="x", pady=1)
+            
+            var = BooleanVar(value=True)
+            check_vars.append(var)
+            
+            Checkbutton(frame, variable=var).pack(side="left", padx=5)
+            Label(frame, text=action["type"], width=15, anchor="w").pack(side="left", padx=5)
+            Label(frame, text=action["description"], width=80, anchor="w").pack(side="left", padx=5)
+        
+        # Frame de botones
+        button_frame = Frame(main_frame)
+        button_frame.pack(pady=(3,5)) 
+        
+        # Botones
+        Button(button_frame, text="Incluir todas",
+               command=lambda: [var.set(True) for var in check_vars]).pack(side="left", padx=10)
+        Button(button_frame, text="Excluir todas",
+               command=lambda: [var.set(False) for var in check_vars]).pack(side="left", padx=10)
+        Button(button_frame, text="Continuar",
+               command=lambda: [self._confirm_selection(actions, check_vars, selection_window)]).pack(side="right", padx=10)
+        Button(button_frame, text="Cancelar", 
+               command=selection_window.destroy).pack(side="right", padx=10)
+        
+        selection_window.wait_window()
+        return bool(self.selected_actions)
+
+    def _confirm_selection(self, actions, check_vars, window):
+        self.selected_actions = [
+            action["original_line"]
+            for action, var in zip(actions, check_vars)
+            if var.get()]
+        window.destroy()
+
+    def _toggle_all(self, check_vars, state):
+        """Marca/desmarca todos los checkboxes"""
+        for var in check_vars:
+            var.set(state)
+
+    def _get_selected_actions(self, actions, check_vars, window):
+        """Obtiene las acciones seleccionadas"""
+        self.selected_actions = []
+        for i, (action, var) in enumerate(zip(actions, check_vars)):
+            if var.get():
+                self.selected_actions.append(action["original_line"])
+        window.destroy()
+
+    def _filter_content_by_actions(self, original_content, selected_lines):
+        """Filtra el contenido manteniendo solo las líneas seleccionadas"""
+        lines = original_content.split('\n')
+        filtered_lines = []
+        
+        # Mantener las primeras líneas (imports y setup)
+        for line in lines[:4]:
+            filtered_lines.append(line)
+            
+        # Añadir solo las líneas seleccionadas
+        for line in lines[4:]:
+            if line.strip() in selected_lines:
+                filtered_lines.append(line)
+                
+        # Mantener las últimas líneas (cierre)
+        for line in lines[-2:]:
+            filtered_lines.append(line)
+            
+        return '\n'.join(filtered_lines)
+            
+    def _process_conversion(self, js_file, content, project_path):
+        """Procesa la conversión con el contenido filtrado dentro del proyecto seleccionado"""
+        try:
+            # 1. Copiar archivos de soporte primero
+            self._copy_support_files(project_path)
+            
+            # 2. Generar archivos de conversión
+            base_name = os.path.splitext(os.path.basename(js_file))[0]
+            class_name = base_name.capitalize() + "Page"
+            
+            # Estructura de directorios dentro del proyecto
+            project_dirs = {
+                'features': os.path.join(project_path, "features"),
+                'steps': os.path.join(project_path, "features", "steps"),
+                'pages': os.path.join(project_path, "pages"),
+                'resources': os.path.join(project_path, "resources", "data"),
+                'outputs': os.path.join(project_path, "outputs"),
+                'utils': os.path.join(project_path, "utils")
+            }
+            
+            # Crear directorios si no existen
+            for dir_path in project_dirs.values():
+                os.makedirs(dir_path, exist_ok=True)
+
+            # Definir rutas de archivos dentro del proyecto
+            file_paths = {
+                'feature': os.path.join(project_dirs['features'], f"{base_name}.feature"),
+                'steps': os.path.join(project_dirs['steps'], f"{base_name}_steps.py"),
+                'page': os.path.join(project_dirs['pages'], f"{base_name}_page.py"),
+                'json': os.path.join(project_dirs['resources'], f"{base_name}.json")
+            }
+
+            # Verificar archivos existentes
+            existing_files = {name: path for name, path in file_paths.items() if os.path.exists(path)}
+            
+            if existing_files:
+                file_list = "\n".join([f"- {name}: {os.path.basename(path)}" for name, path in existing_files.items()])
+                response = messagebox.askyesnocancel(
+                    "Archivos existentes",
+                    f"Los siguientes archivos ya existen en el proyecto:\n\n{file_list}\n\n"
+                    "¿Qué deseas hacer?\n"
+                    "• 'Sí': Sobrescribir todos\n"
+                    "• 'No': Continuar sin sobrescribir\n"
+                    "• 'Cancelar': Abortar conversión"
+                )
+                
+                if response is None:  # Cancelar
+                    return
+                elif not response:    # No sobrescribir
+                    file_paths = {name: path for name, path in file_paths.items() if not os.path.exists(path)}
+                    if not file_paths:
+                        messagebox.showinfo("Información", "Todos los archivos ya existen en el proyecto y no se sobrescribirán.")
+                        return
+
+            # Procesar feature file
+            if 'feature' in file_paths:
+                feature_exists = 'feature' in existing_files and not response
+                existing_content = ""
+                
+                if feature_exists:
+                    try:
+                        with open(file_paths['feature'], "r", encoding="utf-8") as f:
+                            existing_content = f.read()
+                    except Exception as e:
+                        messagebox.showwarning("Advertencia", f"No se pudo leer el feature existente:\n{str(e)}")
+                        feature_exists = False
+
+                if not feature_exists:
+                    feature_content = self._generate_bdd_feature(content, base_name)
+                    with open(file_paths['feature'], "w", encoding="utf-8") as f:
+                        f.write(feature_content)
+
+            # Generar steps file
+            if 'steps' in file_paths:
+                steps_content = self._generate_adaptive_steps(
+                    base_name, 
+                    class_name, 
+                    content, 
+                    existing_content if feature_exists else ""
+                )
+                with open(file_paths['steps'], "w", encoding="utf-8") as f:
+                    f.write(steps_content)
+
+            # Generar page object
+            if 'page' in file_paths:
+                page_content = self._generate_page_object(class_name, content)
+                with open(file_paths['page'], "w", encoding="utf-8") as f:
+                    f.write(page_content)
+
+            # Generar JSON data
+            if 'json' in file_paths:
+                json_content = self._generate_json_data(content)
+                with open(file_paths['json'], "w", encoding="utf-8") as f:
+                    f.write(json_content)
+
+            # Mensaje final
+            created_files = [name for name in file_paths.keys() if name not in existing_files or response]
+            success_msg = f"Proyecto configurado correctamente en:\n{os.path.basename(project_path)}\n\n"
+            success_msg += "Se incluyeron:\n"
+            success_msg += "- Archivos de soporte completos (environment, utils, resources)\n"
+            success_msg += "- Archivos generados:\n"
+            success_msg += "\n".join([f"  • {os.path.basename(file_paths[name])}" for name in created_files])
+            
+            messagebox.showinfo("Éxito", success_msg)
+
+        except Exception as e:
+            error_msg = f"Error al configurar el proyecto {os.path.basename(project_path)}:\n{str(e)}"
+            messagebox.showerror("Error", error_msg)
+            
+            # Limpiar archivos creados parcialmente
+            if 'file_paths' in locals():
+                for file_type, path in file_paths.items():
+                    if file_type in created_files and os.path.exists(path):
+                        try:
+                            os.remove(path)
+                        except:
+                            pass
+        
+    def _copy_support_files(self, project_path):
+        """Copia toda la estructura de soporte al proyecto destino"""
+        try:
+            # 1. Copiar environment.py a features/
+            src_env = os.path.join(self.base_dir, "resources","features", "environment.py")
+            dst_env = os.path.join(project_path, "features", "environment.py")
+            shutil.copy2(src_env, dst_env)
+            
+            # 2. Crear carpeta outputs vacía
+            os.makedirs(os.path.join(project_path, "outputs"), exist_ok=True)
+            
+            # 3. Copiar recursos PDF
+            src_resources = os.path.join(self.base_dir, "resources", "resources", "resourcesPDF")
+            dst_resources = os.path.join(project_path, "resources", "resourcesPDF")
+            if os.path.exists(src_resources):
+                shutil.copytree(src_resources, dst_resources, dirs_exist_ok=True)
+            
+            # 4. Copiar utils completa
+            src_utils = os.path.join(self.base_dir, "resources", "utils")
+            dst_utils = os.path.join(project_path, "utils")
+            if os.path.exists(src_utils):
+                shutil.copytree(src_utils, dst_utils, dirs_exist_ok=True)
+                
+        except Exception as e:
+            messagebox.showwarning("Advertencia", 
+                f"No se pudieron copiar algunos archivos de soporte:\n{str(e)}\n"
+                "El proyecto puede necesitar configuración manual adicional.")            
+            
+    def _generate_bdd_feature(self, script_content, base_name):
+        """Genera feature con el formato exacto solicitado usando nombres de elementos"""
+        if script_content is None:
+            script_content = ""
+        
+        lines = script_content.split('\n')
+        actions = []
+        
+        for line in lines:
+            line = line.strip()
+            try:
+                if "page.goto(" in line:
+                    url_match = re.search(r'page\.goto\((["\'])(.*?)\1', line)
+                    if url_match:
+                        url = url_match.group(2)
+                        actions.append(("given", f'Acceder a la pagina "{url}"'))
+                        continue  
+
+                elif "page.click(" in line:
+                    selector_match = re.search(r'page\.click\((["\'])(.*?)\1', line)
+                    if selector_match:
+                        selector = selector_match.group(2)
+                        element_name = f"click_{self._generate_element_name(selector)}"
+                        actions.append(("click", f'clic en elemento "{element_name}"'))
+
+                elif "page.type(" in line or "page.fill(" in line:
+                    type_match = re.search(r'page\.(?:type|fill)\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if type_match:
+                        selector = type_match.group(2)
+                        value = type_match.group(4)
+                        field_name = f"enter_{self._generate_element_name(selector)}"
+                        actions.append(("fill", f'Ingresar "{field_name}" con "{value}"'))
+
+                elif "page.select(" in line:
+                    select_match = re.search(r'page\.select\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if select_match:
+                        selector = select_match.group(2)
+                        option = select_match.group(4)
+                        field_name = f"select_{self._generate_element_name(selector)}"
+                        actions.append(("select", f'Seleccionar "{option}" en "{field_name}"'))
+
+            except Exception as e:
+                print(f"Error procesando línea: {line}\n{str(e)}")
+                continue
 
         # Eliminar duplicados consecutivos
         unique_actions = []
@@ -141,25 +566,20 @@ class PuppeteerToBehaveConverter:
                 unique_actions.append(action)
                 last_action = action
         
-        # Construir feature con formato exacto
+        # Construir feature
         feature_lines = [
             f"Feature: {base_name}\n",
-
             "\n",
             "  Scenario: Flujo grabado\n"
         ]
         
-        # Variables para controlar la estructura
         has_given = False
         has_when = False
         has_then = False
+        click_buffer = []
         and_count_after_when = 0
         and_count_after_then = 0
         
-        # Buffer para acumular clicks consecutivos
-        click_buffer = []
-        
-        # Procesar cada acción
         for action_type, description in unique_actions:
             if action_type == "given" and not has_given:
                 feature_lines.append(f"    Given {description}\n")
@@ -169,7 +589,6 @@ class PuppeteerToBehaveConverter:
                 click_buffer.append(description)
             
             elif action_type in ["fill", "select"]:
-                # Procesar clicks acumulados primero si hay alguno
                 if click_buffer:
                     if not has_when:
                         feature_lines.append(f"    When {', '.join(click_buffer)}\n")
@@ -179,17 +598,16 @@ class PuppeteerToBehaveConverter:
                         and_count_after_when += 1
                     click_buffer = []
                 
-                # Procesar la acción actual (fill o select)
                 if action_type == "fill":
                     if has_when and and_count_after_when < 2:
                         feature_lines.append(f"    And {description}\n")
                         and_count_after_when += 1
                 
-                elif action_type == "select" and not has_then:
-                    feature_lines.append(f"    Then {description}\n")
-                    has_then = True
+                elif action_type == "select":
+                    if not has_then:
+                        feature_lines.append(f"    Then {description}\n")
+                        has_then = True
         
-        # Procesar cualquier click pendiente al final
         if click_buffer:
             if not has_when:
                 feature_lines.append(f"    When {', '.join(click_buffer)}\n")
@@ -198,9 +616,12 @@ class PuppeteerToBehaveConverter:
                 feature_lines.append(f"    And {', '.join(click_buffer)}\n")
                 and_count_after_when += 1
         
-        # Siempre agregar verificación final si no se ha alcanzado el límite de And
-        if has_then and and_count_after_then < 2:
-            feature_lines.append("    And Verificar que se completó el flujo\n")
+        # Agregar verificación final según reglas
+        if has_then:
+            if and_count_after_then < 2:
+                feature_lines.append("    And Verificar que se completó el flujo\n")
+        else:
+            feature_lines.append("    Then Verificar que se completó el flujo\n")
         
         return ''.join(feature_lines)
 
@@ -256,6 +677,11 @@ class PuppeteerToBehaveConverter:
         """Extrae los steps de un feature existente"""
         steps = []
         type_consolidation = {}
+        
+        # Validación para evitar el error NoneType
+        if feature_content is None:
+            feature_content = ""
+        
         lines = feature_content.split('\n')        
         
         for line in lines:
@@ -276,123 +702,76 @@ class PuppeteerToBehaveConverter:
         return steps
 
     def _generate_steps_from_feature(self, base_name, class_name, feature_steps, script_content):
-        """Genera steps funcionales basados en un feature existente"""
+        """Genera steps usando nombres de elementos del Page Object"""
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
 from utils.element_utils import ElementUtils
-        """
+            """
             
         step_methods = []
-        script_actions = self._extract_script_actions(script_content)
-        last_non_and_step = None  # Para trackear el último paso que no es And
-            
-        # Extraer valores de select_options del script para referencia
-        select_values = {}
-        select_matches = re.finditer(r'page\.locator\(["\'](.*?)["\']\)\.select_option\(["\'](.*?)["\']\)', script_content)
-        for match in select_matches:
-            selector = match.group(1)
-            value = match.group(2)
-            field_name = self._generate_element_name(selector)
-            select_values[field_name] = value
-            
-        for i, (step_type, description) in enumerate(feature_steps):
-            # Determinar el tag correcto para steps And
+        last_non_and_step = None
+
+        for step_type, description in feature_steps:
             if step_type == "and":
-                if last_non_and_step:
-                    effective_step_type = last_non_and_step
-                else:
-                    effective_step_type = "given"  # Default si no hay contexto previo
+                effective_step_type = last_non_and_step or "given"
             else:
                 effective_step_type = step_type
-                last_non_and_step = step_type  # Actualizar el último paso no-And
-                
+                last_non_and_step = step_type
+
             method_name = self._create_step_method_name(effective_step_type, description)
-                
-            if "Seleccionar" in description and "en" in description:
-                # Modificación para dropdowns
-                option = re.search(r'Seleccionar "(.*?)"', description).group(1)
-                field = re.search(r'en "(.*?)"', description).group(1)
-                field_name = self._generate_element_name(field)
-                step_methods.append(f"""
-@{effective_step_type}('Seleccionar "{{option}}" en "{field}"')
-def step_seleccionar_{field_name}(context, option):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.select_{field_name}(option)
-            """)                
-                
-            elif "Acceder a la pagina" in description:
+            
+            if "Acceder a la pagina" in description:
                 step_methods.append(f"""
 @{effective_step_type}('Acceder a la pagina "{{url}}"')
 def {method_name}(context, url):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)
     context.driver.get(url)
-    """)
-            elif "clic en boton" in description and "," in description:
-                # Nueva lógica para mantener orden exacto
-                actions = []
-                # Usar expresiones regulares para capturar todos los clicks en orden
-                button_clicks = re.finditer(r'clic en boton "(.*?)"', description)
-                for match in button_clicks:
-                    actions.append(('boton', match.group(1)))
-                
-                generic_clicks = re.finditer(r'clic en "(.*?)"(?:,|$)', description)
-                for match in generic_clicks:
-                    actions.append(('elemento', match.group(1)))
-                
-                method_calls = []
-                for action_type, element in actions:
-                    element_name = self._generate_element_name(element)
-                    if action_type == 'boton':
-                        method_calls.append(f"context.page.click_{element_name}()")
-                    else:
-                        method_calls.append(f"context.page.click_{element_name}()")
-                    
+        """)
+
+            elif "clic en elemento" in description and "," in description:
+                click_names = re.findall(r'"(.*?)"', description)
                 step_content = f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)"""
-        
-                # Añadir cada llamada en el orden correcto
-                for call in method_calls:
-                    step_content += f"\n    {call}"
-                    
-                step_content += "\n    "
+                for name in click_names:
+                    step_content += f"\n    context.page.{name}()"
                 step_methods.append(step_content)
-        
-            elif "clic en boton" in description:
-                button_name = re.search(r'clic en boton "(.*?)"', description).group(1)
-                element_name = self._generate_element_name(button_name)
+
+            elif "clic en elemento" in description:
+                name = re.search(r'"(.*?)"', description).group(1)
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)
-    context.page.click_{element_name}()
-    """)
-            elif "clic en" in description:
-                element = re.search(r'clic en "(.*?)"', description).group(1)
-                element_name = self._generate_element_name(element)
-                step_methods.append(f"""
-@{effective_step_type}('{description}')
-def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.click_{element_name}()
-    """)
+    context.page.{name}()
+            """)
+
             elif "Ingresar" in description:
-                field = re.search(r'Ingresar "(.*?)"', description).group(1)
-                value = re.search(r'con "(.*?)"', description).group(1)
-                field_name = self._generate_element_name(field)
+                match = re.search(r'Ingresar "(.*?)" con "(.*?)"', description)
+                name, value = match.group(1), match.group(2)
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)
-    context.page.enter_{field_name}("{value}")
-    """)
+    context.page.{name}("{value}")
+            """)
+
+            elif "Seleccionar" in description:
+                match = re.search(r'Seleccionar "(.*?)" en "(.*?)"', description)
+                option, name = match.group(1), match.group(2)
+                step_methods.append(f"""
+@{effective_step_type}('{description}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    context.utils = ElementUtils(context.driver)
+    context.page.{name}("{option}")
+            """)
+                
             elif "Verificar que se completó el flujo" in description:
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
@@ -401,55 +780,73 @@ def {method_name}(context):
     context.utils = ElementUtils(context.driver)
     # Verificación de completado
     assert True
-    """)
-            
-        return imports + "\n".join(step_methods)    
-    
+        """)                
+
+        return imports + "\n".join(step_methods)
+
     def _generate_steps_from_script(self, base_name, class_name, script_content):
-        """Genera steps que corresponden exactamente a los pasos del feature"""
-        # Primero generamos el feature para extraer los steps exactos
+        """Genera steps directamente desde el script usando nombres de elementos"""
         feature_content = self._generate_bdd_feature(script_content, base_name)
         feature_steps = self._extract_steps_from_feature(feature_content)
-            
-        select_values = {}
-        select_matches = re.finditer(r'page\.locator\(["\'](.*?)["\']\)\.select_option\(["\'](.*?)["\']\)', script_content)
-        for match in select_matches:
-            selector = match.group(1)
-            value = match.group(2)
-            field_name = self._generate_element_name(selector)
-            select_values[field_name] = value
             
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
 from utils.element_utils import ElementUtils
-        """
+            """
             
         step_methods = []
-        script_actions = self._extract_script_actions(script_content)
         last_non_and_step = None
             
-        for i, (step_type, description) in enumerate(feature_steps):
-            # Determinar el tag correcto para steps And
+        for step_type, description in feature_steps:
             if step_type == "and":
-                if last_non_and_step:
-                    effective_step_type = last_non_and_step
-                else:
-                    effective_step_type = "given"
+                effective_step_type = last_non_and_step or "given"
             else:
                 effective_step_type = step_type
                 last_non_and_step = step_type
-                    
+
             method_name = self._create_step_method_name(effective_step_type, description)
-                
-            if "Seleccionar" in description and "en" in description:
-                field = re.search(r'en "(.*?)"', description).group(1)
-                field_name = self._generate_element_name(field)
+
+            if "clic en elemento" in description and "," in description:
+                click_names = re.findall(r'"(.*?)"', description)
+                step_content = f"""
+@{effective_step_type}('{description}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    context.utils = ElementUtils(context.driver)"""
+                for name in click_names:
+                    step_content += f"\n    context.page.{name}()"
+                step_methods.append(step_content)
+
+            elif "clic en elemento" in description:
+                name = re.search(r'"(.*?)"', description).group(1)
                 step_methods.append(f"""
-@{effective_step_type}('Seleccionar "{{option}}" en "{field}"')
-def step_seleccionar_{field_name}(context, option):
+@{effective_step_type}('{description}')
+def {method_name}(context):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)
-    context.page.select_{field_name}(option)
+    context.page.{name}()
+            """)
+
+            elif "Ingresar" in description:
+                match = re.search(r'Ingresar "(.*?)" con "(.*?)"', description)
+                name, value = match.group(1), match.group(2)
+                step_methods.append(f"""
+@{effective_step_type}('{description}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    context.utils = ElementUtils(context.driver)
+    context.page.{name}("{value}")
+            """)
+
+            elif "Seleccionar" in description:
+                match = re.search(r'Seleccionar "(.*?)" en "(.*?)"', description)
+                option, name = match.group(1), match.group(2)
+                step_methods.append(f"""
+@{effective_step_type}('{description}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    context.utils = ElementUtils(context.driver)
+    context.page.{name}("{option}")
             """)
                 
             elif "Acceder a la pagina" in description:
@@ -459,76 +856,8 @@ def {method_name}(context, url):
     context.page = {class_name}(context.driver)
     context.utils = ElementUtils(context.driver)
     context.driver.get(url)
-    """)
-            elif "clic en boton" in description and "," in description:
-                # Nueva lógica para mantener orden exacto
-                actions = []
-                current_desc = description
-                while True:
-                    button_match = re.search(r'clic en boton "(.*?)"', current_desc)
-                    generic_match = re.search(r'clic en "(.*?)"', current_desc)
-                    
-                    if button_match and (not generic_match or button_match.start() < generic_match.start()):
-                        actions.append(('boton', button_match.group(1)))
-                        current_desc = current_desc[button_match.end():]
-                    elif generic_match:
-                        actions.append(('elemento', generic_match.group(1)))
-                        current_desc = current_desc[generic_match.end():]
-                    else:
-                        break
-                
-                method_calls = []
-                for action_type, element in actions:
-                    element_name = self._generate_element_name(element)
-                    if action_type == 'boton':
-                        method_calls.append(f"context.page.click_{element_name}()")
-                    else:
-                        method_calls.append(f"context.page.click_{element_name}()")
-                                    
-                step_content = f"""
-@{effective_step_type}('{description}')
-def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)"""
-        
-                # Añadir cada llamada en el orden correcto
-                for call in method_calls:
-                    step_content += f"\n    {call}"
-                    
-                step_content += "\n    "
-                step_methods.append(step_content)             
-                    
-            elif "clic en boton" in description:
-                button_name = re.search(r'clic en boton "(.*?)"', description).group(1)
-                element_name = self._generate_element_name(button_name)
-                step_methods.append(f"""
-@{effective_step_type}('{description}')
-def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.click_{element_name}()
-    """)
-            elif "clic en" in description:
-                element = re.search(r'clic en "(.*?)"', description).group(1)
-                element_name = self._generate_element_name(element)
-                step_methods.append(f"""
-@{effective_step_type}('{description}')
-def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.click_{element_name}()
-    """)
-            elif "Ingresar" in description:
-                field = re.search(r'Ingresar "(.*?)"', description).group(1)
-                value = re.search(r'con "(.*?)"', description).group(1)
-                field_name = self._generate_element_name(field)
-                step_methods.append(f"""
-@{effective_step_type}('{description}')
-def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.enter_{field_name}("{value}")
-    """)
+        """)  
+                              
             elif "Verificar que se completó el flujo" in description:
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
@@ -537,9 +866,9 @@ def {method_name}(context):
     context.utils = ElementUtils(context.driver)
     # Verificación de completado
     assert True
-    """)
-            
-        return imports + "\n".join(step_methods)    
+        """)
+
+        return imports + "\n".join(step_methods)
 
     def _extract_script_actions(self, script_content):
         """Extrae todas las acciones del script en orden"""
@@ -709,8 +1038,22 @@ class {class_name}:
         # Primero eliminamos acentos si los hubiera
         clean_selector = self._remove_accents(selector)
         
+        # Si es un selector XPath (comienza con /)
+        if clean_selector.startswith('/'):
+            # Tomamos el último segmento del XPath
+            segments = [s for s in clean_selector.split('/') if s]
+            if segments:
+                last_segment = segments[-1]
+                # Si el último segmento es un nombre de etiqueta (como "span")
+                if not last_segment.startswith(('@', '[')):
+                    name = last_segment
+                else:
+                    # Si es un atributo o algo más complejo, usamos "xpath_element"
+                    name = 'xpath_element'
+            else:
+                name = 'xpath_root'
         # Si es un selector CSS por id (#)
-        if clean_selector.startswith('#'):
+        elif clean_selector.startswith('#'):
             name = clean_selector[1:]  # Eliminamos el #
         # Si es un selector por clase (.)
         elif clean_selector.startswith('.'):
@@ -802,7 +1145,7 @@ class {class_name}:
             else:
                 locator_type = "btn"
             
-            locator_lines.append(f'        self.{locator_type}_{name} = (By.CSS_SELECTOR, "{selector}")')
+            locator_lines.append(f"        self.{locator_type}_{name} = (By.CSS_SELECTOR, '{selector}')")
         
         return "\n".join(locator_lines)    
 
