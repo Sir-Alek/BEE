@@ -1,3 +1,11 @@
 build/*
 dist/*
 BEE.spec
+
+# Archivos ofuscados
+*.enc
+
+# Directorios de compilación
+dist/
+build/
+*.spec

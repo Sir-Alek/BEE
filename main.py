@@ -1,3 +1,39 @@
+import sys
+import os
+
+# Detectar si estamos en modo empaquetado
+IS_FROZEN = getattr(sys, 'frozen', False)
+
+# Manejo robusto de importaciones
+try:
+    if IS_FROZEN:
+        # En modo empaquetado, usar importación desde archivos ofuscados
+        from core.__dynamic_importer import puppeteer_script_converter, video_recorder
+        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
+        ScreenRecorder = video_recorder.ScreenRecorder
+    else:
+        # En modo desarrollo, usar importaciones normales
+        from core.puppeteer_script_converter import PuppeteerToBehaveConverter
+        from core.video_recorder import ScreenRecorder
+except ImportError as e:
+    # Fallback para casos especiales
+    try:
+        from core.__dynamic_importer import puppeteer_script_converter, video_recorder
+        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
+        ScreenRecorder = video_recorder.ScreenRecorder
+    except ImportError:
+        # Fallback extremo - definir clases vacías
+        class PuppeteerToBehaveConverter:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("Módulo PuppeteerToBehaveConverter no disponible")
+        
+        class ScreenRecorder:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("Módulo ScreenRecorder no disponible")
+        
+        # Mostrar advertencia
+        print("Advertencia: Módulos críticos no disponibles")
+        
 import os
 import subprocess
 import sys
@@ -7,8 +43,7 @@ import re
 import time
 from tkinter import simpledialog
 from PIL import Image, ImageTk 
-from core.puppeteer_script_converter import PuppeteerToBehaveConverter
-from core.video_recorder import ScreenRecorder
+
 
 
 def resource_path(relative_path):
@@ -371,75 +406,34 @@ class main:
             grabar_video = messagebox.askyesno("Grabación de Video", "¿Deseas grabar video de la pantalla?")
             recorder = None
             video_path = None
+    
             if grabar_video:
-                # Diálogo personalizado para nombre de video
-                video_dialog = tk.Toplevel(self.master)
-                video_dialog.title("Nombre del Archivo de Video")
-                video_dialog.geometry("350x150")
-                video_dialog.transient(self.master)
-                video_dialog.grab_set()
-
-                # Centrar ventana
-                video_dialog.update_idletasks()
-                x = self.master.winfo_x() + (self.master.winfo_width() - video_dialog.winfo_width()) // 2
-                y = self.master.winfo_y() + (self.master.winfo_height() - video_dialog.winfo_height()) // 2
-                video_dialog.geometry(f"+{x}+{y}")
-
-                frame = tk.Frame(video_dialog, padx=20, pady=20)
-                frame.pack(fill=tk.BOTH, expand=True)
-
-                tk.Label(frame, text="Ingresa el nombre para el archivo de video:", font=("Arial", 11)).pack(pady=(0, 10))
-
-                default_video = "video_" + time.strftime("%Y%m%d_%H%M%S")
-                video_var = tk.StringVar(value=default_video)
-                video_entry = tk.Entry(frame, textvariable=video_var, width=40, font=("Arial", 11))
-                video_entry.pack(pady=(0, 20))
-                video_entry.select_range(0, tk.END)
-                video_entry.focus_set()
-
-                def confirm_video():
-                    nonlocal video_path, recorder
-                    file_name = video_var.get().strip()
-                    if file_name:
-                        file_name = re.sub(r'[^\w\-_.]', '_', file_name)
-                        file_name = re.sub(r'_{2,}', '_', file_name)
-                        if not file_name.endswith('.avi'):
-                            file_name += '.avi'
-                        videos_dir = os.path.join(project_path, "grabaciones")
-                        os.makedirs(videos_dir, exist_ok=True)
-                        video_path = os.path.join(videos_dir, file_name)
-                        video_dialog.destroy()
-                        recorder = ScreenRecorder(video_path)
-                        recorder.start()
+                # Usar nombre predefinido sin diálogo para evitar conflictos con Tkinter
+                file_name = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
+                videos_dir = os.path.join(project_path, "grabaciones")
+                os.makedirs(videos_dir, exist_ok=True)
+                video_path = os.path.join(videos_dir, file_name)
+                
+                # Iniciar grabación sin diálogo
+                try:
+                    recorder = ScreenRecorder(video_path)
+                    if recorder.start():
+                        print(f"Grabación de video iniciada: {video_path}")
                     else:
-                        tk.messagebox.showwarning("Nombre requerido", "Por favor ingresa un nombre para el video.", parent=video_dialog)
-
-                def cancel_video():
-                    video_dialog.destroy()
-
-                btns = tk.Frame(frame)
-                btns.pack()
-                tk.Button(btns, text="Guardar", command=confirm_video, width=12).pack(side=tk.LEFT, padx=10)
-                tk.Button(btns, text="Cancelar", command=cancel_video, width=12).pack(side=tk.LEFT, padx=10)
-
-                video_dialog.bind('<Return>', lambda e: confirm_video())
-                self.master.wait_window(video_dialog)
+                        print("No se pudo iniciar la grabación de video")
+                        recorder = None
+                except Exception as e:
+                    print(f"Error iniciando grabación: {e}")
+                    recorder = None                
             
-            # USAR NODE PORTABLE DESDE core/node/node.exe
-            node_exe = resource_path(os.path.join("core", "node", "node.exe"))
-            script_path = resource_path(os.path.join("core", "recorder.js"))
+            # USAR EL NODE WRAPPER EN LUGAR DE EJECUTAR NODE DIRECTAMENTE
+            from core.node_wrapper import node_wrapper
             
-            process = subprocess.Popen(
-                [node_exe, script_path, output_file, url],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-
-            process.wait()
-
-            if process.returncode != 0:
-                error = process.stderr.read()
+            # Ejecutar usando el wrapper
+            result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
+            
+            if result.returncode != 0:
+                error = result.stderr if result.stderr else "Error desconocido en Node.js"
                 raise Exception(f"Error en Puppeteer:\n{error}")
 
             if not os.path.exists(output_file):
@@ -449,10 +443,20 @@ class main:
 
             if recorder:
                 recorder.stop()
-                messagebox.showinfo("Video Guardado", f"Grabación de video guardada en:\n{video_path}")
+                # Pequeña pausa para permitir que el thread termine
+                time.sleep(0.5)
+                
+                # Verificar que el video realmente se creó
+                if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                    messagebox.showinfo("Video Guardado", f"Grabación de video guardada en:\n{video_path}")
+                else:
+                    messagebox.showwarning("Video no guardado", "No se pudo guardar el video.")
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
+        finally:
+            # Limpiar recursos
+            node_wrapper.cleanup()
 
 
 
