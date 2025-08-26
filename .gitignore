@@ -1,11 +1,14 @@
-build/*
-dist/*
-BEE.spec
-
 # Archivos ofuscados
 *.enc
 
 # Directorios de compilación
 dist/
 build/
-*.spec
+
+# Logos empresariales
+Logo_BanCoppel.png
+logo-servicios-financieros.jpg
+
+#cache
+*.pyc
+*__pycache__
