@@ -426,15 +426,22 @@ class main:
                     print(f"Error iniciando grabación: {e}")
                     recorder = None                
             
-            # USAR EL NODE WRAPPER EN LUGAR DE EJECUTAR NODE DIRECTAMENTE
-            from core.node_wrapper import node_wrapper
-            
-            # Ejecutar usando el wrapper
-            result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
-            
+            # Ejecutar diferente según el modo
+            if IS_FROZEN:
+                # En modo empaquetado, usar el wrapper ofuscado
+                from core.node_wrapper import node_wrapper
+                result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
+            else:
+                # En modo desarrollo, ejecutar directamente el script
+                import subprocess
+                recorder_js_path = os.path.join(self.base_dir, 'core', 'recorder.js')
+                result = subprocess.run([
+                    'node', recorder_js_path, output_file, url
+                ], capture_output=True, text=True, cwd=self.base_dir)
+
             if result.returncode != 0:
                 error = result.stderr if result.stderr else "Error desconocido en Node.js"
-                raise Exception(f"Error en Puppeteer:\n{error}")
+                raise Exception(f"Error en Puppeteer:\n{error}")  
 
             if not os.path.exists(output_file):
                 raise Exception("No se generó el archivo de grabación")
@@ -477,4 +484,5 @@ if __name__ == "__main__":
           """)    
     root = tk.Tk()
     app = main(root)
+
     root.mainloop()             
