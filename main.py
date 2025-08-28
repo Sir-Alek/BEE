@@ -8,24 +8,32 @@ IS_FROZEN = getattr(sys, 'frozen', False)
 try:
     if IS_FROZEN:
         # En modo empaquetado, usar importación desde archivos ofuscados
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder
+        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
         PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
         ScreenRecorder = video_recorder.ScreenRecorder
+        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+
     else:
         # En modo desarrollo, usar importaciones normales
         from core.puppeteer_script_converter import PuppeteerToBehaveConverter
         from core.video_recorder import ScreenRecorder
+        from core.step_by_step_converter import PuppeteerToStepByStepConverter   
 except ImportError as e:
     # Fallback para casos especiales
     try:
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder
+        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
         PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
         ScreenRecorder = video_recorder.ScreenRecorder
+        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
     except ImportError:
         # Fallback extremo - definir clases vacías
         class PuppeteerToBehaveConverter:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo PuppeteerToBehaveConverter no disponible")
+        
+        class PuppeteerToStepByStepConverter:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("Módulo PuppeteerToStepByStepConverter no disponible")
         
         class ScreenRecorder:
             def __init__(self, *args, **kwargs):
@@ -125,6 +133,17 @@ class main:
             width=20
         )
         self.convert_button.pack(side=tk.LEFT, padx=20)
+       
+        # Botón de Convertir a step by step
+        self.convert_button = tk.Button(
+            self.button_frame, 
+            text="Convertir a step by step", 
+            command=self.convert_to_step_by_step,
+            font=("Arial", 12),
+            height=2,
+            width=20
+        )
+        self.convert_button.pack(side=tk.LEFT, padx=20)        
         
     def load_logo(self):
         try:
@@ -311,12 +330,20 @@ class main:
         return project_path
                 
     def convert_script(self):
-        """Maneja la conversión"""
+        """Maneja la conversión a behave"""
         try:
             converter = PuppeteerToBehaveConverter(self.base_dir, self.master)
             converter.convert_script()
         except Exception as e:
-            messagebox.showerror("Error", f"Error en conversión:\n{str(e)}")            
+            messagebox.showerror("Error", f"Error en conversión:\n{str(e)}")     
+                   
+    def convert_to_step_by_step(self):
+        """Maneja la conversión a step by step"""
+        try:
+            converter = PuppeteerToStepByStepConverter(self.base_dir, self.master)
+            converter.convert_script()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error en conversión a step by step:\n{str(e)}")         
                     
     def run_puppeteer_recorder(self):
         url = self.url_entry.get().strip()
@@ -426,15 +453,22 @@ class main:
                     print(f"Error iniciando grabación: {e}")
                     recorder = None                
             
-            # USAR EL NODE WRAPPER EN LUGAR DE EJECUTAR NODE DIRECTAMENTE
-            from core.node_wrapper import node_wrapper
-            
-            # Ejecutar usando el wrapper
-            result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
-            
+            # Ejecutar diferente según el modo
+            if IS_FROZEN:
+                # En modo empaquetado, usar el wrapper ofuscado
+                from core.node_wrapper import node_wrapper
+                result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
+            else:
+                # En modo desarrollo, ejecutar directamente el script
+                import subprocess
+                recorder_js_path = os.path.join(self.base_dir, 'core', 'recorder.js')
+                result = subprocess.run([
+                    'node', recorder_js_path, output_file, url
+                ], capture_output=True, text=True, cwd=self.base_dir)
+
             if result.returncode != 0:
                 error = result.stderr if result.stderr else "Error desconocido en Node.js"
-                raise Exception(f"Error en Puppeteer:\n{error}")
+                raise Exception(f"Error en Puppeteer:\n{error}")            
 
             if not os.path.exists(output_file):
                 raise Exception("No se generó el archivo de grabación")
@@ -456,7 +490,13 @@ class main:
             messagebox.showerror("Error", str(e))
         finally:
             # Limpiar recursos
-            node_wrapper.cleanup()
+            if IS_FROZEN:
+                # Importar y limpiar solo si está en modo empaquetado
+                from core.node_wrapper import node_wrapper
+                node_wrapper.cleanup()
+            else:
+                # En modo desarrollo, no hay recursos ofuscados que limpiar
+                pass
 
 
 
@@ -471,7 +511,7 @@ if __name__ == "__main__":
 ╚═════╝ ╚══════╝╚══════╝
 
 🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝  
-   BEE - Behave Extractor Engine v1.0.1
+   BEE - Behave Extractor Engine v1.0.2
    </Alek>
 🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝     
           """)    
