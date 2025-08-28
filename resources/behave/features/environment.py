@@ -102,7 +102,7 @@ def before_scenario(context, scenario):
     options.add_argument("--use-angle=swiftshader")  # Usar renderizador software
     options.add_argument("--enable-unsafe-webgpu")  # Permitir WebGPU experimental
     
-    # Preferencias de permisos
+    # Preferencias de permisos, 1 para otorgar, 0 para solicitar
     options.add_experimental_option("prefs", {
         "profile.default_content_setting_values.geolocation": 1,
         "profile.default_content_setting_values.media_stream_camera": 1,
@@ -127,15 +127,29 @@ def before_scenario(context, scenario):
     if headless_mode:
         options.add_argument("--headless=new")
     
-    # Iniciar driver
+    # Ruta de respaldo al ChromeDriver local
+    local_driver_path = os.path.join(os.path.dirname(__file__), "drivers", "chromedriver.exe")
+
     try:
+        # Intentar con WebDriverManager
         context.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
             options=options
         )
+        logging.info("✅ Driver iniciado con WebDriverManager")
     except Exception as e:
-        logging.error(f"Error al iniciar el driver: {str(e)}")
-        raise
+        logging.error(f"❌ Error al iniciar con WebDriverManager: {str(e)}")
+        logging.info("🔄 Intentando iniciar con ChromeDriver local...")
+
+        try:
+            context.driver = webdriver.Chrome(
+                service=Service(local_driver_path),
+                options=options
+            )
+            logging.info("✅ Driver iniciado con ChromeDriver local")
+        except Exception as e2:
+            logging.critical(f"🚨 Error también con ChromeDriver local: {str(e2)}")
+            raise
     
     # Configuración de geolocalización por defecto (CDMX)
     configure_geolocation(context.driver)
