@@ -1030,6 +1030,55 @@ class {class_name}:
 
     # Methods
 {self._generate_methods(script_content)}
+
+    # para dar click en botones de permisos, por texto
+    # def click_tab(self):
+
+    #     # ===== utilidades =====
+    #     SP_BUTTON_PATTERNS = [
+    #         r".*Permitir mientras visitas el sitio.*",
+    #         r".*Permitir.*",
+    #     ]
+    #     EN_BUTTON_PATTERNS = [
+    #         r".*Allow while visiting this site.*",
+    #         r".*Allow.*",
+    #     ]
+       
+    #     print("si entro")
+    #     # 1. Buscar ventanas abiertas con título que contenga "Chrome"
+    #     wins = Desktop(backend="uia").windows()
+    #     chrome_windows = [w for w in wins if "Chrome" in (w.window_text() or "")]
+
+    #     if not chrome_windows:
+    #         raise RuntimeError("No encontré una ventana de Chrome abierta")
+
+    #     # 2. Conectar a la primera ventana encontrada
+    #     app = Application(backend="uia").connect(handle=chrome_windows[0].handle)
+    #     win = app.window(handle=chrome_windows[0].handle)
+
+    #     # 3. Traer al frente y enviar teclas
+    #     win.set_focus()
+    #     time.sleep(1)
+
+    #     t0 = time.time()
+    #     patterns = [re.compile(p, re.IGNORECASE) for p in (SP_BUTTON_PATTERNS + EN_BUTTON_PATTERNS)]
+    #     while time.time() - t0 < 5:
+    #         try:
+    #             # Busca botones expuestos por UIA
+    #             for btn in win.descendants(control_type="Button"):
+    #                 name = (btn.window_text() or "").strip()
+    #                 if not name and isinstance(btn.element_info, UIAElementInfo):
+    #                     name = (btn.element_info.name or "").strip()
+    #                 if not name:
+    #                     continue
+    #                 if any(rx.match(name) for rx in patterns):
+                       
+    #                     ButtonWrapper(btn.element_info).click_input()
+    #                     return True
+    #         except Exception:
+    #             pass
+    #         time.sleep(0.2)
+
     """
         return imports + class_template
     

@@ -693,6 +693,9 @@ from utils.gen_reporTest import PDF
         test_body = '\n'.join(test_steps)
         
         tear_down = '''
+            # REGISTRAR RESULTADO EXITOSO 
+            self.test_logger.log_test_result("OK")
+            
         except Exception as e:
             error_msg = f"Error durante la ejecución: {str(e)}"
             self.test_logger.error(error_msg)
@@ -788,7 +791,7 @@ if __name__ == "__main__":
             element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'click_en_elemento_{selector[:5]}', self.test_dir, self.wd)
+            GetEvidence.create_screenshot('{step_number:02d}', 'click_en_elemento', self.test_dir, self.wd)
             element.click()
             time.sleep(1)
 '''
@@ -800,7 +803,7 @@ if __name__ == "__main__":
             element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'rellenar_campo_{selector[:5]}', self.test_dir, self.wd)
+            GetEvidence.create_screenshot('{step_number:02d}', 'rellenar_campo', self.test_dir, self.wd)
             element.clear()
             element.send_keys("{value}")
             time.sleep(1)
@@ -818,8 +821,7 @@ if __name__ == "__main__":
             option_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//option[contains(text(), '{option}')]")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', option_element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', option_element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}', self.test_dir, self.wd)
-            option_element.click()
+            GetEvidence.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}
             time.sleep(1)
 '''
             
@@ -828,7 +830,7 @@ if __name__ == "__main__":
             return f'''            # Paso {step_number}: Esperar elemento
             self.test_logger.info('Paso {step_number}: Esperando elemento {selector}')
             wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
-            GetEvidence.create_screenshot('{step_number:02d}', 'esperar_elemento_{selector[:5]}', self.test_dir, self.wd)
+            GetEvidence.create_screenshot('{step_number:02d}', 'esperar_elemento', self.test_dir, self.wd)
             time.sleep(1)
 '''
         

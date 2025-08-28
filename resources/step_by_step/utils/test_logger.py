@@ -42,9 +42,10 @@ class TestLogger:
                 self.logger.removeHandler(handler)
             
             # Formato del log
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
+                                         datefmt='%Y-%m-%d %H:%M:%S')
             
-            # Handler para archivo - MODIFICADO: modo 'w' para sobrescribir
+            # Handler para archivo
             self.file_handler = logging.FileHandler(self.log_file, mode='w', encoding='utf-8')
             self.file_handler.setFormatter(formatter)
             self.file_handler.setLevel(logging.INFO)
@@ -62,8 +63,10 @@ class TestLogger:
             self.logger.propagate = False
             
             self.start_time = datetime.now()
+            # Formatear hora
+            start_time_formatted = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
             self.logger.info(f"=== INICIO TEST: {self.test_name} ===")
-            self.logger.info(f"Hora de inicio: {self.start_time}")
+            self.logger.info(f"Hora de inicio: {start_time_formatted}")
             self.logger.info(f"Archivo de log: {self.log_file}")
             self.logger.info("=" * 50)
             
@@ -104,6 +107,8 @@ class TestLogger:
             execution_time (float): Tiempo de ejecución en segundos
         """
         end_time = datetime.now()
+        # Formatear hora
+        end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S')
         
         if execution_time is None and self.start_time:
             execution_time = (end_time - self.start_time).total_seconds()
@@ -111,10 +116,11 @@ class TestLogger:
         self.info("=" * 50)
         self.info(f"=== RESULTADO TEST: {self.test_name} ===")
         self.info(f"Estado: {status}")
-        self.info(f"Hora de finalización: {end_time}")
+        self.info(f"Hora de finalización: {end_time_formatted}")
         
         if self.start_time:
-            self.info(f"Duración: {execution_time:.2f} segundos")
+            # Mostrar duración
+            self.info(f"Duración: {int(execution_time)} segundos")
         
         if status == "FAILED" and error_message:
             self.error(f"Error: {error_message}")
