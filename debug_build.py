@@ -36,7 +36,7 @@ def debug_build():
         from core import get_core_file
         
         print("\n🧪 Probando desofuscación...")
-        files_to_test = ['recorder.js', 'puppeteer_script_converter.py', 'video_recorder.py']
+        files_to_test = ['recorder.js', 'puppeteer_script_converter.py', 'step_by_step_converter.py', 'video_recorder.py']
         
         for file in files_to_test:
             try:

@@ -42,6 +42,7 @@ def protect_core_advanced():
         'core/puppeteer_script_converter.py',
         'core/video_recorder.py',
         'core/recorder.js',
+        'core/step_by_step_converter.py',
         'core/__dynamic_importer.py'  # Si decides ofuscarlo también
     ]
     

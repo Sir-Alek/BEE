@@ -489,7 +489,7 @@ class PuppeteerToBehaveConverter:
         """Copia toda la estructura de soporte al proyecto destino"""
         try:
             # 1. Copiar environment.py a features/
-            src_env = os.path.join(self.base_dir, "resources","features", "environment.py")
+            src_env = os.path.join(self.base_dir, "resources", "behave", "features", "environment.py")
             dst_env = os.path.join(project_path, "features", "environment.py")
             shutil.copy2(src_env, dst_env)
             
@@ -497,13 +497,13 @@ class PuppeteerToBehaveConverter:
             os.makedirs(os.path.join(project_path, "outputs"), exist_ok=True)
             
             # 3. Copiar recursos PDF
-            src_resources = os.path.join(self.base_dir, "resources", "resources", "resourcesPDF")
+            src_resources = os.path.join(self.base_dir, "resources", "behave", "resources", "resourcesPDF")
             dst_resources = os.path.join(project_path, "resources", "resourcesPDF")
             if os.path.exists(src_resources):
                 shutil.copytree(src_resources, dst_resources, dirs_exist_ok=True)
             
             # 4. Copiar utils completa
-            src_utils = os.path.join(self.base_dir, "resources", "utils")
+            src_utils = os.path.join(self.base_dir, "resources", "behave", "utils")
             dst_utils = os.path.join(project_path, "utils")
             if os.path.exists(src_utils):
                 shutil.copytree(src_utils, dst_utils, dirs_exist_ok=True)
