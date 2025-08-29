@@ -15,7 +15,7 @@ class Deobfuscator:
         return cls._instance
     
     def load_file(self, relative_path):
-        """Carga y desofusca archivos con ZLIB + B64 - Versión mejorada para PyInstaller"""
+        """Carga y desofusca archivos"""
         if relative_path in self._cache:
             return self._cache[relative_path]
         
@@ -87,9 +87,9 @@ class Deobfuscator:
                     lines = f.readlines()
                     if len(lines) >= 2 and b'BEE_PROTECTED' in lines[0]:
                         encoded_content = lines[1].strip()
-                        # 1. Decodificar base64
+                        # 1. Decodificar
                         decoded_b64 = base64.b64decode(encoded_content)
-                        # 2. Descomprimir zlib
+                        # 2. Descomprimir
                         original_content = zlib.decompress(decoded_b64)
                         self._cache[relative_path] = original_content
                         return original_content
