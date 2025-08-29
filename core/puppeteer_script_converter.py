@@ -1008,15 +1008,18 @@ def {method_name}(context):
         return ''.join(feature_lines)        
 
     def _generate_page_object(self, class_name, script_content):
-        """Genera un page object similar a apolo_page.py basado en el script de Playwright"""
+        """Genera un page object"""
         imports = """from selenium.webdriver.common.by import By
 from utils.element_utils import ElementUtils
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time
-
+import time, re
+from selenium.webdriver.common.keys import Keys
+from pywinauto import Application, Desktop
+from pywinauto.controls.uia_controls import ButtonWrapper
+from pywinauto.uia_element_info import UIAElementInfo
     """
 
         class_template = f"""

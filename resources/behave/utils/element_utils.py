@@ -191,3 +191,10 @@ class ElementUtils:
                 print("No se encontró el mensaje de subir comprobante, se continúa el flujo.")
         except (NoSuchElementException, TimeoutException, FileNotFoundError, Exception) as e:
             raise AssertionError(f"Error al subir comprobante de domicilio: {e}")
+        
+    def switch_to_new_window(driver, timeout=10):
+        original_window = driver.current_window_handle
+        WebDriverWait(driver, timeout).until(lambda d: len(d.window_handles) > 1)
+        for window in driver.window_handles:
+            if window != original_window:
+                driver.switch_to.window(window)        
