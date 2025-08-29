@@ -63,3 +63,15 @@ except ImportError as e:
     video_recorder = type('Module', (), {
         'ScreenRecorder': FallbackScreenRecorder
     })
+    
+try:
+    step_by_step_converter = load_obfuscated_module('step_by_step_converter')
+except ImportError as e:
+    # Fallback extremo - crear módulos vacíos
+    class FallbackPuppeteerToStepByStepConverter:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Módulo no cargado: PuppeteerToStepByStepConverter")
+    
+    step_by_step_converter = type('Module', (), {
+        'PuppeteerToStepByStepConverter': FallbackPuppeteerToStepByStepConverter
+    })    
