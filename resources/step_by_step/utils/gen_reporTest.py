@@ -192,7 +192,7 @@ class PDF(FPDF):
         pdf.multi_cell(0, 5, '\n' + moduloName, align='C')
 
         # Logo - buscar en resources generales
-        logo_path = os.path.join(paths['base_dir'], 'resources', 'resourcesPDF', 'logo-servicios-financieros.jpg')
+        logo_path = os.path.join(paths['base_dir'], 'resources', 'logo_bee_png_transparente.png')
         if os.path.exists(logo_path):
             pdf.image(logo_path, 70, 19, 60, 15)
         
