@@ -396,9 +396,9 @@ class PDF(FPDF):
                 pdf.set_font('helvetica', '', 11.0)
                 pdf.ln(5)
         
-        pdf.set_author(author='AppWhere-2025')
+        pdf.set_author(author='Sir-Alek-2026')
         pdf.set_title(title=testName)
-        pdf.set_creator('Bancoppel - AppWhere')
+        pdf.set_creator('BEE - Sir-Alek')
         
         output_dir = os.path.join(BASE_DIR, 'outputs', 'pdfReports')
         os.makedirs(output_dir, exist_ok=True)
