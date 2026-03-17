@@ -16,9 +16,12 @@ class PDFFeatureReport(FPDF):
         self.scenarios = []
     
     def header(self):
-        # Logo
-        self.image(os.path.join('resources', 'resourcesPDF', 'logo-servicios-financieros.jpg'), 
-                  x=70, y=15, w=60, h=15)
+        # Logo de BEE con validación de existencia
+        logo_path = os.path.join('resources', 'logo_bee_png_transparente.png')
+        if os.path.exists(logo_path):
+            self.image(logo_path, x=70, y=15, w=60, h=15)
+        else:
+            logging.warning(f"Logo no encontrado en la ruta: {logo_path}")
         
         # Título con espacio ajustado
         self.set_y(35)
