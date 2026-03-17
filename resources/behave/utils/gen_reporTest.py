@@ -244,7 +244,7 @@ class PDF(FPDF):
         pdf.set_text_color(0, 0, 0)
         pdf.multi_cell(0, 5, testName, align='C')
 
-        logo_path = os.path.join(BASE_DIR, 'resources', 'resourcesPDF', 'logo-servicios-financieros.jpg')
+        logo_path = os.path.join(BASE_DIR, 'resources', 'logo_bee_png_transparente.png')
         if os.path.exists(logo_path):
             pdf.image(logo_path, 70, 19, 60, 15)
         else:
