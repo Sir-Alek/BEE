@@ -331,12 +331,20 @@ class EvidenceManager:
         if context.generate_evidence:
             context.evidence = GetEvidence()  
             context.evidence_dir = context.evidence.create_evidence_dir(scenario.name)
-            bf.GLOBAL_EVIDENCE_DIR = context.evidence_dir
-            bf.GLOBAL_EVIDENCE_FUNC = context.evidence.create_screenshot
-            bf.GLOBAL_TAKE_EVIDENCE = False
+            
+            # Usar la nueva función de configuración thread-safe de button_functions
+            bf.set_global_evidence_config(
+                take=False, 
+                dir_name=context.evidence_dir, 
+                func=context.evidence.create_screenshot
+            )
         else:
-            bf.GLOBAL_EVIDENCE_FUNC = None
-            bf.GLOBAL_TAKE_EVIDENCE = False
+            # Desactivar configuración para este hilo
+            bf.set_global_evidence_config(
+                take=False, 
+                dir_name="", 
+                func=None
+            )
 
     @staticmethod
     def parse_step_error(context, step, full_error):
