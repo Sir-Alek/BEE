@@ -16,17 +16,10 @@ class GetEvidence():
     
     @staticmethod
     def create_screenshot(step, label, dir_name, web_driver, step_type=None):
-        # 1. ESPERA DINÁMICA AGRESIVA
+        # 1. ESPERA DINÁMICA
         try:
-            # Ampliamos a 20s para reportes pesados. 
-            # Usamos [class*='...'] para atrapar cualquier elemento que contenga esas palabras clave en su clase
-            # spinners = ".cdk-overlay-backdrop, [class*='spinner'], [class*='loader'], [class*='loading'], [class*='overlay']" 
-            spinners = ".cdk-overlay-backdrop, .spinner, .loading, #loader, .ngx-ui-loader"
-            
-            # Usamos invisibility_of_element_located en lugar de presence
-            WebDriverWait(web_driver, 20).until(
-                EC.invisibility_of_element_located((By.CSS_SELECTOR, spinners))
-            )
+            from utils.button_functions import _wait_overlays
+            _wait_overlays(web_driver, timeout_overlays=20.0)
         except Exception:
             pass 
             
@@ -93,7 +86,7 @@ class GetEvidence():
             d.text((20, 200), f" Ruta Servidor: .../{os.path.basename(os.path.dirname(file_path))}", fill=(80, 80, 80), font=font_text)
             d.text((20, 250), f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fill=(100, 100, 100), font=font_text)
 
-            # 3. Guardar la imagen en tu carpeta de evidencias
+            # 3. Guardar la imagen en la carpeta de evidencias
             evidence_dir = os.path.join(os.getcwd(), 'outputs', 'evidences', dir_name)
             os.makedirs(evidence_dir, exist_ok=True)
             
@@ -131,17 +124,6 @@ class GetEvidence():
             file_name = os.path.basename(file_path)
             d.text((20, 20), f" VISTA PREVIA DE DATOS - {file_name}", fill=(0, 255, 0), font=font)
             d.text((20, 60), data_string, fill=(200, 200, 200), font=font)
-            
-            # 4. Guardar en la subcarpeta del test
-            # evidence_dir = os.path.join(os.getcwd(), 'outputs', 'evidences', dir_name)
-            # os.makedirs(evidence_dir, exist_ok=True)
-            
-            # img_name = f"{step}_{label}_Datos.png"
-            # full_img_path = os.path.join(evidence_dir, img_name)
-            
-            # img.save(full_img_path)
-            # logging.info(f"Recibo de datos generado: {full_img_path}")
-            # return full_img_path
             
             # 4. Enrutamiento inteligente y a prueba de fallos
             ruta_base_evidencias = os.path.join(os.getcwd(), 'outputs', 'evidences')
