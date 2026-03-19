@@ -22,7 +22,23 @@ function formatJobMode(mode: string | null): string {
   return mode;
 }
 
+/** Open job URL in a dedicated named tab/window so the home tab is not reused. */
+function openBeeJobSurface(jobUrl: string, jobId: string): void {
+  const target = `bee_job_${jobId}`;
+  const a = document.createElement("a");
+  a.href = jobUrl;
+  a.target = target;
+  a.rel = "noopener noreferrer";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export default function App() {
+  /** Pinned from first paint: home URL has no job_id; avoids any edge case mixing job UI into home. */
+  const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
+
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
@@ -50,13 +66,7 @@ export default function App() {
       });
       const base = `${window.location.origin}${window.location.pathname}`;
       const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
-      const handle = window.open(jobUrl, "_blank", "noopener,noreferrer");
-      if (!handle) {
-        setErrorText(
-          "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 o abre manualmente la URL del trabajo.",
-        );
-        return;
-      }
+      openBeeJobSurface(jobUrl, res.job_id);
       setHomeHint(
         "Se abrió otra pestaña con el flujo (avisos y pasos). Esta pestaña permanece como inicio: puedes iniciar más operaciones desde aquí.",
       );
@@ -122,7 +132,7 @@ export default function App() {
   }, [polling, jobId]);
 
   const header = useMemo(() => {
-    const isHome = !jobId;
+    const isHome = isHomeSurface;
     const statusLine = isHome
       ? "Inicio · deja esta pestaña abierta para nuevas tareas"
       : job
@@ -162,7 +172,7 @@ export default function App() {
         <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280", textAlign: "right" }}>{statusLine}</div>
       </div>
     );
-  }, [job, jobId, workspaceMode]);
+  }, [job, jobId, workspaceMode, isHomeSurface]);
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", background: "#f9fafb", minHeight: "100vh" }}>
@@ -176,7 +186,7 @@ export default function App() {
           </div>
         )}
 
-        {!jobId && initialChecked && (
+        {isHomeSurface && initialChecked && (
           <div
             style={{
               background: "#ffffff",
@@ -466,28 +476,9 @@ export default function App() {
               {job?.progress?.video_path ? `\nVideo: ${job.progress.video_path}` : ""}
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-              <button
-                onClick={() => {
-                  try {
-                    window.close();
-                  } catch {
-                    // ignore
-                  }
-                }}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "#fff",
-                  color: "#111827",
-                  border: "1px solid #d1d5db",
-                  cursor: "pointer",
-                  marginLeft: "auto",
-                }}
-              >
-                Cerrar pestaña
-              </button>
+            <div style={{ marginTop: 12, fontSize: 13, color: "#047857" }}>
+              La pestaña de <b>inicio</b> no se modifica: puedes cerrar solo esta pestaña de trabajo desde el menú del
+              navegador (o dejarla abierta). No se cerrará sola.
             </div>
           </div>
         )}
