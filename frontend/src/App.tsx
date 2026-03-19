@@ -11,6 +11,7 @@ type JobStatus = {
 };
 
 function formatPromptType(t: string): string {
+  if (t === "message_ack") return "Aviso";
   return t.replaceAll("_", " ");
 }
 
@@ -321,7 +322,9 @@ export default function App() {
             </div>
 
             <h2 style={{ margin: "10px 0 6px", fontSize: 20 }}>{activePrompt.title}</h2>
-            <div style={{ color: "#374151", marginBottom: 14 }}>{activePrompt.message}</div>
+            {activePrompt.type !== "message_ack" && (
+              <div style={{ color: "#374151", marginBottom: 14 }}>{activePrompt.message}</div>
+            )}
 
             {/* pick_project + pick_script */}
             {(activePrompt.type === "pick_project" || activePrompt.type === "pick_script") && (
@@ -446,26 +449,59 @@ export default function App() {
                     marginBottom: 14,
                     whiteSpace: "pre-wrap",
                     fontSize: 14,
+                    maxHeight: "min(50vh, 360px)",
+                    overflow: "auto",
                   }}
                 >
                   {activePrompt.message}
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!jobId) return;
-                    await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
-                  }}
+                <div
                   style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    background: "#0ea5e9",
-                    color: "white",
-                    border: "none",
-                    cursor: "pointer",
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginTop: 4,
+                    position: "sticky",
+                    bottom: 0,
+                    background: "#ffffff",
+                    paddingTop: 8,
                   }}
                 >
-                  Aceptar
-                </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!jobId) return;
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#0ea5e9",
+                      color: "white",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Aceptar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!jobId) return;
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#fff",
+                      color: "#111827",
+                      border: "1px solid #d1d5db",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
               </div>
             )}
 

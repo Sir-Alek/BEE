@@ -59,8 +59,9 @@ import socket
 import webbrowser
 
 try:
-    from webui.browser_launch import open_url_in_new_browser_window
+    from webui.browser_launch import open_home_and_job_in_browser, open_url_in_new_browser_window
 except Exception:
+    open_home_and_job_in_browser = None  # type: ignore
     open_url_in_new_browser_window = None  # type: ignore
 from typing import Any
 
@@ -237,14 +238,27 @@ class main:
         return int(self._web_port)
 
     def _open_web_ui(self, *, job_id: str, mode: str) -> None:
+        """Siempre deja una pestaña de inicio fija + otra con el flujo del trabajo."""
+        from urllib.parse import quote
+
         port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
-        url = f"http://{self._web_host}:{port}/?job_id={job_id}&mode={mode}"
+        home_url = f"http://{self._web_host}:{port}/"
+        job_url = f"http://{self._web_host}:{port}/?job_id={quote(job_id)}&mode={quote(mode)}"
         try:
-            # Prefer an independent browser window (Chromium --new-window) when available.
+            if open_home_and_job_in_browser is not None and open_home_and_job_in_browser(home_url, job_url):
+                return
             if open_url_in_new_browser_window is not None:
-                open_url_in_new_browser_window(url)
-            else:
-                webbrowser.open_new(url)
+                open_url_in_new_browser_window(home_url)
+                open_url_in_new_browser_window(job_url)
+                return
+            try:
+                webbrowser.open(home_url, new=1, autoraise=True)
+            except TypeError:
+                webbrowser.open(home_url)
+            try:
+                webbrowser.open(job_url, new=2, autoraise=True)
+            except TypeError:
+                webbrowser.open_new(job_url)
         except Exception:
             pass
 
