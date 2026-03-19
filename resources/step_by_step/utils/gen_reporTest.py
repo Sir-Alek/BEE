@@ -284,9 +284,9 @@ class PDF(FPDF):
             pdf.ln(65)
 
         # Metadatos
-        pdf.set_author(author='AppWhere-2025')
+        pdf.set_author(author='Sir-Alek-2026')
         pdf.set_title(title=testName)
-        pdf.set_creator('Bancoppel - AppWhere')
+        pdf.set_creator('BEE - Sir-Alek')
 
         # Finalizar PDF
         safe_dt_format = dt_format.replace(" ", "_").replace(":", "-").replace(".", "-")
