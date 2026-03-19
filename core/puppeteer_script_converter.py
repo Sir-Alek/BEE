@@ -489,7 +489,8 @@ class PuppeteerToBehaveConverter:
         """Copia toda la estructura de soporte al proyecto destino"""
         try:
             # 1. Copiar environment.py a features/
-            src_env = os.path.join(self.base_dir, "resources", "behave", "features", "environment.py")
+            # Nuevo modelo: environment y utils provienen de refactor_temp
+            src_env = os.path.join(self.base_dir, "refactor_temp", "features", "environment.py")
             dst_env = os.path.join(project_path, "features", "environment.py")
             shutil.copy2(src_env, dst_env)
             
@@ -503,7 +504,7 @@ class PuppeteerToBehaveConverter:
                 shutil.copytree(src_resources, dst_resources, dirs_exist_ok=True)
             
             # 4. Copiar utils completa
-            src_utils = os.path.join(self.base_dir, "resources", "behave", "utils")
+            src_utils = os.path.join(self.base_dir, "refactor_temp", "utils")
             dst_utils = os.path.join(project_path, "utils")
             if os.path.exists(src_utils):
                 shutil.copytree(src_utils, dst_utils, dirs_exist_ok=True)
@@ -705,13 +706,24 @@ class PuppeteerToBehaveConverter:
         """Genera steps usando nombres de elementos del Page Object"""
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
-from utils.element_utils import ElementUtils
+from utils.button_functions import ui_navigate
             """
-            
+
         step_methods = []
         last_non_and_step = None
+        step_counter = 0
 
         for step_type, description in feature_steps:
+            step_counter += 1
+
+            # Sufijo para evidence/PDF (solo tipos esperados por genReport)
+            if step_type in ("given", "when", "then", "and"):
+                suffix = step_type
+            else:
+                suffix = "and"
+
+            step_id = f"{step_counter:02d}_{suffix}"
+
             if step_type == "and":
                 effective_step_type = last_non_and_step or "given"
             else:
@@ -719,14 +731,19 @@ from utils.element_utils import ElementUtils
                 last_non_and_step = step_type
 
             method_name = self._create_step_method_name(effective_step_type, description)
-            
+
             if "Acceder a la pagina" in description:
                 step_methods.append(f"""
 @{effective_step_type}('Acceder a la pagina "{{url}}"')
 def {method_name}(context, url):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.driver.get(url)
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
         """)
 
             elif "clic en elemento" in description and "," in description:
@@ -734,10 +751,11 @@ def {method_name}(context, url):
                 step_content = f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)"""
+    context.page = {class_name}(context.driver)"""
                 for name in click_names:
-                    step_content += f"\n    context.page.{name}()"
+                    step_content += (
+                        f"\n    context.page.{name}(tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                    )
                 step_methods.append(step_content)
 
             elif "clic en elemento" in description:
@@ -746,8 +764,7 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}()
+    context.page.{name}(tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
 
             elif "Ingresar" in description:
@@ -757,8 +774,7 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}("{value}")
+    context.page.{name}("{value}", tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
 
             elif "Seleccionar" in description:
@@ -768,19 +784,17 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}("{option}")
+    context.page.{name}("{option}", tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
-                
+
             elif "Verificar que se completó el flujo" in description:
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
     # Verificación de completado
     assert True
-        """)                
+        """)
 
         return imports + "\n".join(step_methods)
 
@@ -791,13 +805,23 @@ def {method_name}(context):
             
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
-from utils.element_utils import ElementUtils
+from utils.button_functions import ui_navigate
             """
-            
+
         step_methods = []
         last_non_and_step = None
-            
+        step_counter = 0
+
         for step_type, description in feature_steps:
+            step_counter += 1
+
+            if step_type in ("given", "when", "then", "and"):
+                suffix = step_type
+            else:
+                suffix = "and"
+
+            step_id = f"{step_counter:02d}_{suffix}"
+
             if step_type == "and":
                 effective_step_type = last_non_and_step or "given"
             else:
@@ -811,10 +835,11 @@ from utils.element_utils import ElementUtils
                 step_content = f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
-    context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)"""
+    context.page = {class_name}(context.driver)"""
                 for name in click_names:
-                    step_content += f"\n    context.page.{name}()"
+                    step_content += (
+                        f"\n    context.page.{name}(tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                    )
                 step_methods.append(step_content)
 
             elif "clic en elemento" in description:
@@ -823,8 +848,7 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}()
+    context.page.{name}(tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
 
             elif "Ingresar" in description:
@@ -834,8 +858,7 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}("{value}")
+    context.page.{name}("{value}", tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
 
             elif "Seleccionar" in description:
@@ -845,25 +868,28 @@ def {method_name}(context):
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.{name}("{option}")
+    context.page.{name}("{option}", tomar_evidencia=context.generate_evidence, step='{step_id}')
             """)
-                
+
             elif "Acceder a la pagina" in description:
                 step_methods.append(f"""
 @{effective_step_type}('Acceder a la pagina "{{url}}"')
 def {method_name}(context, url):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.driver.get(url)
-        """)  
-                              
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
+        """)
+
             elif "Verificar que se completó el flujo" in description:
                 step_methods.append(f"""
 @{effective_step_type}('{description}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
     # Verificación de completado
     assert True
         """)
@@ -1009,24 +1035,13 @@ def {method_name}(context):
 
     def _generate_page_object(self, class_name, script_content):
         """Genera un page object"""
-        imports = """from selenium.webdriver.common.by import By
-from utils.element_utils import ElementUtils
-from selenium.common.exceptions import TimeoutException, WebDriverException
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time, re
-from selenium.webdriver.common.keys import Keys
-from pywinauto import Application, Desktop
-from pywinauto.controls.uia_controls import ButtonWrapper
-from pywinauto.uia_element_info import UIAElementInfo
-    """
+        # Modelo nuevo: usar button_functions (no ElementUtils)
+        imports = """from utils.button_functions import *"""
 
         class_template = f"""
 class {class_name}:
     def __init__(self, driver):
         self.driver = driver
-        self.utils = ElementUtils(driver)
 
         # Locators
 {self._generate_locators(script_content)}
@@ -1153,6 +1168,90 @@ class {class_name}:
             text = text.replace(a, b)
         return text    
         
+    def _escape_xpath_for_python_string(self, xpath: str) -> str:
+        """
+        Escapa comillas dobles para embedear XPath dentro de una string Python con ".
+        """
+        return (xpath or "").replace("\\", "\\\\").replace('"', '\\"')
+
+    def _css_token_to_xpath(self, token: str) -> str:
+        """
+        Convierte un token CSS simple (ej: '#id', '.cls', 'div.cls', 'li:nth-child(3)', 'input[data-x=\"y\"]')
+        a un fragmento XPath sin prefijo //.
+        Best-effort: no soporta todo CSS, solo lo más común generado por grabaciones.
+        """
+        token = (token or "").strip()
+        if not token:
+            return "*"
+
+        # Tag (si existe)
+        tag_match = re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*)", token)
+        tag = tag_match.group(1) if tag_match else "*"
+
+        # id / class / nth-child / attrs
+        id_match = re.search(r"#([a-zA-Z0-9_-]+)", token)
+        classes = re.findall(r"\.([a-zA-Z0-9_-]+)", token)
+        nth_match = re.search(r":nth-child\((\d+)\)", token)
+
+        # Attr selectors: [attr='value'] or [attr="value"]
+        attr_matches = re.findall(r"\[\s*([a-zA-Z0-9_-]+)\s*=\s*([\"'])(.*?)\2\s*\]", token)
+
+        predicates = []
+        if id_match:
+            predicates.append(f"@id='{id_match.group(1)}'")
+
+        for cls in classes:
+            # evitar match parcial: clase exacta como palabra
+            predicates.append(
+                "contains(concat(' ', normalize-space(@class), ' '), ' " + cls + " ')"
+            )
+
+        if nth_match:
+            predicates.append(f"position()={int(nth_match.group(1))}")
+
+        for attr_name, _q, attr_val in attr_matches:
+            predicates.append(f"@{attr_name}='{attr_val}'")
+
+        # Si el token era solo '#id' o '.cls', el tag inicial puede ser '*', que está bien.
+        if predicates:
+            return f"{tag}[{' and '.join(predicates)}]"
+        return tag
+
+    def _selector_to_xpath(self, selector: str) -> str:
+        """
+        Convierte selectores CSS (best-effort) o XPath ya existentes a XPath string usable por button_functions.
+        """
+        sel = (selector or "").strip()
+        if not sel:
+            return "//*"
+
+        if sel.startswith("xpath="):
+            sel = sel[len("xpath="):].strip()
+
+        # Si ya es XPath
+        if sel.startswith("//") or sel.startswith("(") or sel.startswith(".//"):
+            return sel
+
+        # Combinadores: primero childs con '>'
+        if ">" in sel:
+            parts = [p.strip() for p in re.split(r"\s*>\s*", sel) if p.strip()]
+            xps = [self._css_token_to_xpath(p) for p in parts]
+            xpath = '//' + '/'.join(xps)
+            return xpath
+
+        # Descendientes por whitespace
+        tokens = [t.strip() for t in re.split(r"\s+", sel) if t.strip()]
+        if len(tokens) > 1:
+            xps = [self._css_token_to_xpath(t) for t in tokens]
+            xpath = '//'.join([''] + xps)  # => //a//b//c
+            return xpath
+
+        # Token único
+        xpath = self._css_token_to_xpath(sel)
+        if not xpath.startswith("/"):
+            xpath = "//" + xpath
+        return xpath
+
     def _generate_locators(self, script_content):
         """Extrae y nombra los locators de forma descriptiva manteniendo coherencia"""
         locators = set()
@@ -1180,6 +1279,7 @@ class {class_name}:
                 continue
                 
             name = self._generate_element_name(selector)
+            xpath = self._selector_to_xpath(selector)
             
             # Determinar tipo de elemento
             if any(f"page.type('{selector}'" in line or 
@@ -1197,14 +1297,14 @@ class {class_name}:
             else:
                 locator_type = "btn"
             
-            locator_lines.append(f"        self.{locator_type}_{name} = (By.CSS_SELECTOR, '{selector}')")
+            xpath_escaped = self._escape_xpath_for_python_string(xpath)
+            locator_lines.append(f'        self.{locator_type}_{name} = "{xpath_escaped}"')
         
         return "\n".join(locator_lines)    
 
     def _generate_methods(self, script_content):
         """Genera métodos manteniendo coherencia con los locators y asegurando todas las acciones"""
         method_lines = []
-        processed_selectors = set()
         generated_methods = set()
         
         # Extraer todos los clicks
@@ -1225,7 +1325,6 @@ class {class_name}:
             method_key = f"click_{name}"
             
             if method_key not in generated_methods:
-                # Determinar tipo de locator
                 if selector in fill_selectors:
                     locator_type = "txt"
                 elif selector in select_selectors:
@@ -1234,12 +1333,18 @@ class {class_name}:
                     locator_type = "btn"
                 
                 method_lines.append(f"""
-    def {method_key}(self):
+    def {method_key}(self, tomar_evidencia=False, step=None):
         \"\"\"Hace click en el elemento {selector}\"\"\"
-        self.utils.click_element(self.{locator_type}_{name})
+        ui_interact(
+            driver=self.driver,
+            xPath_elemento=self.{locator_type}_{name},
+            accion="click",
+            nombre_elemento="{method_key}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step
+        )
                 """)
                 generated_methods.add(method_key)
-                processed_selectors.add(selector)
         
         # Generar métodos para fills/types
         for selector in fill_selectors:
@@ -1248,72 +1353,69 @@ class {class_name}:
             
             if method_key not in generated_methods:
                 method_lines.append(f"""
-    def {method_key}(self, text):
+    def {method_key}(self, text, tomar_evidencia=False, step=None):
         \"\"\"Escribe texto en el campo {selector}\"\"\"
-        element = self.utils.wait_for_element(self.txt_{name})
-        element.clear()
-        element.send_keys(text)
+        ui_interact(
+            driver=self.driver,
+            xPath_elemento=self.txt_{name},
+            accion="insertTxt",
+            nombre_elemento="{method_key}",
+            valor=text,
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step
+        )
                 """)
                 generated_methods.add(method_key)
-                processed_selectors.add(selector)
         
-        # Generar métodos para selects
+        # Generar métodos para selects (nativos <select>)
         for selector in select_selectors:
             name = self._generate_element_name(selector)
-            click_method = f"click_{name}"
             select_method = f"select_{name}"
-            
-            if click_method not in generated_methods:
-                method_lines.append(f"""
-    def {click_method}(self):
-        \"\"\"Hace click en el dropdown {selector}\"\"\"
-        self.utils.click_element(self.ddl_{name})
-                """)
-                generated_methods.add(click_method)
-            
+
             if select_method not in generated_methods:
                 method_lines.append(f"""
-    def {select_method}(self, option_text):
+    def {select_method}(self, option_text, tomar_evidencia=False, step=None):
         \"\"\"Selecciona opción en dropdown {selector}\"\"\"
-        self.utils.select_from_dropdown(
-            self.{click_method},
-            option_text=option_text
+        ui_select_native_dropdown(
+            driver=self.driver,
+            xPath_elemento=self.ddl_{name},
+            valor_seleccion=str(option_text),
+            tipo_seleccion="value",
+            nombre_elemento="{select_method}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step
         )
                 """)
                 generated_methods.add(select_method)
-                processed_selectors.add(selector)
         
         return "\n".join(method_lines) if method_lines else "    # No se generaron métodos"
 
     def _generate_steps(self, base_name, class_name):
         """Genera los steps de behave con el nuevo formato para selects"""
+        # Método legacy (no usado por el flujo principal). Eliminado ElementUtils.
         return f"""from behave import *
 from pages.{base_name}_page import {class_name}
-from utils.element_utils import ElementUtils
 
 @given('I navigate to "{{url}}"')
 def step_navigate(context, url):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
+    context.driver.get(url)
 
 @when('I click on "{{selector}}"')
 def step_click(context, selector):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.click(selector)
+    # TODO: Resolver selector -> nombre de método de Page Object
+    assert True
 
 @when('I fill "{{field}}" with "{{text}}"')
 def step_fill(context, field, text):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.page.fill(field, text)
+    # TODO: Resolver field -> nombre de método de Page Object
+    assert True
 
 @when('I select "{{option}}" from "{{dropdown}}"')
 def step_select(context, option, dropdown):
     context.page = {class_name}(context.driver)
-    context.utils = ElementUtils(context.driver)
-    context.utils.select_from_dropdown(
-        getattr(context.page, f"select_{{dropdown.replace(' ', '_')}}"),
-        option_text=option
-    )
+    # TODO: Resolver dropdown -> nombre de método de Page Object
+    assert True
     """
