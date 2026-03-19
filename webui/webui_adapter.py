@@ -95,13 +95,47 @@ class WebUIAdapter(IUI):
         return list(answer)
 
     def info(self, title: str, message: str) -> None:
-        self.job_manager.add_event(self.job_id, "ui_info", {"title": title, "message": message})
+        # Paridad con Tk: messagebox bloqueante hasta Aceptar.
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="message_ack",
+            title=title,
+            message=message,
+            severity="info",
+        )
+        try:
+            self._safe_wait(prompt)
+        except JobCancelledError:
+            return
 
     def warning(self, title: str, message: str) -> None:
-        self.job_manager.add_event(self.job_id, "ui_warning", {"title": title, "message": message})
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="message_ack",
+            title=title,
+            message=message,
+            severity="warning",
+        )
+        try:
+            self._safe_wait(prompt)
+        except JobCancelledError:
+            return
 
     def error(self, title: str, message: str) -> None:
-        self.job_manager.add_event(self.job_id, "ui_error", {"title": title, "message": message})
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="message_ack",
+            title=title,
+            message=message,
+            severity="error",
+        )
+        try:
+            self._safe_wait(prompt)
+        except JobCancelledError:
+            return
 
     def yes_no(self, title: str, message: str) -> bool:
         prompt_id = self._new_prompt_id()

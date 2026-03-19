@@ -22,17 +22,13 @@ function formatJobMode(mode: string | null): string {
   return mode;
 }
 
-/** Open job URL in a dedicated named tab/window so the home tab is not reused. */
-function openBeeJobSurface(jobUrl: string, jobId: string): void {
-  const target = `bee_job_${jobId}`;
-  const a = document.createElement("a");
-  a.href = jobUrl;
-  a.target = target;
-  a.rel = "noopener noreferrer";
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+/** Open job flow in a new tab (does not navigate the home tab). */
+function openBeeJobSurface(jobUrl: string): Window | null {
+  return window.open(jobUrl, "_blank", "noopener,noreferrer");
+}
+
+function goHomeInThisTab(): void {
+  window.location.assign(`${window.location.origin}/`);
 }
 
 export default function App() {
@@ -66,7 +62,13 @@ export default function App() {
       });
       const base = `${window.location.origin}${window.location.pathname}`;
       const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
-      openBeeJobSurface(jobUrl, res.job_id);
+      const opened = openBeeJobSurface(jobUrl);
+      if (!opened) {
+        setErrorText(
+          "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 e inténtalo de nuevo.",
+        );
+        return;
+      }
       setHomeHint(
         "Se abrió otra pestaña con el flujo (avisos y pasos). Esta pestaña permanece como inicio: puedes iniciar más operaciones desde aquí.",
       );
@@ -260,6 +262,22 @@ export default function App() {
 
         {!job && jobId && <div>Cargando...</div>}
 
+        {!isHomeSurface && job && job.state === "running" && !activePrompt && (
+          <div
+            style={{
+              background: "#f3f4f6",
+              border: "1px solid #e5e7eb",
+              color: "#374151",
+              padding: 12,
+              borderRadius: 10,
+              marginBottom: 16,
+              fontSize: 14,
+            }}
+          >
+            Procesando… (espera; esta pestaña no se cerrará sola).
+          </div>
+        )}
+
         {job && job.state === "running" && String(job.progress?.stage ?? "").includes("Ejecutando Puppeteer") && (
           <div
             style={{
@@ -406,6 +424,51 @@ export default function App() {
               </div>
             )}
 
+            {activePrompt.type === "message_ack" && (
+              <div>
+                <div
+                  style={{
+                    background:
+                      activePrompt.severity === "error"
+                        ? "#fef2f2"
+                        : activePrompt.severity === "warning"
+                          ? "#fffbeb"
+                          : "#eff6ff",
+                    border:
+                      activePrompt.severity === "error"
+                        ? "1px solid #fecaca"
+                        : activePrompt.severity === "warning"
+                          ? "1px solid #fde68a"
+                          : "1px solid #bfdbfe",
+                    color: activePrompt.severity === "error" ? "#991b1b" : activePrompt.severity === "warning" ? "#92400e" : "#1e3a8a",
+                    padding: 12,
+                    borderRadius: 10,
+                    marginBottom: 14,
+                    whiteSpace: "pre-wrap",
+                    fontSize: 14,
+                  }}
+                >
+                  {activePrompt.message}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!jobId) return;
+                    await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
+                  }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "#0ea5e9",
+                    color: "white",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Aceptar
+                </button>
+              </div>
+            )}
+
             {activePrompt.type === "input_text" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <input
@@ -461,7 +524,7 @@ export default function App() {
           </div>
         )}
 
-        {job?.state === "done" && (
+        {!isHomeSurface && job?.state === "done" && (
           <div
             style={{
               background: "#ecfdf5",
@@ -477,8 +540,72 @@ export default function App() {
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
             <div style={{ marginTop: 12, fontSize: 13, color: "#047857" }}>
-              La pestaña de <b>inicio</b> no se modifica: puedes cerrar solo esta pestaña de trabajo desde el menú del
-              navegador (o dejarla abierta). No se cerrará sola.
+              La pestaña de <b>inicio</b> sigue en su sitio (si la dejaste abierta). Esta pestaña no se cierra sola.
+            </div>
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => goHomeInThisTab()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#0ea5e9",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Volver al inicio (esta pestaña)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isHomeSurface && job?.state === "error" && (
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => goHomeInThisTab()}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "#0ea5e9",
+                color: "white",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Volver al inicio (esta pestaña)
+            </button>
+          </div>
+        )}
+
+        {!isHomeSurface && job?.state === "cancelled" && (
+          <div
+            style={{
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              padding: 16,
+              borderRadius: 14,
+              marginTop: 8,
+            }}
+          >
+            <b style={{ color: "#374151" }}>Operación cancelada</b>
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => goHomeInThisTab()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#0ea5e9",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Volver al inicio (esta pestaña)
+              </button>
             </div>
           </div>
         )}
