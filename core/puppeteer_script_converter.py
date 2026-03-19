@@ -706,7 +706,7 @@ class PuppeteerToBehaveConverter:
         """Genera steps usando nombres de elementos del Page Object"""
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
-from utils.button_functions import ui_navigate
+from environment import *
             """
 
         step_methods = []
@@ -1036,7 +1036,8 @@ def {method_name}(context):
     def _generate_page_object(self, class_name, script_content):
         """Genera un page object"""
         # Modelo nuevo: usar button_functions (no ElementUtils)
-        imports = """from utils.button_functions import *"""
+        imports = """from utils.button_functions import *
+        """
 
         class_template = f"""
 class {class_name}:
