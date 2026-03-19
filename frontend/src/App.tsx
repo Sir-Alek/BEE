@@ -20,8 +20,24 @@ export default function App() {
   const [polling, setPolling] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [textValue, setTextValue] = useState<string>("");
+  const [urlValue, setUrlValue] = useState<string>("");
+  const [initialChecked, setInitialChecked] = useState<boolean>(false);
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+
+  const startJob = async (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
+    setErrorText(null);
+    if (mode === "puppeteer_recorder" && !urlValue.trim()) {
+      setErrorText("URL requerida para 'Grabar Interacciones'.");
+      return;
+    }
+    const res = await startConvertJob({
+      mode,
+      url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
+    });
+    setJobId(res.job_id);
+    setPolling(true);
+  };
 
   useEffect(() => {
     // Reset text input when prompt changes.
@@ -39,20 +55,11 @@ export default function App() {
     if (initialJobId) {
       setJobId(initialJobId);
       setPolling(true);
+      setInitialChecked(true);
       return;
     }
 
-    // Demo fallback
-    (async () => {
-      try {
-        setErrorText(null);
-        const res = await startConvertJob("demo");
-        setJobId(res.job_id);
-        setPolling(true);
-      } catch (e: any) {
-        setErrorText(String(e?.message ?? e));
-      }
-    })();
+    setInitialChecked(true);
   }, []);
 
   useEffect(() => {
@@ -124,7 +131,62 @@ export default function App() {
           </div>
         )}
 
-        {!job && <div>Cargando...</div>}
+        {!jobId && initialChecked && (
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: 18,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+            }}
+          >
+            <h2 style={{ margin: "4px 0 10px", fontSize: 20 }}>BEE Web UI</h2>
+            <div style={{ color: "#374151", marginBottom: 14 }}>
+              Selecciona una operación. La UI hablará con el backend local mediante polling.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+              <input
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                placeholder="URL para grabar (solo para 'Grabar Interacciones')"
+                style={{
+                  flex: "1 1 360px",
+                  minWidth: 280,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  outline: "none",
+                  fontSize: 14,
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => startJob("puppeteer_recorder")}
+                style={{ padding: "10px 14px", borderRadius: 10, background: "#0ea5e9", color: "white", border: "none", cursor: "pointer" }}
+              >
+                Grabar Interacciones
+              </button>
+              <button
+                onClick={() => startJob("puppeteer_to_behave")}
+                style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+              >
+                Convertir a Behave
+              </button>
+              <button
+                onClick={() => startJob("puppeteer_to_step_by_step")}
+                style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+              >
+                Convertir a step by step
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!job && jobId && <div>Cargando...</div>}
 
         {job?.error && (
           <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: 12, borderRadius: 10, marginBottom: 16 }}>
