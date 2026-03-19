@@ -54,6 +54,20 @@ from PIL import Image, ImageTk
 
 from ui.tk_ui import TkUI
 
+import threading
+import socket
+import webbrowser
+
+# Web UI imports are optional; only used when running with --web.
+try:
+    from webui.job_manager import JobManager
+    from webui.webui_adapter import WebUIAdapter
+    from webui.fastapi_app import create_app as create_fastapi_app
+except Exception:
+    JobManager = None  # type: ignore
+    WebUIAdapter = None  # type: ignore
+    create_fastapi_app = None  # type: ignore
+
 
 
 def resource_path(relative_path):
@@ -70,7 +84,14 @@ class main:
         self.master = master
         self.master.title("© BEE - Behave Extractor Engine")
         self.master.geometry("800x400")
+        self.web_mode = ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
         self.ui = TkUI(master)
+
+        # Web UI state (server/job); inicializado solo si estamos en modo web.
+        self._web_server_thread = None
+        self._web_port = None
+        self._web_host = "127.0.0.1"
+        self._job_manager = JobManager() if (self.web_mode and JobManager is not None) else None
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -147,7 +168,63 @@ class main:
             width=20
         )
         self.convert_button.pack(side=tk.LEFT, padx=20)        
-        
+    
+    def _get_free_port(self) -> int:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((self._web_host, 0))
+        port = s.getsockname()[1]
+        s.close()
+        return int(port)
+
+    def _start_web_server_if_needed(self) -> int:
+        """
+        Levanta FastAPI local para servir la SPA y el backend de jobs.
+        Solo loopback (127.0.0.1).
+        """
+        if not self.web_mode:
+            raise RuntimeError("Web server requested while web_mode is disabled")
+        if self._job_manager is None:
+            raise RuntimeError("JobManager/WebUI not initialized. Run with --web and ensure deps exist.")
+        if self._web_port is not None and self._web_server_thread is not None:
+            return int(self._web_port)
+
+        if create_fastapi_app is None:
+            raise RuntimeError("FastAPI app factory not available.")
+
+        import uvicorn
+
+        self._web_port = self._get_free_port()
+        app = create_fastapi_app(job_manager=self._job_manager)
+        config = uvicorn.Config(
+            app,
+            host=self._web_host,
+            port=int(self._web_port),
+            log_level="warning",
+            access_log=False,
+        )
+        server = uvicorn.Server(config)
+
+        self._web_server_thread = threading.Thread(target=server.run, daemon=True)
+        self._web_server_thread.start()
+
+        # Best-effort wait for server readiness.
+        for _ in range(60):
+            try:
+                with socket.create_connection((self._web_host, int(self._web_port)), timeout=0.2):
+                    break
+            except Exception:
+                time.sleep(0.1)
+
+        return int(self._web_port)
+
+    def _open_web_ui(self, *, job_id: str, mode: str) -> None:
+        port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
+        url = f"http://{self._web_host}:{port}/?job_id={job_id}&mode={mode}"
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
     def load_logo(self):
         try:
             # Cargar la imagen y redimensionar si es necesario
@@ -335,16 +412,56 @@ class main:
     def convert_script(self):
         """Maneja la conversión a behave"""
         try:
-            converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
-            converter.convert_script()
+            if not self.web_mode:
+                converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
+                converter.convert_script()
+                return
+
+            if WebUIAdapter is None or self._job_manager is None:
+                raise RuntimeError("Web UI not available. Ensure dependencies and run with --web.")
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_to_behave")
+            adapter = WebUIAdapter(job_manager=self._job_manager, job_id=job_id)
+
+            def worker() -> None:
+                try:
+                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter)
+                    converter.convert_script()
+                    self._job_manager.mark_done(job_id)
+                except Exception as e:
+                    self._job_manager.mark_error(job_id, message="Error en conversión a behave", details=str(e))
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_to_behave")
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión:\n{str(e)}")     
                    
     def convert_to_step_by_step(self):
         """Maneja la conversión a step by step"""
         try:
-            converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
-            converter.convert_script()
+            if not self.web_mode:
+                converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
+                converter.convert_script()
+                return
+
+            if WebUIAdapter is None or self._job_manager is None:
+                raise RuntimeError("Web UI not available. Ensure dependencies and run with --web.")
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_to_step_by_step")
+            adapter = WebUIAdapter(job_manager=self._job_manager, job_id=job_id)
+
+            def worker() -> None:
+                try:
+                    converter = PuppeteerToStepByStepConverter(self.base_dir, adapter)
+                    converter.convert_script()
+                    self._job_manager.mark_done(job_id)
+                except Exception as e:
+                    self._job_manager.mark_error(job_id, message="Error en conversión step by step", details=str(e))
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_to_step_by_step")
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión a step by step:\n{str(e)}")         
                     

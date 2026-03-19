@@ -22,7 +22,18 @@ export default function App() {
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
   useEffect(() => {
-    // Demo: start job automatically for quick integration smoke tests.
+    // If `job_id` query param exists, we attach to an externally created job.
+    // Otherwise, we keep a `demo` fallback for local smoke testing.
+    const sp = new URLSearchParams(window.location.search);
+    const initialJobId = sp.get("job_id");
+
+    if (initialJobId) {
+      setJobId(initialJobId);
+      setPolling(true);
+      return;
+    }
+
+    // Demo fallback
     (async () => {
       try {
         setErrorText(null);
