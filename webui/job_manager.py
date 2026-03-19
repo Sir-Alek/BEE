@@ -211,6 +211,11 @@ class JobManager:
             job.state = "error"
             job.updated_at = time.time()
             job.error = {"message": message, "details": details}
+            if job.active_prompt and job.active_prompt.status == "pending":
+                # Unblock core thread waiting for user input.
+                job.active_prompt.status = "cancelled"
+                job.active_prompt.answer = None
+                job.active_prompt.answered_at = time.time()
             job.cond.notify_all()
         self._emit_event(job_id, {"type": "job_error", "message": message})
 
