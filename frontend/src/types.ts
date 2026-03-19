@@ -49,6 +49,15 @@ export type ActivePrompt =
     }
   | {
       prompt_id: string;
+      type: "message_ack";
+      title: string;
+      message: string;
+      severity: "info" | "warning" | "error";
+      options: null;
+      actions: null;
+    }
+  | {
+      prompt_id: string;
       type: string;
       title: string;
       message: string;

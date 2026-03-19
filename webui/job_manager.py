@@ -17,6 +17,8 @@ class Prompt:
     type: str
     title: str
     message: str
+    # message_ack: info | warning | error (modal OK, like Tk messagebox)
+    severity: str = "info"
     # UI payload
     options: Optional[List[Dict[str, str]]] = None  # [{value,label}]
     actions: Optional[List[Dict[str, Any]]] = None  # [{type, description, original_line}]
@@ -242,6 +244,7 @@ class JobManager:
                     "type": prompt.type,
                     "title": prompt.title,
                     "message": prompt.message,
+                    "severity": getattr(prompt, "severity", "info") or "info",
                     "options": prompt.options,
                     "actions": prompt.actions,
                 }
