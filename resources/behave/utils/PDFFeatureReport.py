@@ -228,8 +228,8 @@ class PDFFeatureReport(FPDF):
             pdf.output(os.path.join(output_dir, pdf_filename))
             
             # Metadatos            
-            pdf.set_author(author='Sir-Alek-2026')
-            pdf.set_creator('BEE - Sir-Alek')
+            pdf.set_author(author='AppWhere-2025')
+            pdf.set_creator('Bancoppel - AppWhere')
             
             return pdf_filename
             
@@ -290,8 +290,8 @@ class PDFFeatureReport(FPDF):
             pdf_filename = f"ReporteConsolidado_{timestamp}.pdf"
             pdf.output(os.path.join(output_dir, pdf_filename))
             
-            pdf.set_author(author='AppWhere-2025')
-            pdf.set_creator('Bancoppel - AppWhere')
+            pdf.set_author(author='Sir-Alek-2026')
+            pdf.set_creator('BEE - Sir-Alek')
             
             return pdf_filename
             
