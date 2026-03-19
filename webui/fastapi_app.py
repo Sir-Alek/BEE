@@ -6,6 +6,7 @@ import traceback
 from typing import Any, Dict, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from core.puppeteer_script_converter import PuppeteerToBehaveConverter
@@ -42,6 +43,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     app = FastAPI(title="BEE Web UI (local)")
     jm = job_manager or JobManager()
     base_dir = _repo_root()
+    frontend_dist = os.path.join(base_dir, "frontend", "dist")
 
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
@@ -107,6 +109,30 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def cancel_job(job_id: str, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
         jm.cancel_job(job_id)
         return {"ok": True}
+
+    # -----------------------
+    # SPA static serving
+    # -----------------------
+    @app.get("/")
+    def spa_root() -> Any:
+        if not os.path.exists(frontend_dist):
+            raise HTTPException(status_code=404, detail="Frontend dist not found")
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+    @app.get("/{path:path}")
+    def spa_catchall(path: str, _: None = Depends(_require_localhost)) -> Any:
+        # Ensure we never hijack /api routes.
+        if path.startswith("api/") or path == "api":
+            raise HTTPException(status_code=404, detail="Not found")
+        if not os.path.exists(frontend_dist):
+            raise HTTPException(status_code=404, detail="Frontend dist not found")
+
+        target = os.path.join(frontend_dist, path)
+        if os.path.isfile(target):
+            return FileResponse(target)
+
+        # SPA fallback: serve index.html for any other route.
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
 
     return app
 
