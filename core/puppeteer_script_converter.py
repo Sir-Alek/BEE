@@ -706,6 +706,7 @@ class PuppeteerToBehaveConverter:
         """Genera steps usando nombres de elementos del Page Object"""
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
+from utils.button_functions import ui_navigate
             """
 
         step_methods = []
@@ -736,7 +737,13 @@ from pages.{base_name}_page import {class_name}
 @{effective_step_type}('Acceder a la pagina "{{url}}"')
 def {method_name}(context, url):
     context.page = {class_name}(context.driver)
-    context.driver.get(url)
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
         """)
 
             elif "clic en elemento" in description and "," in description:
@@ -798,6 +805,7 @@ def {method_name}(context):
             
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
+from utils.button_functions import ui_navigate
             """
 
         step_methods = []
@@ -868,7 +876,13 @@ def {method_name}(context):
 @{effective_step_type}('Acceder a la pagina "{{url}}"')
 def {method_name}(context, url):
     context.page = {class_name}(context.driver)
-    context.driver.get(url)
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
         """)
 
             elif "Verificar que se completó el flujo" in description:
