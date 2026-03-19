@@ -8,11 +8,15 @@ export type JobStateResponse = {
   events_count: number;
 };
 
-export async function startConvertJob(mode: "demo"): Promise<{ job_id: string }> {
+export async function startConvertJob(params: {
+  mode: "demo" | "puppeteer_to_behave" | "puppeteer_to_step_by_step" | "puppeteer_recorder";
+  url?: string;
+}): Promise<{ job_id: string }> {
+  const { mode, url } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({ mode, url }),
   });
   if (!res.ok) {
     const text = await res.text();
