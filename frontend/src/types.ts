@@ -41,6 +41,14 @@ export type ActivePrompt =
     }
   | {
       prompt_id: string;
+      type: "input_text";
+      title: string;
+      message: string;
+      options: null;
+      actions: null;
+    }
+  | {
+      prompt_id: string;
       type: string;
       title: string;
       message: string;

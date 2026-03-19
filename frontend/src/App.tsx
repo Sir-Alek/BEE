@@ -7,6 +7,7 @@ type JobStatus = {
   state: string;
   active_prompt: ActivePrompt | null;
   error: null | { message: string; details?: string };
+  progress: Record<string, any>;
 };
 
 function formatPromptType(t: string): string {
@@ -18,8 +19,16 @@ export default function App() {
   const [job, setJob] = useState<JobStatus | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [textValue, setTextValue] = useState<string>("");
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+
+  useEffect(() => {
+    // Reset text input when prompt changes.
+    if (activePrompt?.type === "input_text") {
+      setTextValue("");
+    }
+  }, [activePrompt?.prompt_id, activePrompt?.type]);
 
   useEffect(() => {
     // If `job_id` query param exists, we attach to an externally created job.
@@ -59,6 +68,7 @@ export default function App() {
           state: j.state,
           active_prompt: j.active_prompt,
           error: j.error,
+          progress: j.progress ?? {},
         });
         if (j.state === "done" || j.state === "error" || j.state === "cancelled") {
           setPolling(false);
@@ -244,6 +254,59 @@ export default function App() {
                 </button>
               </div>
             )}
+
+            {activePrompt.type === "input_text" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <input
+                  value={textValue}
+                  onChange={(e) => setTextValue(e.target.value)}
+                  placeholder={activePrompt.message}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    outline: "none",
+                    fontSize: 14,
+                  }}
+                />
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={async () => {
+                      if (!jobId) return;
+                      const value = textValue.trim();
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: value });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#0ea5e9",
+                      color: "white",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!jobId) return;
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#fff",
+                      color: "#6b7280",
+                      border: "1px solid #d1d5db",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -257,8 +320,10 @@ export default function App() {
             }}
           >
             <b style={{ color: "#166534" }}>Conversión finalizada</b>
-            <div style={{ marginTop: 6, color: "#065f46" }}>
-              Ya puedes integrar descarga de artifacts cuando tengamos el wiring de archivos.
+            <div style={{ marginTop: 6, color: "#065f46", whiteSpace: "pre-wrap" }}>
+              {job?.progress?.result_file ? `Archivo: ${job.progress.result_file}` : ""}
+              {job?.progress?.video_path ? `\nVideo: ${job.progress.video_path}` : ""}
+              {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
           </div>
         )}

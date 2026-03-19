@@ -219,6 +219,17 @@ class JobManager:
             job.cond.notify_all()
         self._emit_event(job_id, {"type": "job_error", "message": message})
 
+    def update_progress(self, job_id: str, progress: Dict[str, Any]) -> None:
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return
+
+        with job.lock:
+            job.progress = {**job.progress, **progress}
+            job.updated_at = time.time()
+        # No emit_event here: polling reads job.progress directly.
+
     def get_job_summary(self, job_id: str) -> Dict[str, Any]:
         job = self.get_job(job_id)
         with job.lock:

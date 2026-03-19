@@ -57,14 +57,16 @@ from ui.tk_ui import TkUI
 import threading
 import socket
 import webbrowser
+from typing import Any
 
 # Web UI imports are optional; only used when running with --web.
 try:
-    from webui.job_manager import JobManager
+    from webui.job_manager import JobManager, Prompt
     from webui.webui_adapter import WebUIAdapter
     from webui.fastapi_app import create_app as create_fastapi_app
 except Exception:
     JobManager = None  # type: ignore
+    Prompt = None  # type: ignore
     WebUIAdapter = None  # type: ignore
     create_fastapi_app = None  # type: ignore
 
@@ -470,7 +472,254 @@ class main:
         if not url:
             messagebox.showwarning("URL requerida", "Por favor ingresa una URL válida.")
             return
+
+        # Web mode: reemplaza los diálogos Tkinter del recorder por prompts web.
+        if self.web_mode:
+            if self._job_manager is None or Prompt is None:
+                messagebox.showerror("Error", "Web UI no disponible para grabación. Asegura --web y dependencias.")
+                return
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_recorder")
+
+            def worker() -> None:
+                jm = self._job_manager
+                assert jm is not None
+
+                def mk_prompt(**kwargs: Any):
+                    # `Prompt` incluye prompt_id/ type / title / message.
+                    import uuid
+
+                    prompt_id = str(uuid.uuid4())
+                    return Prompt(prompt_id=prompt_id, **kwargs)
+
+                project_path: str | None = None
+                output_file: str | None = None
+                recorder = None
+                video_path = None
+                try:
+                    # Paso 1: ¿Nuevo proyecto?
+                    jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
+
+                    if not os.path.exists(self.projects_dir):
+                        os.makedirs(self.projects_dir, exist_ok=True)
+
+                    projects = [
+                        d
+                        for d in os.listdir(self.projects_dir)
+                        if os.path.isdir(os.path.join(self.projects_dir, d))
+                    ]
+
+                    force_new = len(projects) == 0
+                    if force_new:
+                        ans = jm.create_prompt_and_wait(
+                            job_id,
+                            prompt=mk_prompt(
+                                type="input_text",
+                                title="Nuevo Proyecto",
+                                message="Nombre del proyecto (ej: MiProyecto)",
+                            ),
+                        )
+                        if ans is None:
+                            jm.cancel_job(job_id)
+                            return
+                        project_name = str(ans).strip()
+                        if not project_name:
+                            jm.cancel_job(job_id)
+                            return
+                        project_path = os.path.join(self.projects_dir, project_name)
+                        os.makedirs(project_path, exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
+                    else:
+                        is_new = jm.create_prompt_and_wait(
+                            job_id,
+                            prompt=mk_prompt(
+                                type="yes_no",
+                                title="Selección de Proyecto",
+                                message="¿Es un proyecto nuevo?",
+                            ),
+                        )
+
+                        if is_new:
+                            ans = jm.create_prompt_and_wait(
+                                job_id,
+                                prompt=mk_prompt(
+                                    type="input_text",
+                                    title="Nuevo Proyecto",
+                                    message="Nombre del proyecto (ej: MiProyecto)",
+                                ),
+                            )
+                            if ans is None:
+                                jm.cancel_job(job_id)
+                                return
+                            project_name = str(ans).strip()
+                            if not project_name:
+                                jm.cancel_job(job_id)
+                                return
+                            project_path = os.path.join(self.projects_dir, project_name)
+                            os.makedirs(project_path, exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
+                        else:
+                            chosen = jm.create_prompt_and_wait(
+                                job_id,
+                                prompt=mk_prompt(
+                                    type="pick_project",
+                                    title="Seleccionar Proyecto Existente",
+                                    message="Selecciona un proyecto:",
+                                    options=[{"value": p, "label": p} for p in projects],
+                                ),
+                            )
+                            if chosen is None:
+                                jm.cancel_job(job_id)
+                                return
+                            project_name = str(chosen)
+                            project_path = os.path.join(self.projects_dir, project_name)
+
+                    if not project_path:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Paso 2: Nombre de archivo (.js)
+                    jm.update_progress(job_id, {"stage": "Nombre de grabación"})
+                    default_hint = "grabacion_" + time.strftime("%Y%m%d_%H%M%S")
+                    ans_file = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="input_text",
+                            title="Nombre del Archivo de Grabación",
+                            message=f"Ingresa el nombre (sugerido: {default_hint})",
+                        ),
+                    )
+                    if ans_file is None:
+                        jm.cancel_job(job_id)
+                        return
+                    file_name = str(ans_file).strip()
+                    if not file_name:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Sanitizar nombre de archivo (igual que Tk)
+                    file_name = re.sub(r"[^\w\-_.]", "_", file_name)
+                    file_name = re.sub(r"_{2,}", "_", file_name)
+                    if not file_name.endswith(".js"):
+                        file_name += ".js"
+
+                    scripts_dir = os.path.join(project_path, "scripts")
+                    os.makedirs(scripts_dir, exist_ok=True)
+                    output_file = os.path.join(scripts_dir, file_name)
+
+                    # Paso 3: Confirmación (askokcancel)
+                    jm.update_progress(job_id, {"stage": "Confirmar grabación"})
+                    proceed = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="yes_no_cancel",
+                            title="Grabando",
+                            message="Se abrirá el navegador.\nPara finalizar la grabación, cierra el navegador.\n¿Deseas continuar?",
+                        ),
+                    )
+
+                    if proceed is not True:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Paso extra: grabar video
+                    grabar_video = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="yes_no",
+                            title="Grabación de Video",
+                            message="¿Deseas grabar video de la pantalla?",
+                        ),
+                    )
+
+                    recorder_obj = None
+                    if grabar_video:
+                        jm.update_progress(job_id, {"stage": "Grabando video"})
+                        file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
+                        videos_dir = os.path.join(project_path, "grabaciones")
+                        os.makedirs(videos_dir, exist_ok=True)
+                        video_path = os.path.join(videos_dir, file_name_vid)
+
+                        try:
+                            recorder_obj = ScreenRecorder(video_path)
+                            if recorder_obj.start():
+                                print(f"Grabación de video iniciada: {video_path}")
+                            else:
+                                recorder_obj = None
+                        except Exception as e:
+                            print(f"Error iniciando grabación: {e}")
+                            recorder_obj = None
+
+                    jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
+
+                    # Ejecutar Puppeteer/Node recorder.js
+                    if IS_FROZEN:
+                        from core.node_wrapper import node_wrapper
+
+                        result = node_wrapper.run_obfuscated_js("recorder.js", [output_file, url])
+                    else:
+                        recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+                        import subprocess
+
+                        result = subprocess.run(
+                            ["node", recorder_js_path, output_file, url],
+                            capture_output=True,
+                            text=True,
+                            cwd=self.base_dir,
+                        )
+
+                    if result.returncode != 0:
+                        error = result.stderr if result.stderr else "Error desconocido en Node.js"
+                        raise Exception(f"Error en Puppeteer:\n{error}")
+
+                    if not os.path.exists(output_file):
+                        raise Exception("No se generó el archivo de grabación")
+
+                    jm.update_progress(
+                        job_id,
+                        {
+                            "result_file": output_file,
+                            "video_path": video_path,
+                            "stage": "Listo",
+                        },
+                    )
+
+                    # Detener video
+                    if recorder_obj:
+                        try:
+                            recorder_obj.stop()
+                            time.sleep(0.5)
+                        except Exception:
+                            pass
+
+                    jm.mark_done(job_id)
+
+                except Exception as e:
+                    jm.mark_error(job_id, message="Error en grabación", details=str(e))
+
+                finally:
+                    if IS_FROZEN:
+                        try:
+                            from core.node_wrapper import node_wrapper
+
+                            node_wrapper.cleanup()
+                        except Exception:
+                            pass
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_recorder")
+            return
         
+        # Tk mode: comportamiento original (Tkinter)
         # Paso 1: Seleccionar o crear proyecto
         project_path = self.select_or_create_project()
         if not project_path:
