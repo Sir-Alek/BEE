@@ -1,18 +1,19 @@
 import os
 import shutil
-from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, Y, Canvas, Label, Listbox, Scrollbar, filedialog, messagebox, ttk, Toplevel, Frame, Checkbutton, BooleanVar, Button
 import re
 import time
 import json
 
+from ui.interfaces import IUI
+
 
 class PuppeteerToBehaveConverter:
     
-    def __init__(self, base_dir, master):
+    def __init__(self, base_dir, ui: IUI):
         self.base_dir = base_dir
-        self.master = master
         self.projects_dir = os.path.join(base_dir, "behave", "proyectos")
         self.selected_actions = []
+        self.ui = ui
 
     def _create_project_structure(self):
         """Crea la estructura de directorios necesaria para Behave"""
@@ -40,7 +41,6 @@ class PuppeteerToBehaveConverter:
 
     def convert_script(self):
         """Convierte el script grabado (JS) a estructura Behave"""
-        # Primero seleccionar el proyecto
         if not os.path.exists(self.projects_dir):
             os.makedirs(self.projects_dir, exist_ok=True)
         
@@ -48,160 +48,48 @@ class PuppeteerToBehaveConverter:
                    if os.path.isdir(os.path.join(self.projects_dir, d))]
         
         if not projects:
-            messagebox.showinfo("No hay proyectos", "No se encontraron proyectos existentes.")
+            self.ui.info("No hay proyectos", "No se encontraron proyectos existentes.")
             return
-        
-        # Crear ventana de selección de proyectos
-        selection_window = Toplevel()
-        selection_window.title("Seleccionar Proyecto")
-        selection_window.geometry("500x400")
-        selection_window.transient(self.master)
-        selection_window.grab_set()
-        
-        # Centrar ventana
-        selection_window.update_idletasks()
-        x = self.master.winfo_x() + (self.master.winfo_width() - selection_window.winfo_width()) // 2
-        y = self.master.winfo_y() + (self.master.winfo_height() - selection_window.winfo_height()) // 2
-        selection_window.geometry(f"+{x}+{y}")
-        
-        frame = Frame(selection_window, padx=20, pady=20)
-        frame.pack(fill=BOTH, expand=True)
-        
-        Label(frame, text="Selecciona un proyecto:", font=("Arial", 12)).pack(pady=(0, 10))
-        
-        # Listbox para proyectos
-        listbox = Listbox(frame, font=("Arial", 11), height=15)
-        scrollbar = Scrollbar(frame, orient=VERTICAL)
-        
-        for project in sorted(projects):
-            listbox.insert(END, project)
-        
-        listbox.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=listbox.yview)
-        
-        listbox.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
-        scrollbar.pack(side=RIGHT, fill=Y)
-        
-        project_path = None
-        
-        def on_select_project():
-            nonlocal project_path
-            selection = listbox.curselection()
-            if selection:
-                project_name = projects[selection[0]]
-                project_path = os.path.join(self.projects_dir, project_name)
-                selection_window.destroy()
-                select_script(project_path)
-            else:
-                messagebox.showwarning("Selección requerida", "Por favor selecciona un proyecto.", parent=selection_window)
-                
-        def on_cancel_project():
-            selection_window.destroy()
-        
-        # Frame para botones
-        btn_frame = Frame(frame)
-        btn_frame.pack(pady=(20, 0))
-        
-        Button(btn_frame, text="Seleccionar", command=on_select_project, width=12).pack(side=LEFT, padx=10)
-        Button(btn_frame, text="Cancelar", command=on_cancel_project, width=12).pack(side=LEFT, padx=10)
-        
-        # Doble clic para seleccionar
-        listbox.bind('<Double-Button-1>', lambda e: on_select_project())
-        
-        def select_script(project_path):
-            # Luego seleccionar el script dentro de ese proyecto
-            scripts_dir = os.path.join(project_path, "scripts")
-            
-            # Verificar si existe la carpeta de scripts
-            if not os.path.exists(scripts_dir):
-                messagebox.showerror("Error", f"No se encontró la carpeta 'scripts' en el proyecto seleccionado.")
+        project_name = self.ui.pick_project(sorted(projects))
+        if not project_name:
+            return
+
+        project_path = os.path.join(self.projects_dir, project_name)
+        scripts_dir = os.path.join(project_path, "scripts")
+
+        if not os.path.exists(scripts_dir):
+            self.ui.error("Error", "No se encontró la carpeta 'scripts' en el proyecto seleccionado.")
+            return
+
+        js_files = [f for f in os.listdir(scripts_dir) if f.endswith(".js")]
+        if not js_files:
+            self.ui.error("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts' del proyecto.")
+            return
+
+        selected_file = self.ui.pick_script(sorted(js_files), project_name)
+        if not selected_file:
+            return
+
+        js_file = os.path.join(project_path, "scripts", selected_file)
+
+        try:
+            with open(js_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            if content is None or content == "":
+                content = "// Archivo vacío"
+
+            actions = self._extract_all_actions(content)
+            selected_lines = self.ui.pick_actions(actions)
+            if actions and not selected_lines:
                 return
-                
-            # Obtener lista de archivos JS en la carpeta scripts
-            js_files = [f for f in os.listdir(scripts_dir) if f.endswith('.js')]
-            
-            if not js_files:
-                messagebox.showerror("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts' del proyecto.")
-                return
-                
-            # Crear ventana de selección de scripts
-            script_window = Toplevel()
-            script_window.title("Seleccionar script de Interacciones")
-            script_window.geometry("500x400")
-            script_window.transient(self.master)
-            script_window.grab_set()
-            
-            # Centrar ventana
-            script_window.update_idletasks()
-            x = self.master.winfo_x() + (self.master.winfo_width() - script_window.winfo_width()) // 2
-            y = self.master.winfo_y() + (self.master.winfo_height() - script_window.winfo_height()) // 2
-            script_window.geometry(f"+{x}+{y}")            
-            
-            script_frame = Frame(script_window, padx=20, pady=20)
-            script_frame.pack(fill=BOTH, expand=True)
-            
-            Label(script_frame, text="Selecciona un script:", font=("Arial", 12)).pack(pady=(0, 10))
-            
-            # Listbox para mostrar los archivos
-            script_listbox = Listbox(script_frame, height=15, font=("Arial", 11))
-            script_scrollbar = Scrollbar(script_frame, orient=VERTICAL)
-            
-            for file in sorted(js_files):
-                script_listbox.insert(END, file)
-                
-            script_listbox.config(yscrollcommand=script_scrollbar.set)
-            script_scrollbar.config(command=script_listbox.yview)
-            
-            script_listbox.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
-            script_scrollbar.pack(side=RIGHT, fill=Y)
-            
-            selected_file = None
-            
-            def on_select_script():
-                nonlocal selected_file
-                selection = script_listbox.curselection()
-                if selection:
-                    selected_file = js_files[selection[0]]
-                    script_window.destroy()
-                    process_script(project_path, selected_file)
-                else:
-                    messagebox.showwarning("Selección requerida", "Por favor selecciona un script.", parent=script_window)
-                    
-            def on_cancel_script():
-                script_window.destroy()
-            
-            # Frame para botones
-            script_btn_frame = Frame(script_frame)
-            script_btn_frame.pack(pady=(20, 0))
-            
-            Button(script_btn_frame, text="Seleccionar", command=on_select_script, width=12).pack(side=LEFT, padx=10)
-            Button(script_btn_frame, text="Cancelar", command=on_cancel_script, width=12).pack(side=LEFT, padx=10)
-            
-            # Doble clic para seleccionar
-            script_listbox.bind('<Double-Button-1>', lambda e: on_select_script())
-            
-        def process_script(project_path, selected_file):
-            js_file = os.path.join(project_path, "scripts", selected_file)
+            self.selected_actions = list(selected_lines)
 
-            try:
-                with open(js_file, "r", encoding="utf-8") as f:
-                    content = f.read()
-                
-                if content is None or content == "":
-                    content = "// Archivo vacío"
+            filtered_content = self._filter_content_by_actions(content, self.selected_actions)
+            self._process_conversion(js_file, filtered_content, project_path)
 
-                actions = self._extract_all_actions(content)
-                if not self._show_action_selection(actions):
-                    return
-
-                filtered_content = self._filter_content_by_actions(content, self.selected_actions)
-                self._process_conversion(js_file, filtered_content, project_path)
-
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo convertir:\n{str(e)}")
-        
-        # Esperar a que se cierre la ventana de selección de proyecto
-        self.master.wait_window(selection_window)
+        except Exception as e:
+            self.ui.error("Error", f"No se pudo convertir:\n{str(e)}")
          
     def _find_project_path(self, js_file_path):
         """Busca la carpeta del proyecto basada en la ubicación del script"""
@@ -274,57 +162,9 @@ class PuppeteerToBehaveConverter:
         """Muestra ventana para seleccionar acciones a convertir"""
         if not actions:
             return True
-            
-        self.selected_actions = []
-        selection_window = Toplevel()
-        selection_window.title("Seleccionar acciones para conversión")
-        selection_window.geometry("900x550")
-        
-        # Frame principal con menos espacio vertical
-        main_frame = Frame(selection_window, padx=10, pady=5)
-        main_frame.pack(expand=True, fill="both")
-        
-        # Canvas y scrollbar
-        canvas = Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = Frame(canvas)
-        
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Empaquetado con menos espacio
-        canvas.pack(side="left", fill="both", expand=True, pady=(0,5))
-        scrollbar.pack(side="right", fill="y")
-        
-        # Contenido de la tabla
-        check_vars = []
-        for i, action in enumerate(actions):
-            frame = Frame(scrollable_frame)
-            frame.pack(fill="x", pady=1)
-            
-            var = BooleanVar(value=True)
-            check_vars.append(var)
-            
-            Checkbutton(frame, variable=var).pack(side="left", padx=5)
-            Label(frame, text=action["type"], width=15, anchor="w").pack(side="left", padx=5)
-            Label(frame, text=action["description"], width=80, anchor="w").pack(side="left", padx=5)
-        
-        # Frame de botones
-        button_frame = Frame(main_frame)
-        button_frame.pack(pady=(3,5)) 
-        
-        # Botones
-        Button(button_frame, text="Incluir todas",
-               command=lambda: [var.set(True) for var in check_vars]).pack(side="left", padx=10)
-        Button(button_frame, text="Excluir todas",
-               command=lambda: [var.set(False) for var in check_vars]).pack(side="left", padx=10)
-        Button(button_frame, text="Continuar",
-               command=lambda: [self._confirm_selection(actions, check_vars, selection_window)]).pack(side="right", padx=10)
-        Button(button_frame, text="Cancelar", 
-               command=selection_window.destroy).pack(side="right", padx=10)
-        
-        selection_window.wait_window()
+
+        selected_lines = self.ui.pick_actions(actions)
+        self.selected_actions = list(selected_lines)
         return bool(self.selected_actions)
 
     def _confirm_selection(self, actions, check_vars, window):
@@ -401,10 +241,12 @@ class PuppeteerToBehaveConverter:
 
             # Verificar archivos existentes
             existing_files = {name: path for name, path in file_paths.items() if os.path.exists(path)}
+            response = True  # True=sobrescribir/crear, False=no sobrescribir, None=cancelar
+            created_files = []
             
             if existing_files:
                 file_list = "\n".join([f"- {name}: {os.path.basename(path)}" for name, path in existing_files.items()])
-                response = messagebox.askyesnocancel(
+                response = self.ui.yes_no_cancel(
                     "Archivos existentes",
                     f"Los siguientes archivos ya existen en el proyecto:\n\n{file_list}\n\n"
                     "¿Qué deseas hacer?\n"
@@ -418,7 +260,7 @@ class PuppeteerToBehaveConverter:
                 elif not response:    # No sobrescribir
                     file_paths = {name: path for name, path in file_paths.items() if not os.path.exists(path)}
                     if not file_paths:
-                        messagebox.showinfo("Información", "Todos los archivos ya existen en el proyecto y no se sobrescribirán.")
+                        self.ui.info("Información", "Todos los archivos ya existen en el proyecto y no se sobrescribirán.")
                         return
 
             # Procesar feature file
@@ -431,7 +273,7 @@ class PuppeteerToBehaveConverter:
                         with open(file_paths['feature'], "r", encoding="utf-8") as f:
                             existing_content = f.read()
                     except Exception as e:
-                        messagebox.showwarning("Advertencia", f"No se pudo leer el feature existente:\n{str(e)}")
+                        self.ui.warning("Advertencia", f"No se pudo leer el feature existente:\n{str(e)}")
                         feature_exists = False
 
                 if not feature_exists:
@@ -463,18 +305,18 @@ class PuppeteerToBehaveConverter:
                     f.write(json_content)
 
             # Mensaje final
-            created_files = [name for name in file_paths.keys() if name not in existing_files or response]
+            created_files = list(file_paths.keys())
             success_msg = f"Proyecto configurado correctamente en:\n{os.path.basename(project_path)}\n\n"
             success_msg += "Se incluyeron:\n"
             success_msg += "- Archivos de soporte completos (environment, utils, resources)\n"
             success_msg += "- Archivos generados:\n"
             success_msg += "\n".join([f"  • {os.path.basename(file_paths[name])}" for name in created_files])
             
-            messagebox.showinfo("Éxito", success_msg)
+            self.ui.info("Éxito", success_msg)
 
         except Exception as e:
             error_msg = f"Error al configurar el proyecto {os.path.basename(project_path)}:\n{str(e)}"
-            messagebox.showerror("Error", error_msg)
+            self.ui.error("Error", error_msg)
             
             # Limpiar archivos creados parcialmente
             if 'file_paths' in locals():
@@ -510,7 +352,7 @@ class PuppeteerToBehaveConverter:
                 shutil.copytree(src_utils, dst_utils, dirs_exist_ok=True)
                 
         except Exception as e:
-            messagebox.showwarning("Advertencia", 
+            self.ui.warning("Advertencia", 
                 f"No se pudieron copiar algunos archivos de soporte:\n{str(e)}\n"
                 "El proyecto puede necesitar configuración manual adicional.")            
             
