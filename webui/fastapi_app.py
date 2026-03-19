@@ -7,6 +7,7 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from core.puppeteer_script_converter import PuppeteerToBehaveConverter
@@ -116,7 +117,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     @app.get("/")
     def spa_root() -> Any:
         if not os.path.exists(frontend_dist):
-            raise HTTPException(status_code=404, detail="Frontend dist not found")
+            return HTMLResponse(
+                "<h3>Frontend not built.</h3>"
+                "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
+            )
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
     @app.get("/{path:path}")
@@ -125,7 +129,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if path.startswith("api/") or path == "api":
             raise HTTPException(status_code=404, detail="Not found")
         if not os.path.exists(frontend_dist):
-            raise HTTPException(status_code=404, detail="Frontend dist not found")
+            return HTMLResponse(
+                "<h3>Frontend not built.</h3>"
+                "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
+            )
 
         target = os.path.join(frontend_dist, path)
         if os.path.isfile(target):
