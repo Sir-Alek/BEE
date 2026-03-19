@@ -66,8 +66,16 @@ def _try_focus_pid_windows(pid: int) -> bool:
 
     hwnd = max(hwnds)  # often the top-level window has the largest HWND
 
+    # SW_RESTORE demaximizes a maximized window (MSDN). Only restore if minimized;
+    # if already maximized, skip ShowWindow and only bring to foreground.
+    SW_SHOW = 5
     SW_RESTORE = 9
-    user32.ShowWindow(hwnd, SW_RESTORE)
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, SW_RESTORE)
+    elif user32.IsZoomed(hwnd):
+        pass
+    else:
+        user32.ShowWindow(hwnd, SW_SHOW)
 
     fg = user32.GetForegroundWindow()
     dummy_pid = wintypes.DWORD()
