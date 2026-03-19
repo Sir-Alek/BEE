@@ -49,6 +49,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     jm = job_manager or JobManager()
     base_dir = _repo_root()
     frontend_dist = os.path.join(base_dir, "frontend", "dist")
+    logo_path = os.path.join(base_dir, "resources", "logo_bee_png_transparente.png")
 
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
@@ -351,6 +352,12 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
             )
         return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+    @app.get("/logo.png")
+    def logo_png() -> Any:
+        if not os.path.exists(logo_path):
+            raise HTTPException(status_code=404, detail="logo not found")
+        return FileResponse(logo_path, media_type="image/png")
 
     @app.get("/{path:path}")
     def spa_catchall(path: str, _: None = Depends(_require_localhost)) -> Any:

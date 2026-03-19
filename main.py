@@ -86,8 +86,16 @@ class main:
         self.master = master
         self.master.title("© BEE - Behave Extractor Engine")
         self.master.geometry("800x400")
-        self.web_mode = ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
+        self.web_only = "--web-only" in sys.argv
+        self.web_mode = self.web_only or ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
         self.ui = TkUI(master)
+
+        # Hide Tk window when running in web-only mode.
+        if self.web_only:
+            try:
+                self.master.withdraw()
+            except Exception:
+                pass
 
         # Web UI state (server/job); inicializado solo si estamos en modo web.
         self._web_server_thread = None
@@ -223,7 +231,11 @@ class main:
         port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
         url = f"http://{self._web_host}:{port}/?job_id={job_id}&mode={mode}"
         try:
-            webbrowser.open(url)
+            # Prefer a new browser tab/window in web-only mode.
+            if "--web-only" in sys.argv:
+                webbrowser.open_new(url)
+            else:
+                webbrowser.open(url)
         except Exception:
             pass
 

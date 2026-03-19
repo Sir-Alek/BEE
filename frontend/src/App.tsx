@@ -25,6 +25,20 @@ export default function App() {
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
+  useEffect(() => {
+    if (!job) return;
+    if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
+      // Best-effort automatic close.
+      window.setTimeout(() => {
+        try {
+          window.close();
+        } catch {
+          // ignore
+        }
+      }, 2500);
+    }
+  }, [job?.state]);
+
   const startJob = async (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
@@ -107,7 +121,17 @@ export default function App() {
           background: "#ffffff",
         }}
       >
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: "#0ea5e9" }} />
+        <img
+          src="/logo.png"
+          alt="BEE"
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            objectFit: "contain",
+            background: "transparent",
+          }}
+        />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>BEE</div>
           <div style={{ fontSize: 12, color: "#6b7280" }}>Local Web UI</div>
@@ -386,6 +410,29 @@ export default function App() {
               {job?.progress?.result_file ? `Archivo: ${job.progress.result_file}` : ""}
               {job?.progress?.video_path ? `\nVideo: ${job.progress.video_path}` : ""}
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+              <button
+                onClick={() => {
+                  try {
+                    window.close();
+                  } catch {
+                    // ignore
+                  }
+                }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111827",
+                  border: "1px solid #d1d5db",
+                  cursor: "pointer",
+                  marginLeft: "auto",
+                }}
+              >
+                Cerrar pestaña
+              </button>
             </div>
           </div>
         )}
