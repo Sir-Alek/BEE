@@ -57,6 +57,11 @@ from ui.tk_ui import TkUI
 import threading
 import socket
 import webbrowser
+
+try:
+    from webui.browser_launch import open_url_in_new_browser_window
+except Exception:
+    open_url_in_new_browser_window = None  # type: ignore
 from typing import Any
 
 # Web UI imports are optional; only used when running with --web.
@@ -235,11 +240,11 @@ class main:
         port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
         url = f"http://{self._web_host}:{port}/?job_id={job_id}&mode={mode}"
         try:
-            # Prefer a new browser tab/window in web-only mode.
-            if "--web-only" in sys.argv:
-                webbrowser.open_new(url)
+            # Prefer an independent browser window (Chromium --new-window) when available.
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(url)
             else:
-                webbrowser.open(url)
+                webbrowser.open_new(url)
         except Exception:
             pass
 
@@ -247,10 +252,10 @@ class main:
         port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
         url = f"http://{self._web_host}:{port}/"
         try:
-            if self.web_only:
-                webbrowser.open_new(url)
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(url)
             else:
-                webbrowser.open(url)
+                webbrowser.open_new(url)
         except Exception:
             pass
 
@@ -713,16 +718,21 @@ class main:
                     if IS_FROZEN:
                         from core.node_wrapper import node_wrapper
 
-                        result = node_wrapper.run_obfuscated_js("recorder.js", [output_file, url])
+                        result = node_wrapper.run_obfuscated_js(
+                            "recorder.js",
+                            [output_file, url],
+                            subprocess_timeout=None,
+                            focus_automation_browser=True,
+                        )
                     else:
-                        recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
-                        import subprocess
+                        from core.recorder_focus import run_subprocess_with_automation_focus
 
-                        result = subprocess.run(
+                        recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+
+                        result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, url],
-                            capture_output=True,
-                            text=True,
                             cwd=self.base_dir,
+                            timeout=None,
                         )
 
                     if result.returncode != 0:
@@ -874,14 +884,21 @@ class main:
             if IS_FROZEN:
                 # En modo empaquetado, usar el wrapper ofuscado
                 from core.node_wrapper import node_wrapper
-                result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
+                result = node_wrapper.run_obfuscated_js(
+                    "recorder.js",
+                    [output_file, url],
+                    subprocess_timeout=None,
+                    focus_automation_browser=True,
+                )
             else:
-                # En modo desarrollo, ejecutar directamente el script
-                import subprocess
-                recorder_js_path = os.path.join(self.base_dir, 'core', 'recorder.js')
-                result = subprocess.run([
-                    'node', recorder_js_path, output_file, url
-                ], capture_output=True, text=True, cwd=self.base_dir)
+                from core.recorder_focus import run_subprocess_with_automation_focus
+
+                recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+                result = run_subprocess_with_automation_focus(
+                    ["node", recorder_js_path, output_file, url],
+                    cwd=self.base_dir,
+                    timeout=None,
+                )
 
             if result.returncode != 0:
                 error = result.stderr if result.stderr else "Error desconocido en Node.js"

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import threading
 import traceback
-import subprocess
 import sys
 from typing import Any, Dict, Literal, Optional
 
@@ -267,14 +266,20 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     if is_frozen():
                         from core.node_wrapper import node_wrapper
 
-                        result = node_wrapper.run_obfuscated_js("recorder.js", [output_file, req.url])
+                        result = node_wrapper.run_obfuscated_js(
+                            "recorder.js",
+                            [output_file, req.url],
+                            subprocess_timeout=None,
+                            focus_automation_browser=True,
+                        )
                     else:
+                        from core.recorder_focus import run_subprocess_with_automation_focus
+
                         recorder_js_path = os.path.join(base_dir, "core", "recorder.js")
-                        result = subprocess.run(
+                        result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, req.url],
-                            capture_output=True,
-                            text=True,
                             cwd=base_dir,
+                            timeout=None,
                         )
 
                     if result.returncode != 0:
