@@ -18,6 +18,7 @@ class WebUIAdapter(IUI):
     def __init__(self, *, job_manager: JobManager, job_id: str) -> None:
         self.job_manager = job_manager
         self.job_id = job_id
+        self._prompt_seq = 0
 
     def _safe_wait(self, prompt: Prompt) -> Any:
         try:
@@ -138,8 +139,6 @@ class WebUIAdapter(IUI):
         return bool(answer)
 
     def _new_prompt_id(self) -> str:
-        # Un prompt_id específico por pregunta; JobManager no requiere formato, solo unicidad razonable.
-        # Se basa en job_id + timestamp para evitar colisiones en práctica.
-        # (Si en el futuro quieres, se puede usar uuid.)
-        return f"p_{self.job_id[:8]}_{id(self)}"
+        self._prompt_seq += 1
+        return f"p_{self.job_id[:8]}_{self._prompt_seq}"
 
