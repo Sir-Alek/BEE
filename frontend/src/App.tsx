@@ -14,6 +14,14 @@ function formatPromptType(t: string): string {
   return t.replaceAll("_", " ");
 }
 
+function formatJobMode(mode: string | null): string {
+  if (!mode) return "";
+  if (mode === "puppeteer_recorder") return "Grabar interacciones";
+  if (mode === "puppeteer_to_behave") return "Convertir a Behave";
+  if (mode === "puppeteer_to_step_by_step") return "Convertir a step by step";
+  return mode;
+}
+
 export default function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
@@ -22,21 +30,39 @@ export default function App() {
   const [textValue, setTextValue] = useState<string>("");
   const [urlValue, setUrlValue] = useState<string>("");
   const [initialChecked, setInitialChecked] = useState<boolean>(false);
+  /** Label parsed from ?mode= on job workspace tabs */
+  const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
+  const [homeHint, setHomeHint] = useState<string | null>(null);
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
   const startJob = async (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
+    setHomeHint(null);
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
       setErrorText("URL requerida para 'Grabar Interacciones'.");
       return;
     }
-    const res = await startConvertJob({
-      mode,
-      url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
-    });
-    setJobId(res.job_id);
-    setPolling(true);
+    try {
+      const res = await startConvertJob({
+        mode,
+        url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
+      });
+      const base = `${window.location.origin}${window.location.pathname}`;
+      const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
+      const handle = window.open(jobUrl, "_blank", "noopener,noreferrer");
+      if (!handle) {
+        setErrorText(
+          "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 o abre manualmente la URL del trabajo.",
+        );
+        return;
+      }
+      setHomeHint(
+        "Se abrió otra pestaña con el flujo (avisos y pasos). Esta pestaña permanece como inicio: puedes iniciar más operaciones desde aquí.",
+      );
+    } catch (e: any) {
+      setErrorText(String(e?.message ?? e));
+    }
   };
 
   useEffect(() => {
@@ -47,10 +73,10 @@ export default function App() {
   }, [activePrompt?.prompt_id, activePrompt?.type]);
 
   useEffect(() => {
-    // If `job_id` query param exists, we attach to an externally created job.
-    // Otherwise, we keep a `demo` fallback for local smoke testing.
     const sp = new URLSearchParams(window.location.search);
     const initialJobId = sp.get("job_id");
+    const mode = sp.get("mode");
+    if (mode) setWorkspaceMode(mode);
 
     if (initialJobId) {
       setJobId(initialJobId);
@@ -96,6 +122,15 @@ export default function App() {
   }, [polling, jobId]);
 
   const header = useMemo(() => {
+    const isHome = !jobId;
+    const statusLine = isHome
+      ? "Inicio · deja esta pestaña abierta para nuevas tareas"
+      : job
+        ? `Estado: ${job.state}`
+        : "Cargando trabajo…";
+    const sub =
+      !isHome && workspaceMode ? `${formatJobMode(workspaceMode)} · ` : "";
+
     return (
       <div
         style={{
@@ -120,14 +155,14 @@ export default function App() {
         />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>BEE</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Local Web UI</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>
+            {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
+          </div>
         </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280" }}>
-          {job ? `Estado: ${job.state}` : "Estado: ..."}
-        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280", textAlign: "right" }}>{statusLine}</div>
       </div>
     );
-  }, [job]);
+  }, [job, jobId, workspaceMode]);
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", background: "#f9fafb", minHeight: "100vh" }}>
@@ -153,8 +188,25 @@ export default function App() {
           >
             <h2 style={{ margin: "4px 0 10px", fontSize: 20 }}>BEE Web UI</h2>
             <div style={{ color: "#374151", marginBottom: 14 }}>
-              Selecciona una operación. La UI hablará con el backend local mediante polling.
+              Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
+              esta vista.
             </div>
+
+            {homeHint && (
+              <div
+                style={{
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  color: "#1e3a8a",
+                  padding: 12,
+                  borderRadius: 10,
+                  marginBottom: 14,
+                  fontSize: 14,
+                }}
+              >
+                {homeHint}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
               <input
@@ -197,6 +249,23 @@ export default function App() {
         )}
 
         {!job && jobId && <div>Cargando...</div>}
+
+        {job && job.state === "running" && String(job.progress?.stage ?? "").includes("Ejecutando Puppeteer") && (
+          <div
+            style={{
+              background: "#fffbeb",
+              border: "1px solid #fde68a",
+              color: "#92400e",
+              padding: 12,
+              borderRadius: 10,
+              marginBottom: 16,
+              fontSize: 14,
+            }}
+          >
+            Se está abriendo el <b>navegador de grabación</b>. En Windows intentamos pasarlo al primer plano; si sigues viendo
+            solo BEE, revisa la barra de tareas u otras ventanas de Chrome/Chromium.
+          </div>
+        )}
 
         {job?.error && (
           <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: 12, borderRadius: 10, marginBottom: 16 }}>
