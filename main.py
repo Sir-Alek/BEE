@@ -178,6 +178,10 @@ class main:
             width=20
         )
         self.convert_button.pack(side=tk.LEFT, padx=20)        
+
+        # In web-only mode there is no visible Tk UI, so open web landing immediately.
+        if self.web_only:
+            self.master.after(100, self._bootstrap_web_only)
     
     def _get_free_port(self) -> int:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -238,6 +242,38 @@ class main:
                 webbrowser.open(url)
         except Exception:
             pass
+
+    def _open_web_home(self) -> None:
+        port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
+        url = f"http://{self._web_host}:{port}/"
+        try:
+            if self.web_only:
+                webbrowser.open_new(url)
+            else:
+                webbrowser.open(url)
+        except Exception:
+            pass
+
+    def _bootstrap_web_only(self) -> None:
+        """
+        Start local web server and open landing when running in --web-only mode.
+        If startup fails, fallback to visible Tk mode so user is not blocked.
+        """
+        if not self.web_only:
+            return
+        try:
+            self._start_web_server_if_needed()
+            self._open_web_home()
+        except Exception as e:
+            # Fallback: show Tk window so user can continue in desktop mode.
+            try:
+                self.master.deiconify()
+            except Exception:
+                pass
+            messagebox.showerror(
+                "Web-only startup failed",
+                f"No se pudo iniciar la UI web.\nSe activó fallback a Tkinter.\n\nDetalle:\n{str(e)}",
+            )
 
     def load_logo(self):
         try:
