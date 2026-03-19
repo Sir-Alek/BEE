@@ -52,6 +52,8 @@ import time
 from tkinter import simpledialog
 from PIL import Image, ImageTk 
 
+from ui.tk_ui import TkUI
+
 
 
 def resource_path(relative_path):
@@ -68,6 +70,7 @@ class main:
         self.master = master
         self.master.title("© BEE - Behave Extractor Engine")
         self.master.geometry("800x400")
+        self.ui = TkUI(master)
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -332,7 +335,7 @@ class main:
     def convert_script(self):
         """Maneja la conversión a behave"""
         try:
-            converter = PuppeteerToBehaveConverter(self.base_dir, self.master)
+            converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
             converter.convert_script()
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión:\n{str(e)}")     
@@ -340,7 +343,7 @@ class main:
     def convert_to_step_by_step(self):
         """Maneja la conversión a step by step"""
         try:
-            converter = PuppeteerToStepByStepConverter(self.base_dir, self.master)
+            converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
             converter.convert_script()
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión a step by step:\n{str(e)}")         
