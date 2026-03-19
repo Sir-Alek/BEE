@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.puppeteer_script_converter import PuppeteerToBehaveConverter
 from core.step_by_step_converter import PuppeteerToStepByStepConverter
-from webui.job_manager import JobManager
+from webui.job_manager import JobManager, Prompt
 from webui.webui_adapter import WebUIAdapter
 
 
