@@ -25,20 +25,6 @@ export default function App() {
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
-  useEffect(() => {
-    if (!job) return;
-    if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
-      // Best-effort automatic close.
-      window.setTimeout(() => {
-        try {
-          window.close();
-        } catch {
-          // ignore
-        }
-      }, 2500);
-    }
-  }, [job?.state]);
-
   const startJob = async (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
