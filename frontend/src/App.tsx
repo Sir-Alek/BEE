@@ -58,14 +58,6 @@ function tryFocusOpenerAndCloseThisTab(): boolean {
   }
 }
 
-function tryCloseThisTab(): void {
-  try {
-    window.close();
-  } catch {
-    // ignore
-  }
-}
-
 export default function App() {
   /** Pinned from first paint: home URL has no job_id; avoids any edge case mixing job UI into home. */
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
@@ -696,21 +688,6 @@ export default function App() {
               >
                 Volver al inicio
               </button>
-              <button
-                type="button"
-                title="Solo cierra esta pestaña de resultado."
-                onClick={() => tryCloseThisTab()}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "#fff",
-                  color: "#111827",
-                  border: "1px solid #d1d5db",
-                  cursor: "pointer",
-                }}
-              >
-                Cerrar esta pestaña
-              </button>
             </div>
           </div>
         )}
@@ -734,20 +711,6 @@ export default function App() {
               }}
             >
               Volver al inicio
-            </button>
-            <button
-              type="button"
-              onClick={() => tryCloseThisTab()}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: "#fff",
-                color: "#111827",
-                border: "1px solid #d1d5db",
-                cursor: "pointer",
-              }}
-            >
-              Cerrar esta pestaña
             </button>
           </div>
         )}
@@ -781,20 +744,6 @@ export default function App() {
                 }}
               >
                 Volver al inicio
-              </button>
-              <button
-                type="button"
-                onClick={() => tryCloseThisTab()}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "#fff",
-                  color: "#111827",
-                  border: "1px solid #d1d5db",
-                  cursor: "pointer",
-                }}
-              >
-                Cerrar esta pestaña
               </button>
             </div>
           </div>
