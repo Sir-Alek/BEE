@@ -107,6 +107,8 @@ bee/
 ● Tras actualizar el código, compila el frontend: `cd frontend && npm install && npm run build` (genera `frontend/dist` que sirve la API local).
 ● Permite ventanas emergentes para `127.0.0.1`: el inicio debe quedar en una pestaña y el flujo (grabación/conversión) en otra; si el navegador bloquea pop-ups, el flujo puede abrirse en la misma pestaña y reemplazar el inicio.
 ● La aplicación no debe cerrar el navegador sola al terminar; usa la pestaña de inicio para nuevas tareas.
+● El aviso azul en inicio desaparece cuando termina el flujo en la otra pestaña (BroadcastChannel) o a los 5 minutos.
+● En la pestaña de resultado, «Volver al inicio» enfoca la pestaña de inicio y cierra la de trabajo (evita duplicar inicio); «Cerrar esta pestaña» solo cierra la de resultado.
 
 ## Troubleshooting
 
