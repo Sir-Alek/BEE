@@ -34,8 +34,36 @@ function openJobUrlInNewTabPrepared(): Window | null {
   return window.open("about:blank", "_blank");
 }
 
+const BEE_UI_BC = "bee-ui";
+
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
+}
+
+/** Si la pestaña de trabajo fue abierta desde inicio (hay opener), enfoca inicio y cierra esta pestaña — evita duplicar inicio. */
+function tryFocusOpenerAndCloseThisTab(): boolean {
+  if (!window.opener || window.opener.closed) {
+    return false;
+  }
+  try {
+    window.opener.focus();
+  } catch {
+    // ignore
+  }
+  try {
+    window.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryCloseThisTab(): void {
+  try {
+    window.close();
+  } catch {
+    // ignore
+  }
 }
 
 export default function App() {
@@ -85,11 +113,7 @@ export default function App() {
         } catch {
           newTab.location.href = jobUrl;
         }
-        try {
-          newTab.opener = null;
-        } catch {
-          // ignore
-        }
+        // Mantener window.opener para que "Volver al inicio" pueda enfocar inicio y cerrar esta pestaña sin duplicar.
         setHomeHint(
           "El flujo se abrió en otra pestaña. Esta vista es el inicio: déjala abierta y usa la otra pestaña para los pasos y el resultado.",
         );
@@ -126,6 +150,52 @@ export default function App() {
 
     setInitialChecked(true);
   }, []);
+
+  /** Inicio: quitar el aviso azul cuando el flujo termina en la otra pestaña (BroadcastChannel) o tras un tiempo. */
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(BEE_UI_BC);
+      bc.onmessage = (ev: MessageEvent) => {
+        if (ev.data?.type === "bee_job_finished") {
+          setHomeHint(null);
+        }
+      };
+    } catch {
+      // ignore
+    }
+    return () => {
+      try {
+        bc?.close();
+      } catch {
+        // ignore
+      }
+    };
+  }, [isHomeSurface]);
+
+  useEffect(() => {
+    if (!homeHint) return;
+    const t = window.setTimeout(() => setHomeHint(null), 5 * 60 * 1000);
+    return () => window.clearTimeout(t);
+  }, [homeHint]);
+
+  /** Pestaña de trabajo: avisar a inicio una sola vez cuando el job llega a estado terminal. */
+  useEffect(() => {
+    if (isHomeSurface || !jobId || !job) return;
+    const s = job.state;
+    if (s !== "done" && s !== "error" && s !== "cancelled") return;
+    try {
+      const key = `bee_job_finished_broadcast:${jobId}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+      const bc = new BroadcastChannel(BEE_UI_BC);
+      bc.postMessage({ type: "bee_job_finished", job_id: jobId });
+      bc.close();
+    } catch {
+      // ignore
+    }
+  }, [isHomeSurface, jobId, job?.state]);
 
   useEffect(() => {
     if (!polling || !jobId) return;
@@ -602,13 +672,19 @@ export default function App() {
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
             <div style={{ marginTop: 12, fontSize: 13, color: "#047857" }}>
-              La pestaña de <b>inicio</b> sigue abierta en otra pestaña del mismo navegador. Esta vista no cierra la ventana
-              ni el navegador: solo puedes cerrar tú la pestaña desde el menú del navegador si ya no la necesitas.
+              <b>Volver al inicio:</b> si abriste el flujo desde la pestaña de inicio, se cierra <b>esta</b> pestaña y se
+              pone al frente la de inicio (no duplicas el inicio). Si abriste solo esta URL (p. ej. desde el escritorio),
+              se abrirá otra vista de inicio en esta pestaña.
             </div>
-            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <button
                 type="button"
-                onClick={() => goHomeInThisTab()}
+                title="Cierra esta pestaña de trabajo y enfoca la de inicio, si existe."
+                onClick={() => {
+                  if (!tryFocusOpenerAndCloseThisTab()) {
+                    goHomeInThisTab();
+                  }
+                }}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -618,17 +694,36 @@ export default function App() {
                   cursor: "pointer",
                 }}
               >
-                Volver al inicio (esta pestaña)
+                Volver al inicio
+              </button>
+              <button
+                type="button"
+                title="Solo cierra esta pestaña de resultado."
+                onClick={() => tryCloseThisTab()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111827",
+                  border: "1px solid #d1d5db",
+                  cursor: "pointer",
+                }}
+              >
+                Cerrar esta pestaña
               </button>
             </div>
           </div>
         )}
 
         {!isHomeSurface && job?.state === "error" && (
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
-              onClick={() => goHomeInThisTab()}
+              onClick={() => {
+                if (!tryFocusOpenerAndCloseThisTab()) {
+                  goHomeInThisTab();
+                }
+              }}
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
@@ -638,7 +733,21 @@ export default function App() {
                 cursor: "pointer",
               }}
             >
-              Volver al inicio (esta pestaña)
+              Volver al inicio
+            </button>
+            <button
+              type="button"
+              onClick={() => tryCloseThisTab()}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "#fff",
+                color: "#111827",
+                border: "1px solid #d1d5db",
+                cursor: "pointer",
+              }}
+            >
+              Cerrar esta pestaña
             </button>
           </div>
         )}
@@ -654,10 +763,14 @@ export default function App() {
             }}
           >
             <b style={{ color: "#374151" }}>Operación cancelada</b>
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <button
                 type="button"
-                onClick={() => goHomeInThisTab()}
+                onClick={() => {
+                  if (!tryFocusOpenerAndCloseThisTab()) {
+                    goHomeInThisTab();
+                  }
+                }}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -667,7 +780,21 @@ export default function App() {
                   cursor: "pointer",
                 }}
               >
-                Volver al inicio (esta pestaña)
+                Volver al inicio
+              </button>
+              <button
+                type="button"
+                onClick={() => tryCloseThisTab()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111827",
+                  border: "1px solid #d1d5db",
+                  cursor: "pointer",
+                }}
+              >
+                Cerrar esta pestaña
               </button>
             </div>
           </div>
