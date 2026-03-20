@@ -102,6 +102,12 @@ bee/
 ● Se recomienda revisar los selectores generados para asegurar su robustez
 ● Para problemas de grabación, ejecutar install_puppeteer.bat para reinstalar Puppeteer
 
+## Interfaz web (FastAPI + React)
+
+● Tras actualizar el código, compila el frontend: `cd frontend && npm install && npm run build` (genera `frontend/dist` que sirve la API local).
+● Permite ventanas emergentes para `127.0.0.1`: el inicio debe quedar en una pestaña y el flujo (grabación/conversión) en otra; si el navegador bloquea pop-ups, el flujo puede abrirse en la misma pestaña y reemplazar el inicio.
+● La aplicación no debe cerrar el navegador sola al terminar; usa la pestaña de inicio para nuevas tareas.
+
 ## Troubleshooting
 
 ● Si encuentras errores de "MODULE_NOT_FOUND" con Puppeteer:

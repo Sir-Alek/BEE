@@ -23,9 +23,15 @@ function formatJobMode(mode: string | null): string {
   return mode;
 }
 
-/** Open job flow in a new tab (does not navigate the home tab). */
-function openBeeJobSurface(jobUrl: string): Window | null {
-  return window.open(jobUrl, "_blank", "noopener,noreferrer");
+/**
+ * Open job flow in a NEW tab without ever navigating the current (home) tab.
+ *
+ * Important: `window.open(url)` must NOT run after `await` — Chrome treats that as
+ * a non-user gesture and may reuse the current tab. We open `about:blank` synchronously
+ * on click, then assign the job URL after the API returns.
+ */
+function openJobUrlInNewTabPrepared(): Window | null {
+  return window.open("about:blank", "_blank");
 }
 
 function goHomeInThisTab(): void {
@@ -49,33 +55,53 @@ export default function App() {
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
-  const startJob = async (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
+  const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
     setHomeHint(null);
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
       setErrorText("URL requerida para 'Grabar Interacciones'.");
       return;
     }
-    try {
-      const res = await startConvertJob({
-        mode,
-        url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
-      });
-      const base = `${window.location.origin}${window.location.pathname}`;
-      const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
-      const opened = openBeeJobSurface(jobUrl);
-      if (!opened) {
-        setErrorText(
-          "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 e inténtalo de nuevo.",
-        );
-        return;
-      }
-      setHomeHint(
-        "Se abrió otra pestaña con el flujo (avisos y pasos). Esta pestaña permanece como inicio: puedes iniciar más operaciones desde aquí.",
+
+    const newTab = openJobUrlInNewTabPrepared();
+    if (!newTab) {
+      setErrorText(
+        "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 e inténtalo de nuevo. " +
+          "Sin eso, el flujo podría abrirse en esta misma pestaña y reemplazar el inicio.",
       );
-    } catch (e: any) {
-      setErrorText(String(e?.message ?? e));
+      return;
     }
+
+    void (async () => {
+      try {
+        const res = await startConvertJob({
+          mode,
+          url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
+        });
+        const base = `${window.location.origin}${window.location.pathname}`;
+        const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
+        try {
+          newTab.location.replace(jobUrl);
+        } catch {
+          newTab.location.href = jobUrl;
+        }
+        try {
+          newTab.opener = null;
+        } catch {
+          // ignore
+        }
+        setHomeHint(
+          "El flujo se abrió en otra pestaña. Esta vista es el inicio: déjala abierta y usa la otra pestaña para los pasos y el resultado.",
+        );
+      } catch (e: any) {
+        try {
+          newTab.close();
+        } catch {
+          // ignore
+        }
+        setErrorText(String(e?.message ?? e));
+      }
+    })();
   };
 
   useEffect(() => {
@@ -576,7 +602,8 @@ export default function App() {
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
             <div style={{ marginTop: 12, fontSize: 13, color: "#047857" }}>
-              La pestaña de <b>inicio</b> sigue en su sitio (si la dejaste abierta). Esta pestaña no se cierra sola.
+              La pestaña de <b>inicio</b> sigue abierta en otra pestaña del mismo navegador. Esta vista no cierra la ventana
+              ni el navegador: solo puedes cerrar tú la pestaña desde el menú del navegador si ya no la necesitas.
             </div>
             <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
