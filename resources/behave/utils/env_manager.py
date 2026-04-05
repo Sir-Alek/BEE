@@ -463,7 +463,7 @@ class ReportManager:
                 scenario.name,
                 context.start_time.strftime('%Y-%m-%d_%H-%M-%S'),
                 end_time.strftime('%Y-%m-%d_%H-%M-%S'),
-                screenshots=None
+                screenshots=failure_screenshots
             )
             logging.info(f"✓ Reporte PDF de escenario generado: {scenario.name}")
         except Exception as e:
