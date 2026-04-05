@@ -9,8 +9,19 @@ class NodeJSWrapper:
         self.temp_files = []
         self.temp_dirs = []
     
-    def run_obfuscated_js(self, js_file_name, args=None):
-        """Ejecuta un archivo JavaScript ofuscado"""
+    def run_obfuscated_js(
+        self,
+        js_file_name,
+        args=None,
+        *,
+        subprocess_timeout=180,
+        focus_automation_browser: bool = False,
+    ):
+        """Ejecuta un archivo JavaScript ofuscado.
+
+        subprocess_timeout: None = sin límite (recomendado para recorder largo).
+        focus_automation_browser: intenta enfocar el navegador que abre Puppeteer (Windows).
+        """
         if args is None:
             args = []
         
@@ -55,17 +66,28 @@ class NodeJSWrapper:
             print(f"Ejecutando Node.js desde: {temp_dir}")
             cmd = [node_path, temp_file] + args
             print(f"Comando: {' '.join(cmd)}")
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True, 
-                text=True, 
-                timeout=180,
-                encoding='utf-8',
-                errors='replace',
-                env=env,
-                cwd=temp_dir
-            )
+
+            if focus_automation_browser:
+                from core.recorder_focus import run_subprocess_with_automation_focus
+
+                result = run_subprocess_with_automation_focus(
+                    cmd,
+                    cwd=temp_dir,
+                    env=env,
+                    timeout=subprocess_timeout,
+                )
+            else:
+                run_kw = dict(
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=env,
+                    cwd=temp_dir,
+                )
+                if subprocess_timeout is not None:
+                    run_kw["timeout"] = subprocess_timeout
+                result = subprocess.run(cmd, **run_kw)
         
             
             if result.stdout:
@@ -88,7 +110,7 @@ class NodeJSWrapper:
             return result
             
         except subprocess.TimeoutExpired:
-            raise Exception("Timeout: Puppeteer tardó demasiado en ejecutarse")
+            raise Exception("Timeout: Puppeteer tardó demasiado en ejecutarse (ajusta subprocess_timeout o usa None para grabaciones largas)")
         except Exception as e:
             raise Exception(f"Error ejecutando Node.js: {str(e)}")
     

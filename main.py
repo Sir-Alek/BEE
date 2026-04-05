@@ -54,6 +54,28 @@ from PIL import Image, ImageTk
 
 from ui.tk_ui import TkUI
 
+import threading
+import socket
+import webbrowser
+
+try:
+    from webui.browser_launch import open_home_and_job_in_browser, open_url_in_new_browser_window
+except Exception:
+    open_home_and_job_in_browser = None  # type: ignore
+    open_url_in_new_browser_window = None  # type: ignore
+from typing import Any
+
+# Web UI imports are optional; only used when running with --web.
+try:
+    from webui.job_manager import JobManager, Prompt
+    from webui.webui_adapter import WebUIAdapter
+    from webui.fastapi_app import create_app as create_fastapi_app
+except Exception:
+    JobManager = None  # type: ignore
+    Prompt = None  # type: ignore
+    WebUIAdapter = None  # type: ignore
+    create_fastapi_app = None  # type: ignore
+
 
 
 def resource_path(relative_path):
@@ -70,7 +92,22 @@ class main:
         self.master = master
         self.master.title("© BEE - Behave Extractor Engine")
         self.master.geometry("800x400")
+        self.web_only = "--web-only" in sys.argv
+        self.web_mode = self.web_only or ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
         self.ui = TkUI(master)
+
+        # Hide Tk window when running in web-only mode.
+        if self.web_only:
+            try:
+                self.master.withdraw()
+            except Exception:
+                pass
+
+        # Web UI state (server/job); inicializado solo si estamos en modo web.
+        self._web_server_thread = None
+        self._web_port = None
+        self._web_host = "127.0.0.1"
+        self._job_manager = JobManager() if (self.web_mode and JobManager is not None) else None
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -147,7 +184,116 @@ class main:
             width=20
         )
         self.convert_button.pack(side=tk.LEFT, padx=20)        
-        
+
+        # In web-only mode there is no visible Tk UI, so open web landing immediately.
+        if self.web_only:
+            self.master.after(100, self._bootstrap_web_only)
+    
+    def _get_free_port(self) -> int:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((self._web_host, 0))
+        port = s.getsockname()[1]
+        s.close()
+        return int(port)
+
+    def _start_web_server_if_needed(self) -> int:
+        """
+        Levanta FastAPI local para servir la SPA y el backend de jobs.
+        Solo loopback (127.0.0.1).
+        """
+        if not self.web_mode:
+            raise RuntimeError("Web server requested while web_mode is disabled")
+        if self._job_manager is None:
+            raise RuntimeError("JobManager/WebUI not initialized. Run with --web and ensure deps exist.")
+        if self._web_port is not None and self._web_server_thread is not None:
+            return int(self._web_port)
+
+        if create_fastapi_app is None:
+            raise RuntimeError("FastAPI app factory not available.")
+
+        import uvicorn
+
+        self._web_port = self._get_free_port()
+        app = create_fastapi_app(job_manager=self._job_manager)
+        config = uvicorn.Config(
+            app,
+            host=self._web_host,
+            port=int(self._web_port),
+            log_level="warning",
+            access_log=False,
+        )
+        server = uvicorn.Server(config)
+
+        self._web_server_thread = threading.Thread(target=server.run, daemon=True)
+        self._web_server_thread.start()
+
+        # Best-effort wait for server readiness.
+        for _ in range(60):
+            try:
+                with socket.create_connection((self._web_host, int(self._web_port)), timeout=0.2):
+                    break
+            except Exception:
+                time.sleep(0.1)
+
+        return int(self._web_port)
+
+    def _open_web_ui(self, *, job_id: str, mode: str) -> None:
+        """Siempre deja una pestaña de inicio fija + otra con el flujo del trabajo."""
+        from urllib.parse import quote
+
+        port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
+        home_url = f"http://{self._web_host}:{port}/"
+        job_url = f"http://{self._web_host}:{port}/?job_id={quote(job_id)}&mode={quote(mode)}"
+        try:
+            if open_home_and_job_in_browser is not None and open_home_and_job_in_browser(home_url, job_url):
+                return
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(home_url)
+                open_url_in_new_browser_window(job_url)
+                return
+            try:
+                webbrowser.open(home_url, new=1, autoraise=True)
+            except TypeError:
+                webbrowser.open(home_url)
+            try:
+                webbrowser.open(job_url, new=2, autoraise=True)
+            except TypeError:
+                webbrowser.open_new(job_url)
+        except Exception:
+            pass
+
+    def _open_web_home(self) -> None:
+        port = int(self._web_port) if self._web_port is not None else self._start_web_server_if_needed()
+        url = f"http://{self._web_host}:{port}/"
+        try:
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(url)
+            else:
+                webbrowser.open_new(url)
+        except Exception:
+            pass
+
+    def _bootstrap_web_only(self) -> None:
+        """
+        Start local web server and open landing when running in --web-only mode.
+        If startup fails, fallback to visible Tk mode so user is not blocked.
+        """
+        if not self.web_only:
+            return
+        try:
+            self._start_web_server_if_needed()
+            self._open_web_home()
+        except Exception as e:
+            # Fallback: show Tk window so user can continue in desktop mode.
+            try:
+                self.master.deiconify()
+            except Exception:
+                pass
+            messagebox.showerror(
+                "Web-only startup failed",
+                f"No se pudo iniciar la UI web.\nSe activó fallback a Tkinter.\n\nDetalle:\n{str(e)}",
+            )
+
     def load_logo(self):
         try:
             # Cargar la imagen y redimensionar si es necesario
@@ -335,16 +481,56 @@ class main:
     def convert_script(self):
         """Maneja la conversión a behave"""
         try:
-            converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
-            converter.convert_script()
+            if not self.web_mode:
+                converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
+                converter.convert_script()
+                return
+
+            if WebUIAdapter is None or self._job_manager is None:
+                raise RuntimeError("Web UI not available. Ensure dependencies and run with --web.")
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_to_behave")
+            adapter = WebUIAdapter(job_manager=self._job_manager, job_id=job_id)
+
+            def worker() -> None:
+                try:
+                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter)
+                    converter.convert_script()
+                    self._job_manager.mark_done(job_id)
+                except Exception as e:
+                    self._job_manager.mark_error(job_id, message="Error en conversión a behave", details=str(e))
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_to_behave")
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión:\n{str(e)}")     
                    
     def convert_to_step_by_step(self):
         """Maneja la conversión a step by step"""
         try:
-            converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
-            converter.convert_script()
+            if not self.web_mode:
+                converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
+                converter.convert_script()
+                return
+
+            if WebUIAdapter is None or self._job_manager is None:
+                raise RuntimeError("Web UI not available. Ensure dependencies and run with --web.")
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_to_step_by_step")
+            adapter = WebUIAdapter(job_manager=self._job_manager, job_id=job_id)
+
+            def worker() -> None:
+                try:
+                    converter = PuppeteerToStepByStepConverter(self.base_dir, adapter)
+                    converter.convert_script()
+                    self._job_manager.mark_done(job_id)
+                except Exception as e:
+                    self._job_manager.mark_error(job_id, message="Error en conversión step by step", details=str(e))
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_to_step_by_step")
         except Exception as e:
             messagebox.showerror("Error", f"Error en conversión a step by step:\n{str(e)}")         
                     
@@ -353,7 +539,259 @@ class main:
         if not url:
             messagebox.showwarning("URL requerida", "Por favor ingresa una URL válida.")
             return
+
+        # Web mode: reemplaza los diálogos Tkinter del recorder por prompts web.
+        if self.web_mode:
+            if self._job_manager is None or Prompt is None:
+                messagebox.showerror("Error", "Web UI no disponible para grabación. Asegura --web y dependencias.")
+                return
+
+            self._start_web_server_if_needed()
+            job_id = self._job_manager.create_job(mode="puppeteer_recorder")
+
+            def worker() -> None:
+                jm = self._job_manager
+                assert jm is not None
+
+                def mk_prompt(**kwargs: Any):
+                    # `Prompt` incluye prompt_id/ type / title / message.
+                    import uuid
+
+                    prompt_id = str(uuid.uuid4())
+                    return Prompt(prompt_id=prompt_id, **kwargs)
+
+                project_path: str | None = None
+                output_file: str | None = None
+                recorder = None
+                video_path = None
+                try:
+                    # Paso 1: ¿Nuevo proyecto?
+                    jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
+
+                    if not os.path.exists(self.projects_dir):
+                        os.makedirs(self.projects_dir, exist_ok=True)
+
+                    projects = [
+                        d
+                        for d in os.listdir(self.projects_dir)
+                        if os.path.isdir(os.path.join(self.projects_dir, d))
+                    ]
+
+                    force_new = len(projects) == 0
+                    if force_new:
+                        ans = jm.create_prompt_and_wait(
+                            job_id,
+                            prompt=mk_prompt(
+                                type="input_text",
+                                title="Nuevo Proyecto",
+                                message="Nombre del proyecto (ej: MiProyecto)",
+                            ),
+                        )
+                        if ans is None:
+                            jm.cancel_job(job_id)
+                            return
+                        project_name = str(ans).strip()
+                        if not project_name:
+                            jm.cancel_job(job_id)
+                            return
+                        project_path = os.path.join(self.projects_dir, project_name)
+                        os.makedirs(project_path, exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                        os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
+                    else:
+                        is_new = jm.create_prompt_and_wait(
+                            job_id,
+                            prompt=mk_prompt(
+                                type="yes_no",
+                                title="Selección de Proyecto",
+                                message="¿Es un proyecto nuevo?",
+                            ),
+                        )
+
+                        if is_new:
+                            ans = jm.create_prompt_and_wait(
+                                job_id,
+                                prompt=mk_prompt(
+                                    type="input_text",
+                                    title="Nuevo Proyecto",
+                                    message="Nombre del proyecto (ej: MiProyecto)",
+                                ),
+                            )
+                            if ans is None:
+                                jm.cancel_job(job_id)
+                                return
+                            project_name = str(ans).strip()
+                            if not project_name:
+                                jm.cancel_job(job_id)
+                                return
+                            project_path = os.path.join(self.projects_dir, project_name)
+                            os.makedirs(project_path, exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                            os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
+                        else:
+                            chosen = jm.create_prompt_and_wait(
+                                job_id,
+                                prompt=mk_prompt(
+                                    type="pick_project",
+                                    title="Seleccionar Proyecto Existente",
+                                    message="Selecciona un proyecto:",
+                                    options=[{"value": p, "label": p} for p in projects],
+                                ),
+                            )
+                            if chosen is None:
+                                jm.cancel_job(job_id)
+                                return
+                            project_name = str(chosen)
+                            project_path = os.path.join(self.projects_dir, project_name)
+
+                    if not project_path:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Paso 2: Nombre de archivo (.js)
+                    jm.update_progress(job_id, {"stage": "Nombre de grabación"})
+                    default_hint = "grabacion_" + time.strftime("%Y%m%d_%H%M%S")
+                    ans_file = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="input_text",
+                            title="Nombre del Archivo de Grabación",
+                            message=f"Ingresa el nombre (sugerido: {default_hint})",
+                        ),
+                    )
+                    if ans_file is None:
+                        jm.cancel_job(job_id)
+                        return
+                    file_name = str(ans_file).strip()
+                    if not file_name:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Sanitizar nombre de archivo (igual que Tk)
+                    file_name = re.sub(r"[^\w\-_.]", "_", file_name)
+                    file_name = re.sub(r"_{2,}", "_", file_name)
+                    if not file_name.endswith(".js"):
+                        file_name += ".js"
+
+                    scripts_dir = os.path.join(project_path, "scripts")
+                    os.makedirs(scripts_dir, exist_ok=True)
+                    output_file = os.path.join(scripts_dir, file_name)
+
+                    # Paso 3: Confirmación (askokcancel)
+                    jm.update_progress(job_id, {"stage": "Confirmar grabación"})
+                    proceed = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="yes_no_cancel",
+                            title="Grabando",
+                            message="Se abrirá el navegador.\nPara finalizar la grabación, cierra el navegador.\n¿Deseas continuar?",
+                        ),
+                    )
+
+                    if proceed is not True:
+                        jm.cancel_job(job_id)
+                        return
+
+                    # Paso extra: grabar video
+                    grabar_video = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=mk_prompt(
+                            type="yes_no",
+                            title="Grabación de Video",
+                            message="¿Deseas grabar video de la pantalla?",
+                        ),
+                    )
+
+                    recorder_obj = None
+                    if grabar_video:
+                        jm.update_progress(job_id, {"stage": "Grabando video"})
+                        file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
+                        videos_dir = os.path.join(project_path, "grabaciones")
+                        os.makedirs(videos_dir, exist_ok=True)
+                        video_path = os.path.join(videos_dir, file_name_vid)
+
+                        try:
+                            recorder_obj = ScreenRecorder(video_path)
+                            if recorder_obj.start():
+                                print(f"Grabación de video iniciada: {video_path}")
+                            else:
+                                recorder_obj = None
+                        except Exception as e:
+                            print(f"Error iniciando grabación: {e}")
+                            recorder_obj = None
+
+                    jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
+
+                    # Ejecutar Puppeteer/Node recorder.js
+                    if IS_FROZEN:
+                        from core.node_wrapper import node_wrapper
+
+                        result = node_wrapper.run_obfuscated_js(
+                            "recorder.js",
+                            [output_file, url],
+                            subprocess_timeout=None,
+                            focus_automation_browser=True,
+                        )
+                    else:
+                        from core.recorder_focus import run_subprocess_with_automation_focus
+
+                        recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+
+                        result = run_subprocess_with_automation_focus(
+                            ["node", recorder_js_path, output_file, url],
+                            cwd=self.base_dir,
+                            timeout=None,
+                        )
+
+                    if result.returncode != 0:
+                        error = result.stderr if result.stderr else "Error desconocido en Node.js"
+                        raise Exception(f"Error en Puppeteer:\n{error}")
+
+                    if not os.path.exists(output_file):
+                        raise Exception("No se generó el archivo de grabación")
+
+                    jm.update_progress(
+                        job_id,
+                        {
+                            "result_file": output_file,
+                            "video_path": video_path,
+                            "stage": "Listo",
+                        },
+                    )
+
+                    # Detener video
+                    if recorder_obj:
+                        try:
+                            recorder_obj.stop()
+                            time.sleep(0.5)
+                        except Exception:
+                            pass
+
+                    jm.mark_done(job_id)
+
+                except Exception as e:
+                    jm.mark_error(job_id, message="Error en grabación", details=str(e))
+
+                finally:
+                    if IS_FROZEN:
+                        try:
+                            from core.node_wrapper import node_wrapper
+
+                            node_wrapper.cleanup()
+                        except Exception:
+                            pass
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._open_web_ui(job_id=job_id, mode="puppeteer_recorder")
+            return
         
+        # Tk mode: comportamiento original (Tkinter)
         # Paso 1: Seleccionar o crear proyecto
         project_path = self.select_or_create_project()
         if not project_path:
@@ -460,14 +898,21 @@ class main:
             if IS_FROZEN:
                 # En modo empaquetado, usar el wrapper ofuscado
                 from core.node_wrapper import node_wrapper
-                result = node_wrapper.run_obfuscated_js('recorder.js', [output_file, url])
+                result = node_wrapper.run_obfuscated_js(
+                    "recorder.js",
+                    [output_file, url],
+                    subprocess_timeout=None,
+                    focus_automation_browser=True,
+                )
             else:
-                # En modo desarrollo, ejecutar directamente el script
-                import subprocess
-                recorder_js_path = os.path.join(self.base_dir, 'core', 'recorder.js')
-                result = subprocess.run([
-                    'node', recorder_js_path, output_file, url
-                ], capture_output=True, text=True, cwd=self.base_dir)
+                from core.recorder_focus import run_subprocess_with_automation_focus
+
+                recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+                result = run_subprocess_with_automation_focus(
+                    ["node", recorder_js_path, output_file, url],
+                    cwd=self.base_dir,
+                    timeout=None,
+                )
 
             if result.returncode != 0:
                 error = result.stderr if result.stderr else "Error desconocido en Node.js"

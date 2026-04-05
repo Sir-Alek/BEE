@@ -6,3 +6,5 @@ behave>=1.2.6
 opencv-python>=4.5.0
 mss>=7.0.0
 pyinstaller>=5.0.0
+fastapi>=0.135.1
+uvicorn>=0.42.0
