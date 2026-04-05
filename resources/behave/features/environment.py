@@ -44,6 +44,8 @@ def after_step(context, step):
     elif step_status == "skipped":
         logging.warning(f"    [Step] OMITIDO: {step.keyword} {step.name}")
     elif step_status == "failed":
+        if hasattr(context, 'driver'):
+            bf.ui_inject_tab_indicator(context.driver, is_redirection=True)
         error_msg = EvidenceManager.parse_step_error(context, step, str(step.exception) if step.exception else "")
         logging.error(f"    [Step] FALLIDO: {step.keyword} {step.name} - {error_msg}")
         EvidenceManager.capture_failure(context, step)
