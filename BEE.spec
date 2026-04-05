@@ -2,18 +2,31 @@
 
 block_cipher = None
 
+import glob
+from PyInstaller.utils.hooks import collect_submodules
+
+enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
+
+# Web UI deps are imported conditionally and need help for PyInstaller.
+web_hidden = []
+for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
+    try:
+        web_hidden += collect_submodules(pkg)
+    except Exception:
+        web_hidden.append(pkg)
+
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
     datas=[
-        ('core/*.enc', 'core'),
         ('core/node', 'core/node'),
         ('behave', 'behave'),
+        ('frontend/dist', 'frontend/dist'),
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
-    ],
-    hiddenimports=['mss', 'cv2', 'numpy'],
+    ] + enc_datas,
+    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
