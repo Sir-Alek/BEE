@@ -45,14 +45,39 @@ except ImportError as e:
 import os
 import subprocess
 import sys
-import tkinter as tk
-from tkinter import filedialog, messagebox
 import re
 import time
-from tkinter import simpledialog
-from PIL import Image, ImageTk 
+Image = None  # type: ignore
 
-from ui.tk_ui import TkUI
+# PIL is optional for --web/--web-only mode; required only for Tk logo rendering.
+ImageTk = None  # type: ignore
+
+TK_AVAILABLE = False
+tk = None  # type: ignore
+filedialog = None  # type: ignore
+messagebox = None  # type: ignore
+simpledialog = None  # type: ignore
+TkUI = None  # type: ignore
+
+try:
+    import tkinter as tk  # type: ignore
+    from tkinter import filedialog, messagebox, simpledialog  # type: ignore
+    from ui.tk_ui import TkUI  # type: ignore
+    from PIL import Image  # type: ignore
+    from PIL import ImageTk as _ImageTk  # type: ignore
+
+    ImageTk = _ImageTk  # type: ignore
+
+    TK_AVAILABLE = True
+except Exception:
+    # Tkinter is optional in --web/--web-only mode and may be missing in some packaged environments.
+    TK_AVAILABLE = False
+
+if not TK_AVAILABLE and ("--web-only" not in sys.argv) and ("--web" not in sys.argv) and (os.environ.get("BEE_WEB_UI", "").lower() not in ("1", "true", "yes")):
+    raise RuntimeError(
+        "Tkinter no disponible. Ejecuta con --web-only/--web para usar la UI web, "
+        "o instala Tkinter para usar la UI de escritorio."
+    )
 
 import threading
 import socket
@@ -90,10 +115,13 @@ class main:
      
     def __init__(self, master):
         self.master = master
-        self.master.title("© BEE - Behave Extractor Engine")
-        self.master.geometry("800x400")
         self.web_only = "--web-only" in sys.argv
         self.web_mode = self.web_only or ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
+        if not TK_AVAILABLE:
+            raise RuntimeError("Tkinter no disponible. Ejecuta en --web-only/--web para usar la UI web.")
+
+        self.master.title("© BEE - Behave Extractor Engine")
+        self.master.geometry("800x400")
         self.ui = TkUI(master)
 
         # Hide Tk window when running in web-only mode.
@@ -963,6 +991,48 @@ if __name__ == "__main__":
    </Alek>
 🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝     
           """)    
-    root = tk.Tk()
-    app = main(root)
-    root.mainloop()             
+    if TK_AVAILABLE:
+        root = tk.Tk()
+        app = main(root)
+        root.mainloop()
+    else:
+        # Web-only headless bootstrap (no Tk).
+        if ("--web-only" not in sys.argv) and ("--web" not in sys.argv) and (os.environ.get("BEE_WEB_UI", "").lower() not in ("1", "true", "yes")):
+            raise RuntimeError("Tkinter no disponible. Usa --web-only/--web.")
+
+        if create_fastapi_app is None:
+            # Try a lazy import path (PyInstaller sometimes misses conditional imports).
+            try:
+                from webui.fastapi_app import create_app as create_fastapi_app  # type: ignore
+            except Exception as e:
+                raise RuntimeError(f"Web UI no disponible (faltan dependencias FastAPI/uvicorn). Detalle: {e}")
+
+        from webui.job_manager import JobManager
+        jm = JobManager()
+        app = create_fastapi_app(job_manager=jm)
+
+        try:
+            import uvicorn  # type: ignore
+        except Exception as e:
+            raise RuntimeError(f"No se pudo importar uvicorn en modo web-only. Detalle: {e}")
+        host = "127.0.0.1"
+        port = 5173
+        # Find a free port (best-effort)
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind((host, 0))
+            port = int(s.getsockname()[1])
+            s.close()
+        except Exception:
+            pass
+
+        url = f"http://{host}:{port}/"
+        try:
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(url)
+            else:
+                webbrowser.open_new(url)
+        except Exception:
+            pass
+
+        uvicorn.run(app, host=host, port=port, log_level="info")
