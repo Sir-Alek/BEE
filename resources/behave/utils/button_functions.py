@@ -938,6 +938,58 @@ def ui_validate_excel_content(
     except Exception as e:
         raise AssertionError(f"Error crítico al validar el contenido del archivo: {str(e)}")
 
+def ui_validate_text(
+    driver: WebDriver,
+    xPath_elemento: str,
+    texto_esperado: str,
+    nombre_elemento: str = "Elemento",
+    parcial: bool = False,
+    ignorar_mayusculas: bool = False,
+    timeout: int = 15,
+    borde_css: str = "4px solid #00FF00",
+    restaurar_borde: bool = True,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None
+) -> str:
+    wait = WebDriverWait(driver, timeout)
+    el = None
+    prev_outline = None
+
+    try:
+        # Esperar y resaltar el elemento usando tus helpers
+        wait.until(EC.visibility_of_element_located((By.XPATH, xPath_elemento)))
+        _wait_overlays(driver)
+
+        el, prev_outline = _center_and_highlight_stalesafe(
+            driver, wait, xPath_elemento, outline_css=borde_css, pause=0.2, visible=True
+        )
+
+        # Obtener texto de forma segura contra StaleElementReferenceException
+        def _get_text(e):
+            return (e.text or e.get_attribute("innerText") or "").strip()
+
+        texto_real = _do_with_refetch(driver, wait, xPath_elemento, visible=True, func=_get_text)
+
+        # Lógica de comparación
+        t_esp = texto_esperado.lower() if ignorar_mayusculas else texto_esperado
+        t_real = texto_real.lower() if ignorar_mayusculas else texto_real
+
+        exito = (t_esp in t_real) if parcial else (t_esp == t_real)
+
+        if not exito:
+            msg = f"ERROR: '{nombre_elemento}' obtenido: '{texto_real}', esperado: '{texto_esperado}'"
+            logging.error(msg)
+            raise AssertionError(msg)
+
+        # Tomar evidencia usando tu sistema global
+        take_global_evidence(driver, "validate_text", nombre_elemento, usar_create_screenshot, screenshot_step)
+        return texto_real
+
+    finally:
+        if restaurar_borde:
+            _restore_outline(driver, el, prev_outline)
+
+
 ActionType = Literal["click", "insertTxt", "getValue", "highlight", "assertNotVisible"]
 
 def ui_interact(
@@ -1497,6 +1549,85 @@ def set_flatpickr_date(
 
     return (el.get_attribute("value") or "").strip()
 
+def ui_validate_flatpickr_future_disabled(
+    driver: WebDriver,
+    input_locator: tuple,
+    timeout: float = 10.0,
+    nombre_elemento: str = "Fecha_Flatpickr",
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None
+) -> bool:
+    """
+    Despliega el calendario, toma la captura como evidencia visual y luego
+    valida lógicamente que Flatpickr tenga deshabilitadas las fechas futuras.
+    """
+    wait = WebDriverWait(driver, timeout)
+    el = wait.until(EC.presence_of_element_located(input_locator))
+
+    # 1. Resaltar y centrar
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+    try:
+        driver.execute_script("arguments[0].style.outline='2px solid #0000FF';", el)
+    except Exception:
+        pass
+
+    # 2. Desplegar el calendario explícitamente usando su API (o click como fallback)
+    driver.execute_script("""
+        const el = arguments[0];
+        if (el._flatpickr) {
+            el._flatpickr.open();
+        } else {
+            el.click();
+        }
+    """, el)
+    
+    # Pausa mínima para permitir que termine la animación de despliegue del calendario
+    time.sleep(0.5)
+
+    # 3. TOMAR EVIDENCIA (con el calendario visible y los días futuros en gris)
+    take_global_evidence(driver, "val_fecha_futura", nombre_elemento, usar_create_screenshot, screenshot_step)
+
+    # 4. Ejecutar la validación lógica robusta
+    estado = driver.execute_script(
+        """
+        const el = arguments[0];
+        const fp = el._flatpickr;
+        
+        if (!fp) return "NO_FLATPICKR";
+        if (!fp.config || !fp.config.maxDate) return "FUTURO_HABILITADO";
+        
+        const maxDate = new Date(fp.config.maxDate);
+        const today = new Date();
+        
+        maxDate.setHours(0,0,0,0);
+        today.setHours(0,0,0,0);
+        
+        return (maxDate <= today) ? "FUTURO_DESHABILITADO" : "FUTURO_HABILITADO";
+        """, el
+    )
+
+    # 5. Cerrar el calendario para dejar el DOM limpio y restaurar bordes
+    driver.execute_script("""
+        if (arguments[0]._flatpickr) arguments[0]._flatpickr.close();
+    """, el)
+
+    try:
+        driver.execute_script("arguments[0].style.outline='';", el)
+    except Exception:
+        pass
+
+    # 6. Lanzar aserciones según el resultado
+    if estado == "NO_FLATPICKR":
+        raise AssertionError(f"El elemento '{nombre_elemento}' no tiene una instancia de Flatpickr inicializada.")
+        
+    if estado == "FUTURO_HABILITADO":
+        raise AssertionError(
+            f"Validación fallida: El calendario '{nombre_elemento}' PERMITE seleccionar fechas futuras."
+        )
+
+    logging.info(f"✓ Validación exitosa: '{nombre_elemento}' bloquea visual y lógicamente las fechas futuras.")
+    return True
+
 def _mark_element(driver, el):
     driver.execute_script(
         "arguments[0].style.outline='2px solid #00A000';"
@@ -1713,44 +1844,44 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
     evidence_dir = Path(evidence_dir).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
     evidence_dir.mkdir(parents=True, exist_ok=True)
-
+    
     nameExcel = (nameExcel or "").rstrip()
     target_prefix = f"{nameExcel}{fecha_consulta}".lower()
     pattern = re.compile(rf"^{re.escape(nameExcel)}{re.escape(fecha_consulta)}.*\.xlsx$", re.IGNORECASE)
-
+    
     end = time.time() + timeout_download
     last_size = -1
     stable_ticks = 0
     xlsx_path: Path | None = None
-
+    
     while time.time() < end:
         files = [
             p for p in download_dir.glob("*.xlsx")
             if p.name.lower().startswith(target_prefix) and pattern.match(p.name)
         ]
-
+    
         if files:
             candidate = max(files, key=lambda p: p.stat().st_mtime)
             size = candidate.stat().st_size
-
+    
             if size == last_size and size > 0:
                 stable_ticks += 1
             else:
                 stable_ticks = 0
                 last_size = size
-
+    
             if stable_ticks >= 2:
                 xlsx_path = candidate
                 break
-
+    
         time.sleep(0.5)
-
+    
     if not xlsx_path:
         raise TimeoutError(f"No apareció/terminó el XLSX esperado. Prefijo: '{nameExcel}{fecha_consulta}' en {download_dir}")
-
+    
     folder_hint = (explorer_window_hint or download_dir.name).strip() if (explorer_window_hint or download_dir.name) else download_dir.name
     hwnds_before = _window_hwnds_by_title_contains(folder_hint, process_image_names={'explorer.exe'})
-
+    
     try:
         subprocess.run(["explorer", "/select,", str(xlsx_path)], check=False)
     except Exception:
@@ -1758,9 +1889,9 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
             os.startfile(str(download_dir))
         except Exception:
             subprocess.run(["explorer", str(download_dir)], check=False)
-
+    
     time.sleep(explorer_wait)
-
+    
     shot_folder = create_screenshot_download(
         step=step,
         label=label_folder,
@@ -1770,7 +1901,7 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
         pre_capture_wait=pre_capture_wait,
         process_image_names={'explorer.exe'},
     )
-
+    
     try:
         hwnds_after = _window_hwnds_by_title_contains(folder_hint, process_image_names={'explorer.exe'})
         prefer = (hwnds_after - hwnds_before) or hwnds_after
@@ -1783,18 +1914,18 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
         )
     except Exception:
         pass
-
+    
     excel_pids_before = _list_excel_pids()
     os.startfile(str(xlsx_path))
     time.sleep(excel_wait)
-
+    
     excel_pids_after = _list_excel_pids()
     spawned_pids = set(excel_pids_after) - set(excel_pids_before)
-
+    
     hint = ((excel_window_hint or xlsx_path.stem).strip() or xlsx_path.stem)
     if not activate_window_by_title_contains(hint, timeout=10.0, process_image_names={'excel.exe'}):
         activate_window_by_title_contains("excel", timeout=6.0, process_image_names={'excel.exe'})
-
+    
     shot_excel = create_screenshot_download(
         step=step,
         label=label_excel,
@@ -1804,7 +1935,7 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
         pre_capture_wait=pre_capture_wait,
         process_image_names={'excel.exe'},
     )
-
+    
     closed = close_excel_opened(
         window_title_contains=hint,
         timeout=20,
@@ -1813,7 +1944,7 @@ def descargar_abrir_evidenciar_y_cerrar_excel(
         excel_pids_before=excel_pids_before,
         spawned_pids=spawned_pids,
     )
-
+    
     return {
         "xlsx_path": str(xlsx_path),
         "screenshot_folder": shot_folder,
@@ -1855,3 +1986,156 @@ def scroll_horizontal_to_end(driver, locator, highlight=True, usar_create_screen
             
     except Exception as e:
         logging.error(f"Error crítico en scroll_horizontal_to_end para {locator}: {e}")
+
+def ui_upload_file(
+    driver: WebDriver,
+    xpath_input: str,
+    nombre_archivo: str,
+    nombre_elemento: str = "Archivo",
+    timeout: int = 15,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None
+) -> bool:
+    """Carga técnica de archivos al input tipo file. 
+    El archivo debe existir en resources/data/ y se le pasa el nombre sin ruta."""
+    
+    wait = WebDriverWait(driver, timeout)
+    try:
+        project_root = os.path.abspath(os.getcwd())
+        file_path = os.path.join(project_root, 'resources', 'data', nombre_archivo)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"No existe: {file_path}")
+
+        # Localizar input
+        el_input = wait.until(EC.presence_of_element_located((By.XPATH, xpath_input)))
+        
+        el_input.send_keys(file_path)
+        time.sleep(1.2) 
+
+        take_global_evidence(driver, "upload", nombre_elemento, usar_create_screenshot, screenshot_step)
+        return True
+    except Exception as e:
+        logging.error(f"Error en ui_upload_file: {e}")
+        return False
+
+# @staticmethod
+def ui_open_new_tab(driver, url):
+    """Abre una nueva pestaña y cambia el foco a ella"""
+    driver.execute_script(f"window.open('{url}', '_blank');")
+    # Cambiamos a la última pestaña abierta (la más reciente)
+    driver.switch_to.window(driver.window_handles[-1])
+    logging.info(f"Nueva pestaña abierta y enfocada: {url}")
+
+# @staticmethod
+def ui_switch_to_tab(driver, index):
+    """Cambia el foco a una pestaña específica por su índice (0, 1, 2...)"""
+    handles = driver.window_handles
+    if 0 <= index < len(handles):
+        driver.switch_to.window(handles[index])
+        logging.info(f"Foco cambiado a la pestaña con índice: {index}")
+    else:
+        logging.error(f"Índice de pestaña {index} fuera de rango. Total: {len(handles)}")
+        raise IndexError("El índice de pestaña solicitado no existe.")
+
+# @staticmethod
+# def inject_tab_indicator(driver, target_url=None, is_redirection=False):
+#     """
+#     Inyecta un banner discreto de una sola línea.
+#     Truncará URLs largas para mantener la uniformidad en el reporte PDF.
+#     """
+#     tab_index = driver.window_handles.index(driver.current_window_handle)
+#     actual_url = driver.current_url
+    
+#     # Colores discretos: Azul pizarra para carga, Gris azulado para redirección
+#     banner_color = "#455a64" if is_redirection else "#263238"
+#     status_label = "[REDIR]" if is_redirection else "[TARGET]"
+    
+#     # Decidir qué URL mostrar de forma prioritaria
+#     display_url = target_url if target_url and not is_redirection else actual_url
+
+#     script = f"""
+#     (function() {{
+#         const id = 'selenium-tab-indicator';
+#         let banner = document.getElementById(id);
+#         if (!banner) {{
+#             banner = document.createElement('div');
+#             banner.id = id;
+#             document.body.prepend(banner);
+#         }}
+#         banner.style.cssText = 'background: {banner_color}; color: #eceff1; padding: 6px 15px; ' +
+#                             'font-family: "Segoe UI", Roboto, sans-serif; font-size: 11px; ' +
+#                             'display: flex; justify-content: space-between; align-items: center; ' +
+#                             'position: sticky; top: 0; z-index: 999999; border-bottom: 2px solid #3498db;';
+        
+#         banner.innerHTML = `
+#             <div style="white-space: nowrap;"><b>Pestaña:</b> {tab_index + 1} <span style="margin-left:10px; color:#90a4ae">${status_label}</span></div>
+#             <div style="margin-left: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 1; text-align: right;">
+#                 <b>URL:</b> {display_url}
+#             </div>`;
+#     }})();
+#     """
+#     driver.execute_script(script)
+
+# @staticmethod
+# def simulate_session_timeout(driver):
+#     """
+#     Simula la expiración de sesión eliminando cookies 
+#     y limpiando el almacenamiento local/sesión.
+#     """
+#     try:
+#         # 1. Eliminar todas las cookies (fuerza al servidor a no reconocer al usuario)
+#         driver.delete_all_cookies()
+        
+#         # 2. Limpiar almacenamientos de scripts (para apps SPA como las de BanCoppel)
+#         driver.execute_script("window.localStorage.clear();")
+#         driver.execute_script("window.sessionStorage.clear();")
+        
+#         logging.info("✓ Simulación de tiempo de inactividad completada: Sesión eliminada.")
+#     except Exception as e:
+#         logging.error(f"✘ Fallo al simular inactividad: {str(e)}")
+
+def ui_inject_tab_indicator(driver: WebDriver, target_url: str = None, is_redirection: bool = False):
+    """
+    Inyecta un banner discreto de una sola línea.
+    Truncará URLs largas para mantener la uniformidad en el reporte PDF.
+    """
+    try:
+        tab_index = driver.window_handles.index(driver.current_window_handle)
+        actual_url = driver.current_url
+        
+        # Colores discretos solicitados: Gris pizarra/Azul oscuro
+        banner_color = "#455a64" if is_redirection else "#263238"
+        status_label = "[REDIR]" if is_redirection else "[TARGET]"
+        display_url = target_url if target_url and not is_redirection else actual_url
+
+        script = f"""
+        (function() {{
+            const id = 'selenium-tab-indicator';
+            let banner = document.getElementById(id);
+            if (!banner) {{
+                banner = document.createElement('div');
+                banner.id = id;
+                document.body.prepend(banner);
+            }}
+            banner.style.cssText = 'background: {banner_color}; color: #eceff1; padding: 6px 15px; ' +
+                                   'font-family: "Segoe UI", Roboto, sans-serif; font-size: 11px; ' +
+                                   'display: flex; justify-content: space-between; align-items: center; ' +
+                                   'position: sticky; top: 0; z-index: 999999; border-bottom: 2px solid #3498db;';
+            
+            banner.innerHTML = `
+                <div style="white-space: nowrap;"><b>Pestaña:</b> {tab_index + 1} <span style="margin-left:10px; color:#90a4ae">${status_label}</span></div>
+                <div style="margin-left: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 1; text-align: right;">
+                    <b>URL:</b> {display_url}
+                </div>`;
+        }})();
+        """
+        driver.execute_script(script)
+    except Exception as e:
+        logging.warning(f"No se pudo inyectar el indicador visual: {e}")
+
+def ui_simulate_session_timeout(driver: WebDriver):
+    """Simulación instantánea de pérdida de sesión eliminando cookies y storage."""
+    driver.delete_all_cookies()
+    driver.execute_script("window.localStorage.clear(); window.sessionStorage.clear();")
+    logging.info("✓ Sesión expirada mediante limpieza de cookies/storage.")
