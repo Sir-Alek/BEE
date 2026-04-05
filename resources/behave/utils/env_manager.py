@@ -22,6 +22,11 @@ class BaseUtils:
         return str(name).replace(" ", "").replace("/", "").replace("\\", "").replace(":", "").replace("*", "").replace("?", "")
 
     @staticmethod
+    def generate_long_string(length=500, char="X"):
+        """Helper para pruebas de longitud excesiva"""
+        return char * length
+
+    @staticmethod
     def get_element_status(element):
         try:
             return {
@@ -38,6 +43,7 @@ class BaseUtils:
             return {"error": "Elemento obsoleto (stale)"}
         except Exception as e:
             return {"error": str(e)}
+
 
 class DirectoryManager:
     """Gestión de carpetas (Outputs y Descargas)"""
@@ -457,7 +463,7 @@ class ReportManager:
                 scenario.name,
                 context.start_time.strftime('%Y-%m-%d_%H-%M-%S'),
                 end_time.strftime('%Y-%m-%d_%H-%M-%S'),
-                screenshots=failure_screenshots
+                screenshots=None
             )
             logging.info(f"✓ Reporte PDF de escenario generado: {scenario.name}")
         except Exception as e:
