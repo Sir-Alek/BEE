@@ -12,3 +12,6 @@ logo-servicios-financieros.jpg
 #cache
 *.pyc
 *__pycache__
+
+# Node / React
+node_modules/

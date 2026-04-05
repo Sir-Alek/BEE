@@ -17,6 +17,8 @@ class Prompt:
     type: str
     title: str
     message: str
+    # message_ack: info | warning | error (modal OK, like Tk messagebox)
+    severity: str = "info"
     # UI payload
     options: Optional[List[Dict[str, str]]] = None  # [{value,label}]
     actions: Optional[List[Dict[str, Any]]] = None  # [{type, description, original_line}]
@@ -187,4 +189,78 @@ class JobManager:
             job.cond.notify_all()
 
         self._emit_event(job_id, {"type": "prompt_dismissed", "prompt_id": prompt_id})
+
+    def mark_done(self, job_id: str) -> None:
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return
+        with job.lock:
+            job.state = "done"
+            job.updated_at = time.time()
+            if job.active_prompt and job.active_prompt.status == "pending":
+                job.active_prompt.status = "answered"
+                job.active_prompt.answer = job.active_prompt.answer
+            job.cond.notify_all()
+        self._emit_event(job_id, {"type": "job_done"})
+
+    def mark_error(self, job_id: str, *, message: str, details: Optional[str] = None) -> None:
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return
+        with job.lock:
+            job.state = "error"
+            job.updated_at = time.time()
+            job.error = {"message": message, "details": details}
+            if job.active_prompt and job.active_prompt.status == "pending":
+                # Unblock core thread waiting for user input.
+                job.active_prompt.status = "cancelled"
+                job.active_prompt.answer = None
+                job.active_prompt.answered_at = time.time()
+            job.cond.notify_all()
+        self._emit_event(job_id, {"type": "job_error", "message": message})
+
+    def update_progress(self, job_id: str, progress: Dict[str, Any]) -> None:
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return
+
+        with job.lock:
+            job.progress = {**job.progress, **progress}
+            job.updated_at = time.time()
+        # No emit_event here: polling reads job.progress directly.
+
+    def get_job_summary(self, job_id: str) -> Dict[str, Any]:
+        job = self.get_job(job_id)
+        with job.lock:
+            prompt = job.active_prompt
+            if prompt is None or prompt.status != "pending":
+                active_prompt = None
+            else:
+                active_prompt = {
+                    "prompt_id": prompt.prompt_id,
+                    "type": prompt.type,
+                    "title": prompt.title,
+                    "message": prompt.message,
+                    "severity": getattr(prompt, "severity", "info") or "info",
+                    "options": prompt.options,
+                    "actions": prompt.actions,
+                }
+
+            return {
+                "job_id": job.job_id,
+                "mode": job.mode,
+                "state": job.state,
+                "progress": job.progress,
+                "error": job.error,
+                "active_prompt": active_prompt,
+                "events_count": len(job.events),
+            }
+
+    def get_job_events(self, job_id: str, *, limit: int = 200) -> List[Dict[str, Any]]:
+        job = self.get_job(job_id)
+        with job.lock:
+            return list(job.events[-limit:])
 
