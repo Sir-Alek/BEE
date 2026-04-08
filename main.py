@@ -73,11 +73,12 @@ except Exception:
     # Tkinter is optional in --web/--web-only mode and may be missing in some packaged environments.
     TK_AVAILABLE = False
 
-if not TK_AVAILABLE and ("--web-only" not in sys.argv) and ("--web" not in sys.argv) and (os.environ.get("BEE_WEB_UI", "").lower() not in ("1", "true", "yes")):
-    raise RuntimeError(
-        "Tkinter no disponible. Ejecuta con --web-only/--web para usar la UI web, "
-        "o instala Tkinter para usar la UI de escritorio."
-    )
+USE_TK_ONLY = ("--tk" in sys.argv) or (os.environ.get("BEE_UI", "").lower() in ("tk", "tkinter"))
+USE_WEB_ONLY = ("--web-only" in sys.argv) or (os.environ.get("BEE_UI", "").lower() in ("web-only", "webonly"))
+USE_WEB = (not USE_TK_ONLY)  # default to web unless explicitly forcing Tk
+
+if USE_TK_ONLY and not TK_AVAILABLE:
+    raise RuntimeError("Tkinter no disponible. Instala Tkinter o ejecuta sin --tk para usar la UI web.")
 
 import threading
 import socket
@@ -115,8 +116,10 @@ class main:
      
     def __init__(self, master):
         self.master = master
-        self.web_only = "--web-only" in sys.argv
-        self.web_mode = self.web_only or ("--web" in sys.argv) or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
+        # Tk-mode class: Web UI can still be used for flows when enabled.
+        # Default UI selection is handled in __main__ below.
+        self.web_only = USE_WEB_ONLY
+        self.web_mode = self.web_only or ("--web" in sys.argv) or USE_WEB or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
         if not TK_AVAILABLE:
             raise RuntimeError("Tkinter no disponible. Ejecuta en --web-only/--web para usar la UI web.")
 
@@ -991,30 +994,23 @@ if __name__ == "__main__":
    </Alek>
 🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝     
           """)    
-    if TK_AVAILABLE:
-        root = tk.Tk()
-        app = main(root)
-        root.mainloop()
-    else:
-        # Web-only headless bootstrap (no Tk).
-        if ("--web-only" not in sys.argv) and ("--web" not in sys.argv) and (os.environ.get("BEE_WEB_UI", "").lower() not in ("1", "true", "yes")):
-            raise RuntimeError("Tkinter no disponible. Usa --web-only/--web.")
-
-        if create_fastapi_app is None:
+    def _run_web_ui() -> None:
+        """
+        Run the web UI (FastAPI + Uvicorn) without requiring Tkinter.
+        Default mode unless --tk is provided.
+        """
+        create_app_fn = create_fastapi_app
+        if create_app_fn is None:
             # Try a lazy import path (PyInstaller sometimes misses conditional imports).
-            try:
-                from webui.fastapi_app import create_app as create_fastapi_app  # type: ignore
-            except Exception as e:
-                raise RuntimeError(f"Web UI no disponible (faltan dependencias FastAPI/uvicorn). Detalle: {e}")
+            from webui.fastapi_app import create_app as create_app_fn  # type: ignore
 
         from webui.job_manager import JobManager
-        jm = JobManager()
-        app = create_fastapi_app(job_manager=jm)
 
-        try:
-            import uvicorn  # type: ignore
-        except Exception as e:
-            raise RuntimeError(f"No se pudo importar uvicorn en modo web-only. Detalle: {e}")
+        jm = JobManager()
+        app = create_app_fn(job_manager=jm)
+
+        import uvicorn  # type: ignore
+
         host = "127.0.0.1"
         port = 5173
         # Find a free port (best-effort)
@@ -1036,3 +1032,30 @@ if __name__ == "__main__":
             pass
 
         uvicorn.run(app, host=host, port=port, log_level="info")
+
+    if USE_WEB:
+        # Default path: run web UI. If it fails and Tk is available and user didn't request web-only,
+        # fall back to Tk UI so the user is not blocked.
+        try:
+            _run_web_ui()
+        except Exception as e:
+            if TK_AVAILABLE and not USE_WEB_ONLY:
+                root = tk.Tk()
+                app = main(root)
+                try:
+                    messagebox.showwarning(
+                        "Web UI no disponible",
+                        f"No se pudo iniciar la UI web.\nSe activó fallback a Tkinter.\n\nDetalle:\n{str(e)}",
+                    )
+                except Exception:
+                    pass
+                root.mainloop()
+            else:
+                raise
+    else:
+        # Explicit Tk-only mode.
+        if not TK_AVAILABLE:
+            raise RuntimeError("Tkinter no disponible. Instala Tkinter o ejecuta sin --tk para usar la UI web.")
+        root = tk.Tk()
+        app = main(root)
+        root.mainloop()
