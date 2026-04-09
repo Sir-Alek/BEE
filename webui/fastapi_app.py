@@ -260,11 +260,16 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         except Exception:
                             recorder_obj = None
 
-                    jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
+                    jm.update_progress(job_id, {"stage": "Preparando runtime de grabación"})
 
                     # --- Ejecutar recorder.js
                     if is_frozen():
                         from core.node_wrapper import node_wrapper
+                        try:
+                            if getattr(node_wrapper, "was_runtime_prepared_now", False):
+                                jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (primera vez)"})
+                        except Exception:
+                            pass
 
                         result = node_wrapper.run_obfuscated_js(
                             "recorder.js",
@@ -275,6 +280,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     else:
                         from core.recorder_focus import run_subprocess_with_automation_focus
 
+                        jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         recorder_js_path = os.path.join(base_dir, "core", "recorder.js")
                         result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, req.url],

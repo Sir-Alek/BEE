@@ -758,12 +758,17 @@ class main:
                             print(f"Error iniciando grabación: {e}")
                             recorder_obj = None
 
-                    jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
-
                     # Ejecutar Puppeteer/Node recorder.js
                     if IS_FROZEN:
                         from core.node_wrapper import node_wrapper
 
+                        jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (solo la primera vez)"})
+                        try:
+                            node_wrapper._ensure_runtime_prepared()
+                        except Exception:
+                            pass
+
+                        jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         result = node_wrapper.run_obfuscated_js(
                             "recorder.js",
                             [output_file, url],
@@ -771,6 +776,7 @@ class main:
                             focus_automation_browser=True,
                         )
                     else:
+                        jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         from core.recorder_focus import run_subprocess_with_automation_focus
 
                         recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
