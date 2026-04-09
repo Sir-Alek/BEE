@@ -75,6 +75,21 @@ export default function App() {
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
+  // Close home tab = close whole app (backend).
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    const fireExit = () => {
+      try {
+        const data = new Blob([JSON.stringify({ reason: "home_closed" })], { type: "application/json" });
+        navigator.sendBeacon("/api/app/exit", data);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("beforeunload", fireExit);
+    return () => window.removeEventListener("beforeunload", fireExit);
+  }, [isHomeSurface]);
+
   const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
     setHomeHint(null);

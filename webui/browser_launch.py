@@ -64,7 +64,7 @@ def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
         try:
             # Dedicated top-level window (works for Chromium-based browsers).
             subprocess.Popen(
-                [exe, "--new-window", url],
+                [exe, "--new-window", "--start-maximized", "--window-size=1920,1080", url],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
@@ -100,7 +100,7 @@ def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> 
             continue
         try:
             subprocess.Popen(
-                [exe, *argv],
+                [exe, "--new-window", "--start-maximized", "--window-size=1920,1080", *argv],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
