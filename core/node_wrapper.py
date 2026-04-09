@@ -4,6 +4,7 @@ import subprocess
 import sys
 import shutil
 import time
+import uuid
 
 class NodeJSWrapper:
     def __init__(self):
@@ -113,13 +114,13 @@ class NodeJSWrapper:
             runtime_dir = self._ensure_runtime_prepared()
             node_modules_dir = os.path.join(runtime_dir, "node", "node_modules")
 
-            # Escribir el JS dentro del runtime para que Node resuelva require() desde ahí
-            # (NODE_PATH puede ignorarse/filtrarse en algunas instalaciones corporativas).
-            js_run_dir = os.path.join(runtime_dir, "_js")
-            os.makedirs(js_run_dir, exist_ok=True)
-            temp_file = os.path.join(js_run_dir, js_file_name)
+            # Escribir el JS en la raíz del runtime para que `__dirname` sea `runtime_dir`.
+            # `core/recorder.js` usa `path.join(__dirname, 'node', 'node_modules', ...)`, por lo que
+            # si lo ejecutamos desde un subdirectorio (p.ej. runtime_dir/_js) fallará.
+            temp_file = os.path.join(runtime_dir, f"_bee_{uuid.uuid4().hex}_{js_file_name}")
             with open(temp_file, "wb") as f:
                 f.write(content)
+            self.temp_files.append(temp_file)
             
             # Obtener ruta de Node.js
             node_path = self.get_node_path()
