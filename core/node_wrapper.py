@@ -102,11 +102,11 @@ class NodeJSWrapper:
             runtime_dir = self._ensure_runtime_prepared()
             node_modules_dir = os.path.join(runtime_dir, "node", "node_modules")
 
-            # Crear directorio temporal SOLO para el JS (pequeño).
-            temp_dir = tempfile.mkdtemp(prefix="bee_js_")
-            self.temp_dirs.append(temp_dir)
-
-            temp_file = os.path.join(temp_dir, js_file_name)
+            # Escribir el JS dentro del runtime para que Node resuelva require() desde ahí
+            # (NODE_PATH puede ignorarse/filtrarse en algunas instalaciones corporativas).
+            js_run_dir = os.path.join(runtime_dir, "_js")
+            os.makedirs(js_run_dir, exist_ok=True)
+            temp_file = os.path.join(js_run_dir, js_file_name)
             with open(temp_file, "wb") as f:
                 f.write(content)
             
@@ -120,6 +120,10 @@ class NodeJSWrapper:
             if os.path.isdir(node_modules_dir):
                 prev_node_path = env.get("NODE_PATH", "")
                 env["NODE_PATH"] = node_modules_dir + (os.pathsep + prev_node_path if prev_node_path else "")
+                # Some setups require explicit NODE_PATH enabling.
+                env.setdefault("NODE_OPTIONS", "")
+                if "--preserve-symlinks" not in env["NODE_OPTIONS"]:
+                    env["NODE_OPTIONS"] = (env["NODE_OPTIONS"] + " --preserve-symlinks").strip()
             # Also add bundled node folder to PATH (helps in some Windows setups).
             node_bin_dir = os.path.join(runtime_dir, "node")
             if os.path.isdir(node_bin_dir):
