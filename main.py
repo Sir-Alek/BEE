@@ -83,6 +83,7 @@ if USE_TK_ONLY and not TK_AVAILABLE:
 import threading
 import socket
 import webbrowser
+import traceback
 
 try:
     from webui.browser_launch import open_home_and_job_in_browser, open_url_in_new_browser_window
@@ -1034,19 +1035,26 @@ if __name__ == "__main__":
         uvicorn.run(app, host=host, port=port, log_level="info")
 
     if USE_WEB:
-        # Default path: run web UI. If it fails and Tk is available and user didn't request web-only,
-        # fall back to Tk UI so the user is not blocked.
+        # Default path: run web UI.
+        # IMPORTANT: do NOT silently fall back to Tk unless user explicitly requested it.
         try:
             _run_web_ui()
         except Exception as e:
-            if TK_AVAILABLE and not USE_WEB_ONLY:
+            # Always write a crash log (useful when console=False in PyInstaller).
+            try:
+                log_path = os.path.join(os.path.expanduser("~"), "bee_webui_crash.log")
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write("\n\n=== Web UI startup failed ===\n")
+                    f.write(str(e) + "\n")
+                    f.write(traceback.format_exc() + "\n")
+            except Exception:
+                pass
+
+            if USE_TK_ONLY and TK_AVAILABLE:
                 root = tk.Tk()
                 app = main(root)
                 try:
-                    messagebox.showwarning(
-                        "Web UI no disponible",
-                        f"No se pudo iniciar la UI web.\nSe activó fallback a Tkinter.\n\nDetalle:\n{str(e)}",
-                    )
+                    messagebox.showwarning("Web UI no disponible", f"No se pudo iniciar la UI web.\n\nDetalle:\n{str(e)}")
                 except Exception:
                     pass
                 root.mainloop()
