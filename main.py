@@ -1032,7 +1032,29 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY (or may be None),
+        # which can crash Uvicorn's default logging formatter. Provide a safe log_config.
+        try:
+            cfg = uvicorn.Config(
+                app,
+                host=host,
+                port=port,
+                log_level="info",
+                log_config=None,
+                access_log=False,
+            )
+            server = uvicorn.Server(cfg)
+            server.run()
+        except Exception:
+            # Fallback to uvicorn.run with logging disabled.
+            uvicorn.run(
+                app,
+                host=host,
+                port=port,
+                log_level="info",
+                log_config=None,
+                access_log=False,
+            )
 
     if USE_WEB:
         # Default path: run web UI.
