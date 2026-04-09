@@ -8,7 +8,62 @@ class NodeJSWrapper:
     def __init__(self):
         self.temp_files = []
         self.temp_dirs = []
+        self._runtime_dir = None
+        self._runtime_prepared = False
     
+    def _get_runtime_dir(self) -> str:
+        """
+        Runtime dir for executing bundled Node + node_modules.
+        In frozen builds, copying the ~100MB+ node folder per run is very slow,
+        so we prepare a cached runtime directory once and reuse it.
+        """
+        if self._runtime_dir:
+            return self._runtime_dir
+
+        # Prefer a stable per-user cache location.
+        base = (
+            os.environ.get("LOCALAPPDATA")
+            or os.environ.get("APPDATA")
+            or os.path.join(tempfile.gettempdir(), "bee-cache")
+        )
+        d = os.path.join(base, "BEE", "node_runtime")
+        os.makedirs(d, exist_ok=True)
+        self._runtime_dir = d
+        return d
+
+    def _ensure_runtime_prepared(self) -> str:
+        """
+        Ensure the node runtime folder exists and contains `node/` with node.exe and node_modules.
+        Returns the working directory for running JS (the runtime dir).
+        """
+        runtime_dir = self._get_runtime_dir()
+        if self._runtime_prepared:
+            return runtime_dir
+
+        node_src = os.path.join(os.path.dirname(__file__), "node")
+        node_dst = os.path.join(runtime_dir, "node")
+
+        # If already prepared (e.g. previous run), skip heavy copy.
+        if os.path.exists(os.path.join(node_dst, "node.exe")) and os.path.isdir(os.path.join(node_dst, "node_modules")):
+            self._runtime_prepared = True
+            return runtime_dir
+
+        # Fresh prepare (heavy copy once).
+        if os.path.exists(node_src):
+            # Remove partial destination to avoid corrupted runtimes.
+            try:
+                shutil.rmtree(node_dst, ignore_errors=True)
+            except Exception:
+                pass
+            shutil.copytree(node_src, node_dst)
+            print(f"✓ Runtime Node preparado en: {node_dst}")
+        else:
+            # Fallback: will try system node later.
+            print("⚠ No se encontró core/node; se intentará usar Node.js del sistema.")
+
+        self._runtime_prepared = True
+        return runtime_dir
+
     def run_obfuscated_js(
         self,
         js_file_name,
@@ -38,23 +93,17 @@ class NodeJSWrapper:
                         content = f.read()
                 else:
                     raise FileNotFoundError(f"Archivo JavaScript '{js_file_name}' no encontrado")
-            
-            # Crear directorio temporal
-            temp_dir = tempfile.mkdtemp(prefix='bee_')
+
+            # Preparar runtime (caché) para evitar copiar core/node en cada ejecución.
+            runtime_dir = self._ensure_runtime_prepared()
+
+            # Crear directorio temporal SOLO para el JS (pequeño).
+            temp_dir = tempfile.mkdtemp(prefix="bee_js_")
             self.temp_dirs.append(temp_dir)
-            
-            # Escribir el contenido desofuscado en un archivo temporal
+
             temp_file = os.path.join(temp_dir, js_file_name)
-            with open(temp_file, 'wb') as f:
+            with open(temp_file, "wb") as f:
                 f.write(content)
-            
-            # COPIAR TODA la carpeta node completa
-            node_src = os.path.join(os.path.dirname(__file__), 'node')
-            node_dst = os.path.join(temp_dir, 'node')
-            
-            if os.path.exists(node_src):
-                shutil.copytree(node_src, node_dst)
-                print(f"✓ Carpeta node completa copiada a temporal")
             
             # Obtener ruta de Node.js
             node_path = self.get_node_path()
@@ -63,7 +112,8 @@ class NodeJSWrapper:
             env = os.environ.copy()
             
             # Ejecutar el archivo JavaScript con los argumentos
-            print(f"Ejecutando Node.js desde: {temp_dir}")
+            # For frozen/runtime: execute with cwd=runtime_dir so node_modules resolve.
+            print(f"Ejecutando Node.js desde runtime: {runtime_dir}")
             cmd = [node_path, temp_file] + args
             print(f"Comando: {' '.join(cmd)}")
 
@@ -72,7 +122,7 @@ class NodeJSWrapper:
 
                 result = run_subprocess_with_automation_focus(
                     cmd,
-                    cwd=temp_dir,
+                    cwd=runtime_dir,
                     env=env,
                     timeout=subprocess_timeout,
                 )
@@ -83,7 +133,7 @@ class NodeJSWrapper:
                     encoding="utf-8",
                     errors="replace",
                     env=env,
-                    cwd=temp_dir,
+                    cwd=runtime_dir,
                 )
                 if subprocess_timeout is not None:
                     run_kw["timeout"] = subprocess_timeout
@@ -116,6 +166,15 @@ class NodeJSWrapper:
     
     def get_node_path(self):
         """Obtener la ruta de node.exe"""
+        # Prefer cached runtime node.exe when available
+        try:
+            runtime_dir = self._ensure_runtime_prepared()
+            cached_node = os.path.join(runtime_dir, "node", "node.exe")
+            if os.path.exists(cached_node):
+                return cached_node
+        except Exception:
+            pass
+
         core_node_path = os.path.join(os.path.dirname(__file__), 'node', 'node.exe')
         if os.path.exists(core_node_path):
             return core_node_path
