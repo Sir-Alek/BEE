@@ -46,6 +46,17 @@ class NodeJSWrapper:
 
         # If already prepared (e.g. previous run), skip heavy copy.
         if os.path.exists(os.path.join(node_dst, "node.exe")) and os.path.isdir(os.path.join(node_dst, "node_modules")):
+            # Sanity-check: puppeteer must exist; otherwise runtime is incomplete/corrupted.
+            if os.path.exists(os.path.join(node_dst, "node_modules", "puppeteer")) or os.path.exists(
+                os.path.join(node_dst, "node_modules", "puppeteer-core")
+            ):
+                self._runtime_prepared = True
+                return runtime_dir
+            # Corrupted/incomplete runtime cache -> rebuild.
+            try:
+                shutil.rmtree(node_dst, ignore_errors=True)
+            except Exception:
+                pass
             self._runtime_prepared = True
             return runtime_dir
 

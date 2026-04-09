@@ -49,6 +49,20 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     base_dir = _repo_root()
     frontend_dist = os.path.join(base_dir, "frontend", "dist")
     logo_path = os.path.join(base_dir, "resources", "logo_bee_png_transparente.png")
+    exit_flag = {"value": False}
+
+    @app.post("/api/app/exit")
+    def app_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """
+        Request the local app to exit (used when the home tab is closed).
+        main.py polls /api/app/should-exit and stops Uvicorn.
+        """
+        exit_flag["value"] = True
+        return {"ok": True}
+
+    @app.get("/api/app/should-exit")
+    def app_should_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        return {"exit": bool(exit_flag["value"])}
 
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
