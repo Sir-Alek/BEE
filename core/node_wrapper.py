@@ -100,6 +100,7 @@ class NodeJSWrapper:
 
             # Preparar runtime (caché) para evitar copiar core/node en cada ejecución.
             runtime_dir = self._ensure_runtime_prepared()
+            node_modules_dir = os.path.join(runtime_dir, "node", "node_modules")
 
             # Crear directorio temporal SOLO para el JS (pequeño).
             temp_dir = tempfile.mkdtemp(prefix="bee_js_")
@@ -114,6 +115,16 @@ class NodeJSWrapper:
             
             # Configurar environment
             env = os.environ.copy()
+            # Ensure Node can resolve puppeteer from the cached runtime.
+            # Node's module resolution is based on the script location, not cwd; use NODE_PATH.
+            if os.path.isdir(node_modules_dir):
+                prev_node_path = env.get("NODE_PATH", "")
+                env["NODE_PATH"] = node_modules_dir + (os.pathsep + prev_node_path if prev_node_path else "")
+            # Also add bundled node folder to PATH (helps in some Windows setups).
+            node_bin_dir = os.path.join(runtime_dir, "node")
+            if os.path.isdir(node_bin_dir):
+                prev_path = env.get("PATH", "")
+                env["PATH"] = node_bin_dir + (os.pathsep + prev_path if prev_path else "")
             
             # Ejecutar el archivo JavaScript con los argumentos
             # For frozen/runtime: execute with cwd=runtime_dir so node_modules resolve.
