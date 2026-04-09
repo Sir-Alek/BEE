@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 import sys
 import shutil
+import time
 
 class NodeJSWrapper:
     def __init__(self):
@@ -55,8 +56,11 @@ class NodeJSWrapper:
                 shutil.rmtree(node_dst, ignore_errors=True)
             except Exception:
                 pass
+            start = time.perf_counter()
             shutil.copytree(node_src, node_dst)
+            elapsed = time.perf_counter() - start
             print(f"✓ Runtime Node preparado en: {node_dst}")
+            print(f"⏱ Preparación runtime Node: {elapsed:.2f}s")
         else:
             # Fallback: will try system node later.
             print("⚠ No se encontró core/node; se intentará usar Node.js del sistema.")
