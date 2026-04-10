@@ -15,3 +15,6 @@ logo-servicios-financieros.jpg
 
 # Node / React
 node_modules/
+
+# Modelos de IA (Gemma / GGUF): no versionar; colocar el archivo localmente antes del build PyInstaller
+resources/models/**/*.gguf
