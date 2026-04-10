@@ -80,6 +80,7 @@ bee/
 └── resources/          # Assets de la aplicación
     ├── logo_bee_png_transparente.png
     ├── behave/         # Plantillas y recursos para Behave
+    ├── models/gemma/   # Modelo Gemma 4 en GGUF (opcional; ver sección «Modelo de IA»)
     └── step_by_step/   # Plantillas y recursos para step-by-step
 
 ## Requisitos
@@ -101,6 +102,13 @@ bee/
 ● El sistema de step-by-step incluye generación de reportes PDF con evidencias
 ● Se recomienda revisar los selectores generados para asegurar su robustez
 ● Para problemas de grabación, ejecutar install_puppeteer.bat para reinstalar Puppeteer
+
+## Modelo de IA (Gemma 4, GGUF)
+
+● Ruta esperada en el árbol del proyecto: `resources/models/gemma/gemma-4-E4B-it-Q4_K_M.gguf`
+● Los archivos `*.gguf` bajo `resources/models/` están en `.gitignore` y no se suben al repositorio.
+● Para desarrollo o para generar el `.exe` con el modelo incluido, copia manualmente el GGUF a esa ruta **antes** de ejecutar PyInstaller (`BEE.spec` ya empaqueta la carpeta `resources/` completa; si el archivo existe en el momento del build, quedará en la distribución).
+● Si el archivo no está presente, las funciones que dependan del modelo deberán operar en modo heurístico o mostrar un aviso claro (según la implementación de «Activar IA»).
 
 ## Interfaz web (FastAPI + React)
 
