@@ -161,17 +161,20 @@ def suggest_bdd_steps_from_actions(
 ) -> Optional[List[Tuple[str, str]]]:
     lines_in = [{"type": t, "description": d} for t, d in actions]
     prompt = (
-        "Given this ordered list of UI actions from a web recording, produce a Gherkin scenario body "
-        "(Spanish descriptions like the input). Rules:\n"
-        "- Use at most ONE line starting with And, and only immediately after a When line if needed.\n"
-        "- Do not use more than one And in the whole scenario.\n"
-        "- Prefer grouping multiple clicks into one When separated by commas.\n"
-        "- Start with Given for navigation if present, then When, optional single And, then Then.\n"
-        "Output JSON format: {\"steps\": [{\"keyword\": \"Given|When|Then|And\", \"text\": \"...\"}]}\n"
-        f"Feature base name: {base_name}\n"
-        f"Actions JSON: {json.dumps(lines_in, ensure_ascii=False)}\n"
+        "Eres analista de negocio para pruebas BDD en español. Tienes acciones técnicas grabadas (clics, textos).\n"
+        "Escribe UN escenario con EXACTAMENTE esta forma (sin pasos de más):\n"
+        "- Como mucho: Given (0 o 1), When (1), And (0 o 1), Then (1). NUNCA dos When ni dos Then.\n"
+        "- El And solo si hay dos fases claras (p. ej. navegación vs. datos); si no, omítelo.\n"
+        "- Lenguaje de negocio: qué hace el usuario y qué resultado espera. "
+        "PROHIBIDO citar nombres técnicos de selectores, ids generados o cadenas tipo click_nav_....\n"
+        "- Given: solo contexto de acceso (URL o portal) si aplica.\n"
+        "- When / And: resumen del flujo en frases naturales.\n"
+        "- Then: resultado verificable para el usuario (no \"completó el flujo\" genérico si puedes ser más concreto).\n"
+        'Salida JSON: {"steps":[{"keyword":"Given|When|And|Then","text":"..."}]}\n'
+        f"Nombre feature: {base_name}\n"
+        f"Acciones (referencia, no copiar literal): {json.dumps(lines_in, ensure_ascii=False)}\n"
     )
-    data = run_llama_json_prompt(prompt, gguf_path=gguf_path)
+    data = run_llama_json_prompt(prompt, gguf_path=gguf_path, max_tokens=768)
     if not data or "steps" not in data:
         return None
     out: List[Tuple[str, str]] = []
@@ -185,17 +188,25 @@ def suggest_bdd_steps_from_actions(
         out.append((kw, txt))
     if not out:
         return None
-    and_seen = 0
-    when_seen = False
-    for kw, _ in out:
-        if kw == "when":
-            when_seen = True
-        elif kw == "and":
-            if not when_seen:
-                return None
-            and_seen += 1
-            if and_seen > 1:
-                return None
+    # Estructura estricta: ≤1 Given, 1 When, ≤1 And, 1 Then; orden Given→When→And?→Then
+    given_c = sum(1 for k, _ in out if k == "given")
+    when_c = sum(1 for k, _ in out if k == "when")
+    and_c = sum(1 for k, _ in out if k == "and")
+    then_c = sum(1 for k, _ in out if k == "then")
+    if when_c != 1 or then_c != 1 or given_c > 1 or and_c > 1:
+        return None
+    order_ok = ["given", "when", "and", "then"]
+    seen = [k for k, _ in out]
+    # comprimir orden esperado sin claves faltantes
+    expected: List[str] = []
+    if "given" in seen:
+        expected.append("given")
+    expected.extend(["when"])
+    if "and" in seen:
+        expected.append("and")
+    expected.append("then")
+    if seen != expected:
+        return None
     return out
 
 

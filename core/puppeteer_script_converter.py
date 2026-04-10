@@ -3,6 +3,7 @@ import shutil
 import re
 import time
 import json
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Tuple
 
 from ui.interfaces import IUI
@@ -428,85 +429,158 @@ class PuppeteerToBehaveConverter:
             except Exception as e:
                 print(f"BEE IA BDD: fallback heurístico: {e}")
 
-        # Construir feature (heurístico)
-        feature_lines = [
+        return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+
+    def _bdd_parse_actions(self, unique_actions: List[Tuple[str, str]]) -> Dict[str, Any]:
+        """Extrae URL, tokens de clic, textos de relleno y selecciones desde descripciones heurísticas."""
+        start_url: Optional[str] = None
+        click_tokens: List[str] = []
+        fills: List[str] = []
+        selects: List[str] = []
+
+        for action_type, description in unique_actions:
+            if action_type == "given":
+                m = re.search(r'"([^"]+)"', description)
+                if m:
+                    start_url = m.group(1)
+            elif action_type == "click":
+                m = re.search(r'"([^"]+)"', description)
+                if m:
+                    click_tokens.append(m.group(1))
+            elif action_type == "fill":
+                m = re.search(
+                    r'Ingresar\s+"[^"]+"\s+con\s+"((?:[^"\\]|\\.)*)"',
+                    description,
+                )
+                if m:
+                    fills.append(m.group(1).replace('\\"', '"'))
+            elif action_type == "select":
+                m = re.search(r'Seleccionar\s+"((?:[^"\\]|\\.)*)"\s+en', description)
+                if m:
+                    selects.append(m.group(1).replace('\\"', '"'))
+
+        blob = " ".join(click_tokens).lower()
+        return {
+            "start_url": start_url,
+            "click_tokens": click_tokens,
+            "fills": fills,
+            "selects": selects,
+            "blob": blob,
+            "n_clicks": len(click_tokens),
+        }
+
+    def _bdd_business_when_and_text(self, ctx: Dict[str, Any]) -> Tuple[str, Optional[str], str]:
+        """
+        Un solo When, opcional And, un Then — textos en lenguaje de negocio (sin nombres técnicos).
+        """
+        blob = ctx["blob"]
+        fills = ctx["fills"]
+        selects = ctx["selects"]
+        n_clicks = ctx["n_clicks"]
+
+        nav_bits: List[str] = []
+        if "prestamo" in blob or "préstamo" in blob:
+            nav_bits.append("el flujo de préstamos")
+        if "personal" in blob and "prestamo" in blob:
+            nav_bits.append("el producto de crédito personal")
+        if "modal" in blob or "aviso" in blob or "banner" in blob or "cookie" in blob:
+            nav_bits.append("gestionar avisos o modales iniciales")
+        if "nav_" in blob or "menu" in blob or "accordion" in blob:
+            nav_bits.append("el menú y las secciones del sitio")
+
+        if nav_bits:
+            nav_phrase = " y ".join(dict.fromkeys(nav_bits))  # dedupe preserve order
+            when_nav = (
+                f"el usuario navega por el sitio para acceder a {nav_phrase}"
+                if len(nav_bits) <= 2
+                else "el usuario navega por el sitio hasta el flujo de producto deseado"
+            )
+        else:
+            when_nav = (
+                "el usuario interactúa con la interfaz para avanzar en el proceso"
+                if n_clicks > 0
+                else "el usuario utiliza la aplicación"
+            )
+
+        has_data = bool(fills or selects)
+        if has_data:
+            parts_data = []
+            if fills:
+                parts_data.append("el importe o cantidad indicados")
+            if selects:
+                parts_data.append("el plazo u opción seleccionada")
+            data_phrase = " y ".join(parts_data)
+            when_body = (
+                f"{when_nav.capitalize()}, completa {data_phrase} y confirma para continuar en el flujo."
+            )
+        else:
+            when_body = f"{when_nav.capitalize()} hasta completar el paso previsto."
+
+        and_body: Optional[str] = None
+        if n_clicks >= 5 and has_data:
+            and_body = (
+                "completa los datos del formulario y confirma la solicitud cuando el sistema lo solicite"
+            )
+        elif n_clicks >= 8 and not has_data:
+            and_body = (
+                "confirma la acción en las pantallas intermedias hasta finalizar el recorrido"
+            )
+
+        then_body = (
+            "el sistema debe mostrar la confirmación o el siguiente paso del proceso "
+            "sin errores de validación"
+        )
+
+        return when_body, and_body, then_body
+
+    def _generate_bdd_feature_heuristic_business(
+        self, unique_actions: List[Tuple[str, str]], base_name: str
+    ) -> str:
+        """Given / When / (And) / Then — máximo un And; texto orientado a negocio."""
+        ctx = self._bdd_parse_actions(unique_actions)
+        given_line = ""
+        if ctx["start_url"]:
+            try:
+                netloc = urlparse(ctx["start_url"]).netloc or ctx["start_url"]
+                given_line = f'    Given el usuario ingresa al sitio "{netloc}"\n'
+            except Exception:
+                given_line = '    Given el usuario accede al sitio web bajo prueba\n'
+
+        when_body, and_body, then_body = self._bdd_business_when_and_text(ctx)
+
+        lines = [
             f"Feature: {base_name}\n",
             "\n",
-            "  Scenario: Flujo grabado\n"
+            "  Scenario: Flujo de negocio grabado\n",
+            given_line,
+            f"    When {when_body}\n",
         ]
-        
-        has_given = False
-        has_when = False
-        has_then = False
-        click_buffer = []
-        and_count_after_when = 0  # máximo 1 And después del primer When (regla BEE)
-        
-        for action_type, description in unique_actions:
-            if action_type == "given" and not has_given:
-                feature_lines.append(f"    Given {description}\n")
-                has_given = True
-            
-            elif action_type == "click":
-                click_buffer.append(description)
-            
-            elif action_type in ["fill", "select"]:
-                if click_buffer:
-                    if not has_when:
-                        feature_lines.append(f"    When {', '.join(click_buffer)}\n")
-                        has_when = True
-                    elif and_count_after_when < 1:
-                        feature_lines.append(f"    And {', '.join(click_buffer)}\n")
-                        and_count_after_when += 1
-                    click_buffer = []
-                
-                if action_type == "fill":
-                    if has_when and and_count_after_when < 1:
-                        feature_lines.append(f"    And {description}\n")
-                        and_count_after_when += 1
-                
-                elif action_type == "select":
-                    if not has_then:
-                        feature_lines.append(f"    Then {description}\n")
-                        has_then = True
-        
-        if click_buffer:
-            if not has_when:
-                feature_lines.append(f"    When {', '.join(click_buffer)}\n")
-                has_when = True
-            elif and_count_after_when < 1:
-                feature_lines.append(f"    And {', '.join(click_buffer)}\n")
-                and_count_after_when += 1
-        
-        feature_lines.append("    Then Verificar que se completó el flujo\n")
-        
-        return ''.join(feature_lines)
+        if and_body:
+            lines.append(f"    And {and_body}\n")
+        lines.append(f"    Then {then_body}\n")
+        return "".join(lines)
 
     def _feature_text_from_ai_steps(self, base_name: str, ai_steps: List[Tuple[str, str]]) -> Optional[str]:
-        """Convierte pasos IA (keyword, texto) a .feature; valida regla máx. un And tras When."""
+        """Convierte pasos IA a .feature; exige exactamente 1 When y 1 Then, ≤1 Given, ≤1 And, orden Gherkin."""
         if not ai_steps:
             return None
-        order = ["given", "when", "and", "then"]
-        idx = {k: i for i, k in enumerate(order)}
-        last_i = -1
-        when_seen = False
-        and_count = 0
-        for kw, _txt in ai_steps:
-            kw = kw.lower()
-            if kw not in idx:
-                return None
-            cur = idx[kw]
-            if cur < last_i:
-                return None
-            last_i = cur
-            if kw == "when":
-                when_seen = True
-            if kw == "and":
-                if not when_seen:
-                    return None
-                and_count += 1
-                if and_count > 1:
-                    return None
-        lines = [f"Feature: {base_name}\n", "\n", "  Scenario: Flujo grabado\n"]
+        given_c = sum(1 for k, _ in ai_steps if k.lower() == "given")
+        when_c = sum(1 for k, _ in ai_steps if k.lower() == "when")
+        and_c = sum(1 for k, _ in ai_steps if k.lower() == "and")
+        then_c = sum(1 for k, _ in ai_steps if k.lower() == "then")
+        if when_c != 1 or then_c != 1 or given_c > 1 or and_c > 1:
+            return None
+        seen = [k.lower() for k, _ in ai_steps]
+        expected: List[str] = []
+        if "given" in seen:
+            expected.append("given")
+        expected.extend(["when"])
+        if "and" in seen:
+            expected.append("and")
+        expected.append("then")
+        if seen != expected:
+            return None
+        lines = [f"Feature: {base_name}\n", "\n", "  Scenario: Flujo de negocio\n"]
         kw_map = {"given": "Given", "when": "When", "then": "Then", "and": "And"}
         for kw, txt in ai_steps:
             lines.append(f"    {kw_map.get(kw.lower(), 'When')} {txt}\n")
