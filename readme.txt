@@ -121,6 +121,15 @@ bee/
 ● El aviso azul en inicio desaparece cuando termina el flujo en la otra pestaña (BroadcastChannel) o a los 5 minutos.
 ● En la pestaña de resultado, «Volver al inicio» enfoca la pestaña de inicio y cierra la de trabajo (evita duplicar inicio).
 
+## Protección / build de release (Cython + JS, sin advanced_protect)
+
+● El antiguo `advanced_protect.py` (zlib+base64 → `*.enc`) está **deprecado**. El pipeline unificado es `scripts/build_release.py`.
+● **Cython (opcional):** `pip install cython setuptools` y `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los conversores listados en `setup_cython.py`.
+● **JavaScript:** `javascript-obfuscator` vía `npx` produce `core/recorder.obfuscated.js`; en runtime `get_core_file("recorder.js")` carga ese archivo si existe.
+● **PyInstaller:** `python scripts/build_release.py` (o con `--cython`) ejecuta el ofuscador JS y `PyInstaller BEE.spec`. Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
+● **Legacy:** si aún existen `core/*.enc`, el cargador en `core/__init__.py` puede leerlos como respaldo.
+● **Próximo paso:** validación de **kill switch offline** (lista firmada local) en una iteración posterior.
+
 ## Troubleshooting
 
 ● Si encuentras errores de "MODULE_NOT_FOUND" con Puppeteer:
