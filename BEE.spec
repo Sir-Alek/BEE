@@ -9,7 +9,8 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
 
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
-cython_binaries = [(p, 'core') for p in glob.glob(os.path.join('core', '*.pyd'))]
+_cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
+cython_binaries = [(p, 'core') for p in _cython_globs]
 
 # JS ofuscado (tras pipeline build_release)
 js_obf = []
