@@ -3,17 +3,20 @@ import shutil
 import re
 import time
 import json
+from typing import Any, Dict, List, Optional, Tuple
 
 from ui.interfaces import IUI
 
 
 class PuppeteerToBehaveConverter:
     
-    def __init__(self, base_dir, ui: IUI):
+    def __init__(self, base_dir, ui: IUI, use_ai: bool = False):
         self.base_dir = base_dir
         self.projects_dir = os.path.join(base_dir, "behave", "proyectos")
         self.selected_actions = []
         self.ui = ui
+        self.use_ai = use_ai
+        self._recording_meta: Optional[Dict[str, Any]] = None
 
     def _create_project_structure(self):
         """Crea la estructura de directorios necesaria para Behave"""
@@ -210,6 +213,7 @@ class PuppeteerToBehaveConverter:
     def _process_conversion(self, js_file, content, project_path):
         """Procesa la conversión con el contenido filtrado dentro del proyecto seleccionado"""
         try:
+            self._recording_meta = self._load_recording_meta(js_file)
             # 1. Copiar archivos de soporte primero
             self._copy_support_files(project_path)
             
@@ -409,7 +413,22 @@ class PuppeteerToBehaveConverter:
                 unique_actions.append(action)
                 last_action = action
         
-        # Construir feature
+        if self.use_ai:
+            try:
+                from core import gemma_inference
+
+                if gemma_inference.is_ai_runtime_configured():
+                    ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
+                        unique_actions, base_name=base_name
+                    )
+                    if ai_steps:
+                        rendered = self._feature_text_from_ai_steps(base_name, ai_steps)
+                        if rendered:
+                            return rendered
+            except Exception as e:
+                print(f"BEE IA BDD: fallback heurístico: {e}")
+
+        # Construir feature (heurístico)
         feature_lines = [
             f"Feature: {base_name}\n",
             "\n",
@@ -420,8 +439,7 @@ class PuppeteerToBehaveConverter:
         has_when = False
         has_then = False
         click_buffer = []
-        and_count_after_when = 0
-        and_count_after_then = 0
+        and_count_after_when = 0  # máximo 1 And después del primer When (regla BEE)
         
         for action_type, description in unique_actions:
             if action_type == "given" and not has_given:
@@ -436,13 +454,13 @@ class PuppeteerToBehaveConverter:
                     if not has_when:
                         feature_lines.append(f"    When {', '.join(click_buffer)}\n")
                         has_when = True
-                    elif and_count_after_when < 2:
+                    elif and_count_after_when < 1:
                         feature_lines.append(f"    And {', '.join(click_buffer)}\n")
                         and_count_after_when += 1
                     click_buffer = []
                 
                 if action_type == "fill":
-                    if has_when and and_count_after_when < 2:
+                    if has_when and and_count_after_when < 1:
                         feature_lines.append(f"    And {description}\n")
                         and_count_after_when += 1
                 
@@ -455,18 +473,87 @@ class PuppeteerToBehaveConverter:
             if not has_when:
                 feature_lines.append(f"    When {', '.join(click_buffer)}\n")
                 has_when = True
-            elif and_count_after_when < 2:
+            elif and_count_after_when < 1:
                 feature_lines.append(f"    And {', '.join(click_buffer)}\n")
                 and_count_after_when += 1
         
-        # Agregar verificación final según reglas
-        if has_then:
-            if and_count_after_then < 2:
-                feature_lines.append("    And Verificar que se completó el flujo\n")
-        else:
-            feature_lines.append("    Then Verificar que se completó el flujo\n")
+        feature_lines.append("    Then Verificar que se completó el flujo\n")
         
         return ''.join(feature_lines)
+
+    def _feature_text_from_ai_steps(self, base_name: str, ai_steps: List[Tuple[str, str]]) -> Optional[str]:
+        """Convierte pasos IA (keyword, texto) a .feature; valida regla máx. un And tras When."""
+        if not ai_steps:
+            return None
+        order = ["given", "when", "and", "then"]
+        idx = {k: i for i, k in enumerate(order)}
+        last_i = -1
+        when_seen = False
+        and_count = 0
+        for kw, _txt in ai_steps:
+            kw = kw.lower()
+            if kw not in idx:
+                return None
+            cur = idx[kw]
+            if cur < last_i:
+                return None
+            last_i = cur
+            if kw == "when":
+                when_seen = True
+            if kw == "and":
+                if not when_seen:
+                    return None
+                and_count += 1
+                if and_count > 1:
+                    return None
+        lines = [f"Feature: {base_name}\n", "\n", "  Scenario: Flujo grabado\n"]
+        kw_map = {"given": "Given", "when": "When", "then": "Then", "and": "And"}
+        for kw, txt in ai_steps:
+            lines.append(f"    {kw_map.get(kw.lower(), 'When')} {txt}\n")
+        return "".join(lines)
+
+    def _load_recording_meta(self, js_file: str) -> Optional[Dict[str, Any]]:
+        meta_path = re.sub(r"\.js$", "", js_file, flags=re.I) + "_bee_meta.json"
+        if not os.path.isfile(meta_path):
+            return None
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _preferred_selector_for_locator(self, selector: str) -> str:
+        """Si hay metadatos de grabación y IA activa, puede preferir CSS o xpath."""
+        if not self.use_ai or not self._recording_meta:
+            return selector
+        actions = self._recording_meta.get("actions") if isinstance(self._recording_meta, dict) else None
+        if not isinstance(actions, list):
+            return selector
+        for rec in actions:
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("selector") != selector:
+                continue
+            xp = (rec.get("xpath") or "").strip()
+            if not xp:
+                return selector
+            try:
+                from core import gemma_inference
+
+                if not gemma_inference.is_ai_runtime_configured():
+                    return selector
+                pref = gemma_inference.suggest_preferred_locator(
+                    selector=selector,
+                    xpath=xp,
+                    tag=str(rec.get("tag") or ""),
+                    element_id=str(rec.get("id") or ""),
+                )
+                if pref:
+                    return pref
+            except Exception:
+                pass
+            return selector
+        return selector
 
     def _group_similar_actions(self, actions):
         """Agrupa acciones similares para crear steps más lógicos"""
@@ -1120,9 +1207,10 @@ class {class_name}:
         for selector in all_selectors:
             if not selector:
                 continue
-                
+
+            use_sel = self._preferred_selector_for_locator(selector)
             name = self._generate_element_name(selector)
-            xpath = self._selector_to_xpath(selector)
+            xpath = self._selector_to_xpath(use_sel)
             
             # Determinar tipo de elemento
             if any(f"page.type('{selector}'" in line or 

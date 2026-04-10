@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getJob, sendPromptResponse, startConvertJob } from "./api";
+import { getAiStatus, getJob, sendPromptResponse, startConvertJob } from "./api";
 import type { ActivePrompt } from "./types";
 
 type JobStatus = {
@@ -72,8 +72,37 @@ export default function App() {
   /** Label parsed from ?mode= on job workspace tabs */
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [homeHint, setHomeHint] = useState<string | null>(null);
+  /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
+  const [useAi, setUseAi] = useState(false);
+  const [aiStatusLine, setAiStatusLine] = useState<string | null>(null);
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const s = await getAiStatus();
+        if (!alive) return;
+        const m = s.model;
+        const hasModel = m?.exists && (m.size_bytes ?? 0) > 0;
+        const hasCli = s.llama_cli_configured || s.llama_cli_on_path;
+        if (hasModel && hasCli) {
+          setAiStatusLine("IA local: modelo Gemma listo; configure BEE_LLAMA_CLI si no está en PATH.");
+        } else if (hasModel && !hasCli) {
+          setAiStatusLine("Modelo Gemma presente; falta llama-cli (variable BEE_LLAMA_CLI o PATH). Modo heurístico hasta entonces.");
+        } else {
+          setAiStatusLine("Modelo Gemma no encontrado en resources/models/gemma/ — conversión en modo heurístico.");
+        }
+      } catch {
+        if (alive) setAiStatusLine(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface]);
 
   // Close home tab = close whole app (backend).
   useEffect(() => {
@@ -112,6 +141,7 @@ export default function App() {
         const res = await startConvertJob({
           mode,
           url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
+          use_ai: mode === "puppeteer_to_behave" ? useAi : false,
         });
         const base = `${window.location.origin}${window.location.pathname}`;
         const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
@@ -340,6 +370,27 @@ export default function App() {
                 }}
               />
             </div>
+
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                marginBottom: 14,
+                cursor: "pointer",
+                fontSize: 14,
+                color: "#374151",
+              }}
+            >
+              <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>
+                <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si hay
+                archivo <code>_bee_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo heurístico.
+                {aiStatusLine && (
+                  <span style={{ display: "block", marginTop: 6, fontSize: 12, color: "#6b7280" }}>{aiStatusLine}</span>
+                )}
+              </span>
+            </label>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button

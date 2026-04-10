@@ -89,6 +89,9 @@ class ActionRecorder extends Writable {
     constructor(outputPath) {
         super({ objectMode: true });
         this.outputPath = outputPath;
+        /** Ruta JSON opcional con metadatos por acción (xpath, selector) para IA / Page Objects */
+        this.metaPath = outputPath.replace(/\.js$/i, '') + '_bee_meta.json';
+        this.metaRecords = [];
         this.headerWritten = false;
         this.pendingActions = [];
         this.lastInputAction = null;
@@ -131,7 +134,15 @@ class ActionRecorder extends Writable {
 
     _write(action, encoding, callback) {
         this.actionCounter++;
-        
+
+        let line = action;
+        if (typeof action === 'object' && action !== null && action.line) {
+            if (action.meta) {
+                this.metaRecords.push(action.meta);
+            }
+            line = action.line;
+        }
+
         if (!this.headerWritten) {
             const header = `/* URL: ${initialUrl} */\n` + 
                 `const puppeteer = require('puppeteer');\n\n` +
@@ -144,7 +155,7 @@ class ActionRecorder extends Writable {
             this.headerWritten = true;
         }
 
-        this._processAction(action, callback);
+        this._processAction(line, callback);
     }
 
     _processAction(action, callback) {
@@ -268,6 +279,14 @@ class ActionRecorder extends Writable {
     _final(callback) {
         clearTimeout(this.inputTimeout);
         clearTimeout(this.batchFlushTimeout);
+
+        try {
+            const payload = { version: 1, source: 'bee_recorder', actions: this.metaRecords };
+            fs.writeFileSync(this.metaPath, JSON.stringify(payload, null, 2), 'utf8');
+            console.log('BEE_META_SAVED:' + this.metaPath);
+        } catch (e) {
+            console.warn('BEE meta no guardado:', e.message);
+        }
         
         // Escribir datos pendientes en buffer
         this._executeBatchWrite();
@@ -565,14 +584,21 @@ let actionRecorder = null;
         return fallbackSelector;
       }
 
+      function metaForAction(el, selector, kind) {
+        const xp = getXPathForElement(el);
+        const tag = el && el.tagName ? el.tagName.toLowerCase() : '';
+        const id = el && el.id ? el.id : '';
+        return { kind, selector, xpath: xp, tag, id };
+      }
+
       document.addEventListener('click', (e) => {
         const el = e.target;
         const selector = getSelector(el);
         if (selector) {
           highlightElement(el);
           setTimeout(() => highlightOverlay && (highlightOverlay.style.display = 'none'), 300);
-          
-          window.logAction(`await page.click('${selector}');`);
+          const line = `await page.click('${selector}');`;
+          window.logAction({ line, meta: metaForAction(el, selector, 'click') });
         }
       });
 
@@ -595,8 +621,11 @@ let actionRecorder = null;
           const delay = inputActionCount > 100 ? 500 : 200;
           
           inputTimer = setTimeout(() => {
-            const selector = getSelector(lastInputElement);
-            window.logAction(`await page.type('${selector}', '${lastInputElement.value}');`);
+            const el = lastInputElement;
+            const selector = getSelector(el);
+            const val = (el.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const line = `await page.type('${selector}', '${val}');`;
+            window.logAction({ line, meta: metaForAction(el, selector, 'type') });
             inputTimer = null;
           }, delay);
         }
@@ -606,11 +635,14 @@ let actionRecorder = null;
         const el = e.target;
         const selector = getSelector(el);
         if (el.tagName === 'SELECT') {
-          window.logAction(`await page.select('${selector}', '${el.value}');`);
+          const line = `await page.select('${selector}', '${el.value}');`;
+          window.logAction({ line, meta: metaForAction(el, selector, 'select') });
         } else if (el.type === 'checkbox') {
-          window.logAction(`await page.click('${selector}'); // checkbox ${el.checked ? 'checked' : 'unchecked'}`);
+          const line = `await page.click('${selector}'); // checkbox ${el.checked ? 'checked' : 'unchecked'}`;
+          window.logAction({ line, meta: metaForAction(el, selector, 'checkbox') });
         } else if (el.type === 'radio') {
-          window.logAction(`await page.click('${selector}'); // radio selected`);
+          const line = `await page.click('${selector}'); // radio selected`;
+          window.logAction({ line, meta: metaForAction(el, selector, 'radio') });
         }
       });
     });
