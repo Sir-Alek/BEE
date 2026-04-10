@@ -51,6 +51,9 @@ def obfuscate_recorder() -> None:
         print("⚠ npx no encontrado; copiando recorder.js sin ofuscar -> recorder.obfuscated.js")
         shutil.copy2(SOURCE_RECORDER, OBFUSCATED_JS)
         return
+    # Cuidado: evaluateOnNewDocument / evaluate serializan funciones al navegador. Opciones
+    # agresivas (string-array, control-flow-flattening, dead-code) inyectan helpers en el
+    # ámbito de Node que NO existen en el contexto del browser → ReferenceError (_0x... is not defined).
     try:
         run(
             [
@@ -63,11 +66,15 @@ def obfuscate_recorder() -> None:
                 "--compact",
                 "true",
                 "--control-flow-flattening",
-                "true",
+                "false",
                 "--dead-code-injection",
-                "true",
+                "false",
                 "--string-array",
-                "true",
+                "false",
+                "--identifier-names-generator",
+                "hexadecimal",
+                "--rename-globals",
+                "false",
             ]
         )
         print(f"✓ Generado {OBFUSCATED_JS}")
