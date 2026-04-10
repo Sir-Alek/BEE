@@ -4,42 +4,30 @@ import os
 # Detectar si estamos en modo empaquetado
 IS_FROZEN = getattr(sys, 'frozen', False)
 
-# Manejo robusto de importaciones
+# Conversores: import normal o extensiones Cython (.pyd); ver core/__dynamic_importer.py
 try:
-    if IS_FROZEN:
-        # En modo empaquetado, usar importación desde archivos ofuscados
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
-        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
-        ScreenRecorder = video_recorder.ScreenRecorder
-        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
-
-    else:
-        # En modo desarrollo, usar importaciones normales
+    from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
+    PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
+    ScreenRecorder = video_recorder.ScreenRecorder
+    PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+except ImportError:
+    try:
         from core.puppeteer_script_converter import PuppeteerToBehaveConverter
         from core.video_recorder import ScreenRecorder
-        from core.step_by_step_converter import PuppeteerToStepByStepConverter   
-except ImportError as e:
-    # Fallback para casos especiales
-    try:
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
-        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
-        ScreenRecorder = video_recorder.ScreenRecorder
-        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+        from core.step_by_step_converter import PuppeteerToStepByStepConverter
     except ImportError:
-        # Fallback extremo - definir clases vacías
         class PuppeteerToBehaveConverter:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo PuppeteerToBehaveConverter no disponible")
-        
+
         class PuppeteerToStepByStepConverter:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo PuppeteerToStepByStepConverter no disponible")
-        
+
         class ScreenRecorder:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo ScreenRecorder no disponible")
-        
-        # Mostrar advertencia
+
         print("Advertencia: Módulos críticos no disponibles")
         
 import os

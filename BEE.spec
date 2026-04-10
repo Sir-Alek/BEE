@@ -3,9 +3,28 @@
 block_cipher = None
 
 import glob
+import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
+
+# Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
+cython_binaries = [(p, 'core') for p in glob.glob(os.path.join('core', '*.pyd'))]
+
+# JS ofuscado (tras pipeline build_release)
+js_obf = []
+_obf_path = os.path.join('core', 'recorder.obfuscated.js')
+if os.path.isfile(_obf_path):
+    js_obf.append((_obf_path, 'core'))
+
+# Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
+_cython_excludes = []
+if cython_binaries:
+    _cython_excludes = [
+        'core.puppeteer_script_converter',
+        'core.video_recorder',
+        'core.step_by_step_converter',
+    ]
 
 # Web UI deps are imported conditionally and need help for PyInstaller.
 web_hidden = []
@@ -25,19 +44,19 @@ except Exception:
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=llama_binaries,
+    binaries=llama_binaries + cython_binaries,
     datas=[
         ('core/node', 'core/node'),
         ('behave', 'behave'),
         ('frontend/dist', 'frontend/dist'),
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
-    ] + enc_datas + llama_datas,
+    ] + enc_datas + llama_datas + js_obf,
     hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden + llama_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=_cython_excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
