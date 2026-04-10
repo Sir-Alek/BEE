@@ -109,6 +109,7 @@ bee/
 ● Los archivos `*.gguf` bajo `resources/models/` están en `.gitignore` y no se suben al repositorio.
 ● Para desarrollo o para generar el `.exe` con el modelo incluido, copia manualmente el GGUF a esa ruta **antes** de ejecutar PyInstaller (`BEE.spec` ya empaqueta la carpeta `resources/` completa; si el archivo existe en el momento del build, quedará en la distribución).
 ● Si el archivo no está presente, las funciones que dependan del modelo deberán operar en modo heurístico o mostrar un aviso claro (según la implementación de «Activar IA»).
+● Resolución de ruta en código: `core/gemma_model_paths.py` (`resolve_gguf_path`, `is_gguf_available`, `get_gemma_model_info`).
 
 ## Interfaz web (FastAPI + React)
 
