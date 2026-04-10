@@ -3,7 +3,7 @@
 block_cipher = None
 
 import glob
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
 
@@ -15,18 +15,25 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
+# llama-cpp-python: native libs + package data
+llama_datas, llama_binaries, llama_hidden = [], [], []
+try:
+    llama_datas, llama_binaries, llama_hidden = collect_all("llama_cpp")
+except Exception:
+    llama_hidden = ["llama_cpp", "llama_cpp.lib"]
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=llama_binaries,
     datas=[
         ('core/node', 'core/node'),
         ('behave', 'behave'),
         ('frontend/dist', 'frontend/dist'),
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
-    ] + enc_datas,
-    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden,
+    ] + enc_datas + llama_datas,
+    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden + llama_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
