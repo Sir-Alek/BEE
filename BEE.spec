@@ -12,11 +12,10 @@ enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
 _cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
 cython_binaries = [(p, 'core') for p in _cython_globs]
 
-# JS ofuscado (tras pipeline build_release)
+# Cualquier recorder*.js distinto del plano (ofuscado, test, etc.) + siempre el plano como respaldo
 js_obf = []
-_obf_path = os.path.join('core', 'recorder.obfuscated.js')
-if os.path.isfile(_obf_path):
-    js_obf.append((_obf_path, 'core'))
+for _p in sorted(glob.glob(os.path.join('core', 'recorder*.js'))):
+    js_obf.append((_p, 'core'))
 
 # Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
 _cython_excludes = []
