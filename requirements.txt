@@ -8,3 +8,4 @@ mss>=7.0.0
 pyinstaller>=5.0.0
 fastapi>=0.135.1
 uvicorn>=0.42.0
+llama-cpp-python>=0.2.90

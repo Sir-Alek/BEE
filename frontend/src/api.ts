@@ -27,9 +27,9 @@ export async function startConvertJob(params: {
 }
 
 export type AiStatusResponse = {
-  llama_cli_configured?: boolean;
-  llama_cli_path?: string | null;
-  llama_cli_on_path?: boolean;
+  llama_cpp_python_available?: boolean;
+  llama_cpp_python_version?: string | null;
+  import_error?: string;
   model?: { path: string; exists: boolean; size_bytes: number; frozen: boolean };
   error?: string;
 };

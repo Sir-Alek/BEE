@@ -1,9 +1,9 @@
 """
-Inferencia local vía llama.cpp (subproceso aislado).
+Inferencia local vía llama-cpp-python (llama.cpp embebido, sin binario llama-cli).
 
-Configuración:
-  BEE_LLAMA_CLI — Ruta al ejecutable llama-cli; si está vacío se busca en PATH.
-  BEE_LLAMA_EXTRA_ARGS — Args opcionales separados por espacio (p. ej. "-ngl 0").
+Variables de entorno opcionales:
+  BEE_LLAMA_N_CTX — contexto en tokens (default 4096).
+  BEE_LLAMA_N_GPU_LAYERS — capas en GPU (default 0 = solo CPU).
 
 El modelo GGUF se resuelve con gemma_model_paths.resolve_gguf_path().
 """
@@ -13,44 +13,78 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.gemma_model_paths import is_gguf_available, resolve_gguf_path
 
-# Evita arranques concurrentes del mismo binario/modelo (pesado en CPU/RAM).
-_SUBPROC_LOCK = threading.Lock()
+# Carga del modelo e inferencias: una a la vez (evita condiciones de carrera / RAM).
+_INFERENCE_LOCK = threading.Lock()
+
+_llama_instance = None
+_llama_model_path: Optional[str] = None
+_llama_lock = threading.Lock()
+
+
+def _llama_cpp_import():
+    """Import lazy para que el resto de BEE funcione sin llama-cpp-python instalado."""
+    from llama_cpp import Llama  # type: ignore
+
+    return Llama
 
 
 def is_ai_runtime_configured() -> bool:
     if not is_gguf_available():
         return False
-    exe = (os.environ.get("BEE_LLAMA_CLI") or "").strip()
-    if exe:
-        return os.path.isfile(exe) or bool(shutil.which(exe))
-    return bool(shutil.which("llama-cli") or shutil.which("llama-cli.exe"))
+    try:
+        _llama_cpp_import()
+    except ImportError:
+        return False
+    return True
 
 
 def get_ai_runtime_status() -> Dict[str, Any]:
-    exe = (os.environ.get("BEE_LLAMA_CLI") or "").strip()
     from core import gemma_model_paths
 
     info = gemma_model_paths.get_gemma_model_info()
-    return {
-        "llama_cli_configured": bool(exe),
-        "llama_cli_path": exe if exe else None,
-        "llama_cli_on_path": bool(shutil.which("llama-cli") or shutil.which("llama-cli.exe")),
+    out: Dict[str, Any] = {
+        "llama_cpp_python_available": False,
+        "llama_cpp_python_version": None,
         "model": info,
     }
+    try:
+        import llama_cpp
+
+        out["llama_cpp_python_available"] = True
+        out["llama_cpp_python_version"] = getattr(llama_cpp, "__version__", None)
+    except ImportError as e:
+        out["import_error"] = str(e)
+    return out
 
 
-def _extra_args() -> List[str]:
-    raw = (os.environ.get("BEE_LLAMA_EXTRA_ARGS") or "").strip()
-    if not raw:
-        return []
-    return raw.split()
+def _get_llama(gguf_path: Optional[str] = None):
+    """Instancia singleton de Llama para la ruta de modelo actual."""
+    global _llama_instance, _llama_model_path
+    model = gguf_path or resolve_gguf_path()
+    if not os.path.isfile(model):
+        raise FileNotFoundError(model)
+
+    with _llama_lock:
+        if _llama_instance is not None and _llama_model_path == model:
+            return _llama_instance
+
+        Llama = _llama_cpp_import()
+        n_ctx = int(os.environ.get("BEE_LLAMA_N_CTX", "4096"))
+        n_gpu = int(os.environ.get("BEE_LLAMA_N_GPU_LAYERS", "0"))
+
+        _llama_instance = Llama(
+            model_path=model,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu,
+            verbose=False,
+        )
+        _llama_model_path = model
+        return _llama_instance
 
 
 def _extract_json_object(text: str) -> Optional[dict]:
@@ -64,7 +98,6 @@ def _extract_json_object(text: str) -> Optional[dict]:
         return json.loads(s)
     except json.JSONDecodeError:
         pass
-    # Último objeto JSON en el texto
     for m in re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", s, re.DOTALL):
         chunk = m.group(0)
         try:
@@ -82,56 +115,42 @@ def run_llama_json_prompt(
     timeout_sec: float = 120.0,
 ) -> Optional[dict]:
     """
-    Ejecuta llama-cli con un prompt que debe devolver un único JSON.
-    Retorna None si no hay binario, modelo o si falla el parseo.
+    Ejecuta el modelo con un prompt que debe devolver un único JSON.
+    timeout_sec se reserva para compatibilidad; la inferencia puede bloquear hasta terminar.
     """
-    exe = (os.environ.get("BEE_LLAMA_CLI") or "").strip()
-    if not exe:
-        w = shutil.which("llama-cli") or shutil.which("llama-cli.exe")
-        if not w:
-            return None
-        exe = w
-
-    model = gguf_path or resolve_gguf_path()
-    if not os.path.isfile(model):
+    del timeout_sec  # API actual de llama-cpp-python sin timeout portable
+    if not is_gguf_available():
+        return None
+    try:
+        llm = _get_llama(gguf_path)
+    except (ImportError, FileNotFoundError, OSError):
         return None
 
-    # Prompt mínimo: forzar JSON (Gemma / instruct)
     full_prompt = (
         "You are a test automation assistant. Reply with ONLY one valid JSON object, no markdown, no explanation.\n\n"
         + user_prompt
     )
 
-    args = [
-        exe,
-        "-m",
-        model,
-        "-p",
-        full_prompt,
-        "-n",
-        str(max_tokens),
-        "--temp",
-        "0.1",
-        "--no-display",
-    ]
-    args.extend(_extra_args())
-
-    with _SUBPROC_LOCK:
+    with _INFERENCE_LOCK:
         try:
-            proc = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_sec,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
+            result = llm.create_completion(
+                prompt=full_prompt,
+                max_tokens=max_tokens,
+                temperature=0.1,
+                top_p=0.9,
             )
-        except (subprocess.TimeoutExpired, OSError):
+        except Exception:
             return None
 
-    out = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    return _extract_json_object(out)
+    text = ""
+    try:
+        choices = result.get("choices") if isinstance(result, dict) else None
+        if choices and isinstance(choices[0], dict):
+            text = str(choices[0].get("text", "") or "")
+    except Exception:
+        return None
+
+    return _extract_json_object(text)
 
 
 def suggest_bdd_steps_from_actions(
@@ -140,10 +159,6 @@ def suggest_bdd_steps_from_actions(
     base_name: str,
     gguf_path: Optional[str] = None,
 ) -> Optional[List[Tuple[str, str]]]:
-    """
-    actions: lista (tipo, descripción) con tipo en given|click|fill|select (como en _generate_bdd_feature).
-    Retorna lista (keyword_lower, texto) p.ej. ("when", "clic en ...") o None.
-    """
     lines_in = [{"type": t, "description": d} for t, d in actions]
     prompt = (
         "Given this ordered list of UI actions from a web recording, produce a Gherkin scenario body "
@@ -170,7 +185,6 @@ def suggest_bdd_steps_from_actions(
         out.append((kw, txt))
     if not out:
         return None
-    # Validar regla: máximo un And, y solo después del primer When
     and_seen = 0
     when_seen = False
     for kw, _ in out:
@@ -193,10 +207,6 @@ def suggest_preferred_locator(
     element_id: str = "",
     gguf_path: Optional[str] = None,
 ) -> Optional[str]:
-    """
-    Elige entre selector CSS original y xpath del DOM para usar en Page Object.
-    Retorna la cadena del locator preferido (css o xpath=...) o None.
-    """
     prompt = (
         "Pick the more stable locator for automated UI tests (prefer unique id, data-testid, then robust xpath).\n"
         "Output JSON: {\"choice\": \"css\" | \"xpath\", \"reason\": \"short\"}\n"
@@ -205,7 +215,7 @@ def suggest_preferred_locator(
         f"tag: {json.dumps(tag, ensure_ascii=False)}\n"
         f"id: {json.dumps(element_id, ensure_ascii=False)}\n"
     )
-    data = run_llama_json_prompt(prompt, max_tokens=128, timeout_sec=60.0, gguf_path=gguf_path)
+    data = run_llama_json_prompt(prompt, max_tokens=128, gguf_path=gguf_path)
     if not data:
         return None
     choice = str(data.get("choice", "")).lower().strip()

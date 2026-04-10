@@ -87,11 +87,13 @@ export default function App() {
         if (!alive) return;
         const m = s.model;
         const hasModel = m?.exists && (m.size_bytes ?? 0) > 0;
-        const hasCli = s.llama_cli_configured || s.llama_cli_on_path;
-        if (hasModel && hasCli) {
-          setAiStatusLine("IA local: modelo Gemma listo; configure BEE_LLAMA_CLI si no está en PATH.");
-        } else if (hasModel && !hasCli) {
-          setAiStatusLine("Modelo Gemma presente; falta llama-cli (variable BEE_LLAMA_CLI o PATH). Modo heurístico hasta entonces.");
+        const hasLib = s.llama_cpp_python_available === true;
+        if (hasModel && hasLib) {
+          setAiStatusLine("IA local: modelo Gemma + llama-cpp-python listos.");
+        } else if (hasModel && !hasLib) {
+          setAiStatusLine(
+            "Modelo Gemma presente; falta el paquete llama-cpp-python (pip install). Modo heurístico hasta entonces.",
+          );
         } else {
           setAiStatusLine("Modelo Gemma no encontrado en resources/models/gemma/ — conversión en modo heurístico.");
         }
