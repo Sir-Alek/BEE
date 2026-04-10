@@ -268,6 +268,9 @@ class PuppeteerToBehaveConverter:
                         self.ui.info("Información", "Todos los archivos ya existen en el proyecto y no se sobrescribirán.")
                         return
 
+            # Contenido del feature usado para steps: debe ser el mismo que se escribe (nuevo o existente).
+            feature_content_for_steps = ""
+
             # Procesar feature file
             if 'feature' in file_paths:
                 feature_exists = 'feature' in existing_files and not response
@@ -285,6 +288,9 @@ class PuppeteerToBehaveConverter:
                     feature_content = self._generate_bdd_feature(content, base_name)
                     with open(file_paths['feature'], "w", encoding="utf-8") as f:
                         f.write(feature_content)
+                    feature_content_for_steps = feature_content
+                else:
+                    feature_content_for_steps = existing_content
 
             # Generar steps file
             if 'steps' in file_paths:
@@ -292,7 +298,7 @@ class PuppeteerToBehaveConverter:
                     base_name, 
                     class_name, 
                     content, 
-                    existing_content if feature_exists else ""
+                    feature_content_for_steps,
                 )
                 with open(file_paths['steps'], "w", encoding="utf-8") as f:
                     f.write(steps_content)
@@ -667,15 +673,223 @@ class PuppeteerToBehaveConverter:
     def _generate_adaptive_steps(self, base_name, class_name, script_content, existing_feature=None):
         """Genera steps adaptados al feature existente o crea nuevos steps funcionales"""
         
-        if existing_feature:
-            # Extraer steps del feature existente
+        if existing_feature and existing_feature.strip():
             feature_steps = self._extract_steps_from_feature(existing_feature)
-            steps_content = self._generate_steps_from_feature(base_name, class_name, feature_steps, script_content)
+            if self._feature_is_business_language(feature_steps):
+                return self._generate_steps_from_business_feature(
+                    base_name, class_name, feature_steps, script_content
+                )
+            return self._generate_steps_from_feature(base_name, class_name, feature_steps, script_content)
+
+        # Sin texto de feature: generar desde el script (reconstruye feature técnico internamente).
+        return self._generate_steps_from_script(base_name, class_name, script_content)
+
+    def _feature_is_business_language(self, feature_steps: List[Tuple[str, str]]) -> bool:
+        """True si el .feature usa redacción de negocio (no pasos 'clic en elemento ...')."""
+        if not feature_steps:
+            return False
+        for _t, desc in feature_steps:
+            if "clic en elemento" in desc:
+                return False
+        return True
+
+    def _extract_ordered_page_actions(self, script_content: str) -> List[Tuple[str, str, Optional[str]]]:
+        """
+        Orden de acciones del JS grabado alineado con nombres de método del Page Object.
+        Tuplas: ("goto", url, None), ("click", method_base, None), ("fill", method_base, value), ("select", method_base, option).
+        method_base sin prefijo btn_/txt_/ddl_ — se resuelve con _bdd_locator_kind_for_selector.
+        """
+        ordered: List[Tuple[str, str, Optional[str]]] = []
+        if not script_content:
+            return ordered
+        for line in script_content.split("\n"):
+            line = line.strip()
+            try:
+                if "page.goto(" in line:
+                    m = re.search(r'page\.goto\((["\'])(.*?)\1', line)
+                    if m:
+                        ordered.append(("goto", m.group(2), None))
+                    continue
+                if "page.click(" in line:
+                    m = re.search(r'page\.click\((["\'])(.*?)\1', line)
+                    if m:
+                        sel = m.group(2)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("click", name, None))
+                    continue
+                if "page.type(" in line or "page.fill(" in line:
+                    m = re.search(r'page\.(?:type|fill)\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if m:
+                        sel, val = m.group(2), m.group(4)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("fill", name, val))
+                    continue
+                if "page.select(" in line:
+                    m = re.search(r'page\.select\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if m:
+                        sel, opt = m.group(2), m.group(4)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("select", name, opt))
+                    continue
+            except Exception:
+                continue
+        return ordered
+
+    def _page_method_name(self, kind: str, base_name: str) -> str:
+        """Nombres de método como en _generate_methods: click_, enter_, select_."""
+        if kind == "click":
+            return f"click_{base_name}"
+        if kind == "fill":
+            return f"enter_{base_name}"
+        if kind == "select":
+            return f"select_{base_name}"
+        return base_name
+
+    def _generate_steps_from_business_feature(
+        self,
+        base_name: str,
+        class_name: str,
+        feature_steps: List[Tuple[str, str]],
+        script_content: str,
+    ) -> str:
+        """
+        Feature en lenguaje de negocio: los decoradores coinciden con el .feature;
+        el cuerpo ejecuta las acciones del script en orden usando el Page Object.
+        """
+        imports = f"""from behave import *
+from pages.{base_name}_page import {class_name}
+from utils.button_functions import ui_navigate
+from environment import *
+"""
+
+        ordered = self._extract_ordered_page_actions(script_content)
+        if not ordered:
+            return imports + "\n# No se pudieron extraer acciones del script grabado.\n"
+
+        goto_url = ""
+        for kind, a, _b in ordered:
+            if kind == "goto":
+                goto_url = a
+                break
+
+        actions_after_goto = [x for x in ordered if x[0] != "goto"]
+        n_main = sum(1 for t, _ in feature_steps if t.lower() in ("when", "and"))
+        if n_main < 1:
+            n_main = 1
+        chunks: List[List[Tuple[str, str, Optional[str]]]] = []
+        n_act = len(actions_after_goto)
+        if n_act == 0:
+            chunks = [[] for _ in range(n_main)]
         else:
-            # Generar steps basados en el script de playwright
-            steps_content = self._generate_steps_from_script(base_name, class_name, script_content)
-        
-        return steps_content
+            base = n_act // n_main
+            rem = n_act % n_main
+            pos = 0
+            for i in range(n_main):
+                sz = base + (1 if i < rem else 0)
+                chunks.append(actions_after_goto[pos : pos + sz])
+                pos += sz
+
+        step_methods: List[str] = []
+        last_non_and: Optional[str] = None
+        step_counter = 0
+        chunk_i = 0
+
+        for step_type, description in feature_steps:
+            step_counter += 1
+            st = step_type.lower()
+            if st in ("given", "when", "then", "and"):
+                suffix = st
+            else:
+                suffix = "and"
+            step_id = f"{step_counter:02d}_{suffix}"
+
+            if st == "and":
+                eff = last_non_and or "when"
+            else:
+                eff = st
+                if st != "and":
+                    last_non_and = st
+
+            method_name = self._create_step_method_name(eff, description)
+            esc = description.replace("\\", "\\\\").replace("'", "\\'")
+
+            if st == "given":
+                if "Acceder a la pagina" in description:
+                    step_methods.append(f"""
+@{eff}('Acceder a la pagina "{{url}}"')
+def {method_name}(context, url):
+    context.page = {class_name}(context.driver)
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
+""")
+                else:
+                    url_lit = goto_url or ""
+                    if not url_lit:
+                        m = re.search(r'"([^"]+)"', description)
+                        if m:
+                            host = m.group(1).strip()
+                            if host and not host.startswith("http"):
+                                url_lit = "https://" + host
+                            else:
+                                url_lit = host
+                    step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    ui_navigate(
+        driver=context.driver,
+        url={json.dumps(url_lit)},
+        nombre_pagina="inicio",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
+""")
+
+            elif st in ("when", "and"):
+                body_lines: List[str] = [
+                    f"    context.page = {class_name}(context.driver)",
+                ]
+                use_chunk = chunks[chunk_i] if chunk_i < len(chunks) else []
+                chunk_i += 1
+                for act in use_chunk:
+                    ak, base, extra = act
+                    if ak == "goto":
+                        continue
+                    meth = self._page_method_name(ak, base)
+                    if ak == "click":
+                        body_lines.append(
+                            f"    context.page.{meth}(tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                    elif ak == "fill" and extra is not None:
+                        ev = json.dumps(extra)
+                        body_lines.append(
+                            f"    context.page.{meth}({ev}, tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                    elif ak == "select" and extra is not None:
+                        ev = json.dumps(extra)
+                        body_lines.append(
+                            f"    context.page.{meth}({ev}, tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+{chr(10).join(body_lines)}
+""")
+
+            elif st == "then":
+                step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    assert True
+""")
+
+        return imports + "\n".join(step_methods)
 
     def _extract_steps_from_feature(self, feature_content):
         """Extrae los steps de un feature existente"""
