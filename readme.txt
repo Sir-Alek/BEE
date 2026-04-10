@@ -110,6 +110,8 @@ bee/
 ● Para desarrollo o para generar el `.exe` con el modelo incluido, copia manualmente el GGUF a esa ruta **antes** de ejecutar PyInstaller (`BEE.spec` ya empaqueta la carpeta `resources/` completa; si el archivo existe en el momento del build, quedará en la distribución).
 ● Si el archivo no está presente, las funciones que dependan del modelo deberán operar en modo heurístico o mostrar un aviso claro (según la implementación de «Activar IA»).
 ● Resolución de ruta en código: `core/gemma_model_paths.py` (`resolve_gguf_path`, `is_gguf_available`, `get_gemma_model_info`).
+● Inferencia local: `core/gemma_inference.py` (subproceso `llama-cli`). Variable de entorno `BEE_LLAMA_CLI` = ruta al binario si no está en PATH.
+● La grabación puede generar `*_bee_meta.json` junto al `.js` (metadatos DOM para IA). La UI web incluye «Activar IA» en la conversión a Behave; sin modelo o sin binario se usa el modo heurístico.
 
 ## Interfaz web (FastAPI + React)
 
