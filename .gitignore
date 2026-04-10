@@ -21,5 +21,6 @@ resources/models/**/*.gguf
 
 # Build release: JS ofuscado y extensiones Cython locales (no obligatorio en git)
 core/recorder.obfuscated.js
+core/recorder.test.js
 core/*.pyd
 core/*.c

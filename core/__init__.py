@@ -3,7 +3,8 @@ from __future__ import annotations
 """
 Paquete core: carga de assets (recorder JS) para runtime y empaquetado.
 
-- recorder.js: en release se prefiere `recorder.obfuscated.js` (pipeline javascript-obfuscator).
+- recorder.js: se resuelve a un JS en disco; prioridad: `BEE_RECORDER_JS`, `recorder.obfuscated.js`,
+  `recorder.test.js`, otros `recorder.*.js`, y por último `recorder.js` plano.
 - Compatibilidad: archivos legacy `*.enc` (BEE_PROTECTED) si aún existen.
 """
 import os
@@ -21,14 +22,59 @@ class Deobfuscator:
             cls._instance = cls()
         return cls._instance
 
+    def _recorder_js_candidate_dirs(self) -> list[str]:
+        """Directorios donde puede estar recorder*.js (dev, frozen _MEIPASS/core)."""
+        base = os.path.dirname(__file__)
+        out = [base]
+        if getattr(sys, "frozen", False):
+            meipass = getattr(sys, "_MEIPASS", "") or ""
+            if meipass:
+                out.append(os.path.join(meipass, "core"))
+                out.append(meipass)
+        # Sin duplicados preservando orden
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for d in out:
+            if d and d not in seen:
+                seen.add(d)
+                uniq.append(d)
+        return uniq
+
     def _resolve_js_path(self, file_name: str) -> str | None:
-        """recorder.js -> recorder.obfuscated.js si existe."""
+        """recorder.js -> primer candidato existente (ofuscado o nombre alternativo)."""
         if file_name != "recorder.js":
             return None
-        base = os.path.dirname(__file__)
-        obf = os.path.join(base, "recorder.obfuscated.js")
-        if os.path.isfile(obf):
-            return obf
+        env_name = (os.environ.get("BEE_RECORDER_JS") or "").strip()
+        candidates: list[str] = []
+        if env_name:
+            if os.path.isabs(env_name):
+                candidates.append(env_name)
+            else:
+                for d in self._recorder_js_candidate_dirs():
+                    candidates.append(os.path.join(d, env_name))
+        for name in (
+            "recorder.obfuscated.js",
+            "recorder.test.js",
+            "recorder.min.js",
+        ):
+            for d in self._recorder_js_candidate_dirs():
+                candidates.append(os.path.join(d, name))
+        # Cualquier otro recorder*.js excepto el plano
+        for d in self._recorder_js_candidate_dirs():
+            try:
+                for fn in sorted(os.listdir(d)):
+                    if not fn.startswith("recorder") or not fn.endswith(".js"):
+                        continue
+                    if fn == "recorder.js":
+                        continue
+                    p = os.path.join(d, fn)
+                    if p not in candidates:
+                        candidates.append(p)
+            except OSError:
+                pass
+        for p in candidates:
+            if p and os.path.isfile(p):
+                return p
         return None
 
     def _read_plain(self, relative_path: str) -> bytes | None:
@@ -41,6 +87,20 @@ class Deobfuscator:
                 os.path.join(meipass, relative_path),
                 os.path.join(base, relative_path),
             ]
+            # Mismos alias que _resolve_js_path para empaquetado
+            if relative_path == "recorder.js":
+                for extra in (
+                    "recorder.obfuscated.js",
+                    "recorder.test.js",
+                    "recorder.min.js",
+                ):
+                    candidates.insert(0, os.path.join(meipass, "core", extra))
+                env_name = (os.environ.get("BEE_RECORDER_JS") or "").strip()
+                if env_name:
+                    candidates.insert(
+                        0,
+                        env_name if os.path.isabs(env_name) else os.path.join(meipass, "core", env_name),
+                    )
         else:
             candidates = [os.path.join(base, relative_path)]
 
