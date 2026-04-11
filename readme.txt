@@ -148,14 +148,20 @@ o el pipeline completo: `python scripts/build_release.py` (ver sección «Protec
 ● El aviso azul en inicio desaparece cuando termina el flujo en la otra pestaña (BroadcastChannel) o a los 5 minutos.
 ● En la pestaña de resultado, «Volver al inicio» enfoca la pestaña de inicio y cierra la de trabajo (evita duplicar inicio).
 
-## Protección / build de release (Cython + JS, sin advanced_protect)
+## Protección / build de release (Cython + JS)
 
-● El antiguo `advanced_protect.py` (zlib+base64 → `*.enc`) está **deprecado**. El pipeline unificado es `scripts/build_release.py`.
-● **Cython (opcional):** `pip install cython setuptools` y `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los conversores listados en `setup_cython.py`.
-● **JavaScript:** `javascript-obfuscator` vía `npx` (p. ej. salida `recorder.obfuscated.js`). En runtime se busca, en orden: variable `BEE_RECORDER_JS`, `recorder.obfuscated.js`, `recorder.test.js`, otros `recorder.*.js`, y `recorder.js` plano. **PyInstaller** empaqueta `core/recorder*.js`. **Importante:** no uses en `recorder.js` opciones de ofuscación que inyecten helpers globales (`string-array`, `control-flow-flattening`, `dead-code-injection`): el código dentro de `page.evaluateOnNewDocument` / `evaluate` se ejecuta en el navegador y esas referencias (`_0x...`) no existen allí → error en tiempo de ejecución. Usa el mismo perfil «seguro» que `scripts/build_release.py` (solo compact + renombre de identificadores).
-● **PyInstaller:** `python scripts/build_release.py` (o con `--cython`) ejecuta el ofuscador JS y `PyInstaller BEE.spec`. Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
-● **Legacy:** si aún existen `core/*.enc`, el cargador en `core/__init__.py` puede leerlos como respaldo.
-● **Próximo paso:** validación de **kill switch offline** (lista firmada local) en una iteración posterior.
+● Pipeline unificado: `scripts/build_release.py` (Cython opcional + ofuscador JS + PyInstaller).
+● **Cython (opcional):** `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los módulos listados en `setup_cython.py`.
+● **JavaScript:** `javascript-obfuscator` vía `npx`; perfil seguro en `scripts/build_release.py` (no `string-array` / control-flow en código que Puppeteer inyecta en el navegador).
+● **PyInstaller:** `python scripts/build_release.py` (o con `--cython`). Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
+
+## Licencia offline (demo 15 días, activación por clave, kill switch)
+
+● **Demo:** 15 días desde el primer arranque (estado en `%LOCALAPPDATA%\BEE\license_state.json` en Windows). Sin activación, los trabajos (grabar / convertir) se bloquean; la UI web permite introducir la **clave de activación**.
+● **Clave:** derivada por máquina (huella mostrada en la UI). Generar con `python scripts/generate_license_key.py --machine <huella>` (mismo secreto que `core/bee_license.py`; **cambiar `_LICENSE_SEED`** en builds de cliente).
+● **Activación silenciosa:** variable de entorno `BEE_ACTIVATION_KEY=<clave>` antes de arrancar.
+● **Desarrollo:** `BEE_SKIP_LICENSE=1` omite la comprobación (no usar en entregas).
+● **Kill switch** (sin red): si existe cualquiera de estos archivos, la app no arranca: `%LOCALAPPDATA%\BEE\KILL`, `%LOCALAPPDATA%\BEE\bee_revoked.flag`, o junto al `.exe`: `bee.kill`, `BEE_KILL`.
 
 ## Troubleshooting
 
