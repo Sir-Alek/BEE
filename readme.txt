@@ -117,6 +117,8 @@ o el pipeline completo: `python scripts/build_release.py` (ver sección «Protec
 
 **Desactivar el venv:** `deactivate`
 
+● Si en la misma máquina tienes **otras herramientas** (TensorFlow, PyTorch, JAX, etc.) instaladas en **otro** entorno, no pasa nada. Para el **build del exe** lo ideal es un **venv limpio** solo con `requirements.txt`: así PyInstaller no arrastra cientos de MB de dependencias que BEE no importa.
+
 ● Para el ejecutable en equipos finales: Windows 10/11 y Chrome; no hace falta Python instalado.
 
 ## Notas importantes
