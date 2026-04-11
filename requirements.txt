@@ -1,11 +1,54 @@
-tkinter
-selenium>=4.0.0
-Pillow>=9.0.0
-psutil>=5.8.0
-behave>=1.2.6
-opencv-python>=4.5.0
-mss>=7.0.0
-pyinstaller>=5.0.0
-fastapi>=0.135.1
-uvicorn>=0.42.0
-llama-cpp-python>=0.2.90
+# BEE — dependencias de runtime y build del .exe
+# Python recomendado: 3.10.11 (64-bit, Windows)
+#
+# Entorno virtual (recomendado):
+#   py -3.10 -m venv .venv
+#   .venv\Scripts\activate
+#   python -m pip install -U pip setuptools wheel
+#   pip install -r requirements.txt
+#
+# PyInstaller solo incluirá lo que esté instalado en ese venv; evita instalar paquetes
+# globales innecesarios en la misma máquina de build.
+
+# --- UI web y API local ---
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+starlette==0.41.3
+pydantic==2.10.3
+httpx==0.28.1
+
+# --- Selenium / pruebas generadas (Behave, step-by-step) ---
+selenium==4.27.1
+webdriver-manager==4.0.2
+
+# --- Imagen, video, escritorio ---
+Pillow==10.4.0
+opencv-python==4.10.0.84
+mss==9.0.1
+numpy==1.26.4
+pyautogui==0.9.54
+PyGetWindow==0.0.9
+
+# --- Behave y utilidades de proyectos ---
+behave==1.2.6
+pandas==2.2.3
+python-calamine==0.2.3
+fpdf2==2.8.2
+
+# --- Informes PDF / gráficos (plantillas en resources/) ---
+matplotlib==3.9.2
+
+# --- Sistema ---
+psutil==6.1.0
+
+# --- IA local (opcional; conversión Behave con «Activar IA») ---
+llama-cpp-python==0.3.20
+
+# --- Empaquetado ---
+pyinstaller==6.11.0
+
+# --- Build opcional: extensiones Cython (python setup_cython.py build_ext --inplace) ---
+cython==3.0.11
+setuptools==75.6.0
+
+# tkinter: parte del instalador oficial de Python en Windows (no se instala con pip).
