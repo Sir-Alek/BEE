@@ -6,8 +6,6 @@ import glob
 import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
-enc_datas = [(p, 'core') for p in glob.glob('core/*.enc')]
-
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
 _cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
 cython_binaries = [(p, 'core') for p in _cython_globs]
@@ -51,8 +49,8 @@ a = Analysis(
         ('frontend/dist', 'frontend/dist'),
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
-    ] + enc_datas + llama_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden + llama_hidden,
+    ] + llama_datas + js_obf,
+    hiddenimports=['mss', 'cv2', 'numpy', 'core.bee_license'] + web_hidden + llama_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

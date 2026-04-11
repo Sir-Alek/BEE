@@ -501,6 +501,7 @@ class main:
     def convert_script(self):
         """Maneja la conversión a behave"""
         try:
+            _require_license_for_jobs()
             if not self.web_mode:
                 converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
                 converter.convert_script()
@@ -530,6 +531,7 @@ class main:
     def convert_to_step_by_step(self):
         """Maneja la conversión a step by step"""
         try:
+            _require_license_for_jobs()
             if not self.web_mode:
                 converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
                 converter.convert_script()
@@ -559,6 +561,15 @@ class main:
         url = self.url_entry.get().strip()
         if not url:
             messagebox.showwarning("URL requerida", "Por favor ingresa una URL válida.")
+            return
+
+        try:
+            _require_license_for_jobs()
+        except Exception as e:
+            try:
+                messagebox.showerror("Licencia", str(e))
+            except Exception:
+                pass
             return
 
         # Web mode: reemplaza los diálogos Tkinter del recorder por prompts web.
@@ -976,7 +987,21 @@ class main:
 
 
              
+def _require_license_for_jobs() -> None:
+    """Bloquea conversiones/grabación si demo caducada sin activar (modo Tk)."""
+    from core import bee_license
+
+    if not bee_license.can_run_jobs():
+        raise RuntimeError(
+            "Periodo de demostración finalizado o licencia inactiva. "
+            "Activa la aplicación con la clave de activación (UI web: inicio) o variable BEE_ACTIVATION_KEY."
+        )
+
+
 if __name__ == "__main__":
+    from core import bee_license
+
+    bee_license.ensure_license_or_exit()
     print(""""
 ██████╗ ███████╗███████╗
 ██╔══██╗██╔════╝██╔════╝

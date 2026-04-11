@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getAiStatus, getJob, sendPromptResponse, startConvertJob } from "./api";
+import { activateLicense, getAiStatus, getJob, getLicenseStatus, sendPromptResponse, startConvertJob } from "./api";
 import type { ActivePrompt } from "./types";
 
 type JobStatus = {
@@ -75,6 +75,15 @@ export default function App() {
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
   const [useAi, setUseAi] = useState(false);
   const [aiStatusLine, setAiStatusLine] = useState<string | null>(null);
+  const [license, setLicense] = useState<{
+    can_run_jobs: boolean;
+    message: string;
+    demo_days_left: number | null;
+    activated: boolean;
+    machine_fingerprint: string;
+  } | null>(null);
+  const [activationKey, setActivationKey] = useState("");
+  const [activationMsg, setActivationMsg] = useState<string | null>(null);
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
@@ -106,6 +115,29 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const l = await getLicenseStatus();
+        if (!alive) return;
+        setLicense({
+          can_run_jobs: l.can_run_jobs,
+          message: l.message,
+          demo_days_left: l.demo_days_left,
+          activated: l.activated,
+          machine_fingerprint: l.machine_fingerprint,
+        });
+      } catch {
+        if (alive) setLicense(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface]);
+
   // Close home tab = close whole app (backend).
   useEffect(() => {
     if (!isHomeSurface) return;
@@ -124,6 +156,10 @@ export default function App() {
   const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
     setErrorText(null);
     setHomeHint(null);
+    if (license && !license.can_run_jobs) {
+      setErrorText("Periodo de demostración finalizado. Introduce la clave de activación abajo.");
+      return;
+    }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
       setErrorText("URL requerida para 'Grabar Interacciones'.");
       return;
@@ -356,6 +392,84 @@ export default function App() {
               </div>
             )}
 
+            {license && (
+              <div
+                style={{
+                  background: license.can_run_jobs ? "#f0fdf4" : "#fffbeb",
+                  border: `1px solid ${license.can_run_jobs ? "#bbf7d0" : "#fde68a"}`,
+                  color: "#374151",
+                  padding: 12,
+                  borderRadius: 10,
+                  marginBottom: 14,
+                  fontSize: 14,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Licencia</div>
+                <div style={{ marginBottom: 8 }}>{license.message}</div>
+                {!license.activated && (
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, wordBreak: "break-all" }}>
+                    Huella (soporte): <code>{license.machine_fingerprint}</code>
+                  </div>
+                )}
+                {!license.can_run_jobs && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="password"
+                      value={activationKey}
+                      onChange={(e) => setActivationKey(e.target.value)}
+                      placeholder="Clave de activación"
+                      style={{
+                        flex: "1 1 240px",
+                        minWidth: 200,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActivationMsg(null);
+                        void (async () => {
+                          try {
+                            const r = await activateLicense(activationKey);
+                            if (r.ok) {
+                              const l = await getLicenseStatus();
+                              setLicense({
+                                can_run_jobs: l.can_run_jobs,
+                                message: l.message,
+                                demo_days_left: l.demo_days_left,
+                                activated: l.activated,
+                                machine_fingerprint: l.machine_fingerprint,
+                              });
+                              setActivationKey("");
+                              setActivationMsg("Activación correcta.");
+                            } else {
+                              setActivationMsg(r.message || "Clave no válida.");
+                            }
+                          } catch (e: any) {
+                            setActivationMsg(String(e?.message ?? e));
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: "#0ea5e9",
+                        color: "white",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Activar
+                    </button>
+                  </div>
+                )}
+                {activationMsg && <div style={{ marginTop: 8, fontSize: 13 }}>{activationMsg}</div>}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
               <input
                 value={urlValue}
@@ -396,20 +510,46 @@ export default function App() {
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
+                disabled={license ? !license.can_run_jobs : false}
                 onClick={() => startJob("puppeteer_recorder")}
-                style={{ padding: "10px 14px", borderRadius: 10, background: "#0ea5e9", color: "white", border: "none", cursor: "pointer" }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: license && !license.can_run_jobs ? "#94a3b8" : "#0ea5e9",
+                  color: "white",
+                  border: "none",
+                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                }}
               >
                 Grabar Interacciones
               </button>
               <button
+                disabled={license ? !license.can_run_jobs : false}
                 onClick={() => startJob("puppeteer_to_behave")}
-                style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111827",
+                  border: "1px solid #d1d5db",
+                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                  opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                }}
               >
                 Convertir a Behave
               </button>
               <button
+                disabled={license ? !license.can_run_jobs : false}
                 onClick={() => startJob("puppeteer_to_step_by_step")}
-                style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111827",
+                  border: "1px solid #d1d5db",
+                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                  opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                }}
               >
                 Convertir a step by step
               </button>

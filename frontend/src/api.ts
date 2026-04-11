@@ -42,6 +42,37 @@ export async function getAiStatus(): Promise<AiStatusResponse> {
   return res.json();
 }
 
+export type LicenseStatusResponse = {
+  ok: boolean;
+  reason: string;
+  demo_days_left: number | null;
+  activated: boolean;
+  machine_fingerprint: string;
+  message: string;
+  can_run_jobs: boolean;
+};
+
+export async function getLicenseStatus(): Promise<LicenseStatusResponse> {
+  const res = await fetch("/api/license/status");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch license: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function activateLicense(key: string): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch("/api/license/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Failed to activate: ${res.status}`);
+  }
+  return data;
+}
+
 export async function getJob(jobId: string): Promise<JobStateResponse> {
   const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
   if (!res.ok) {

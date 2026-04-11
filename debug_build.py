@@ -4,7 +4,7 @@ import sys
 
 
 def debug_build():
-    """Diagnóstico: archivos en dist/BEE/core y carga de recorder (plan plano / ofuscado / .enc)."""
+    """Diagnóstico: archivos en dist/BEE/core y carga de recorder (plano / ofuscado)."""
     dist_path = os.path.join("dist", "BEE")
 
     print("🔍 Iniciando diagnóstico...")
