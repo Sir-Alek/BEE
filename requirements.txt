@@ -28,9 +28,11 @@ starlette==0.52.1
 pydantic==2.12.5
 # pydantic_core lo instala pip como dependencia de pydantic
 httpx==0.28.1
+# Resolver explícito: selenium<4.34 acotaba typing_extensions~=4.13 (incompatible con pydantic 2.12).
+typing-extensions>=4.15.0,<5
 
 # --- Selenium / pruebas generadas ---
-selenium==4.33.0
+selenium==4.43.0
 webdriver-manager==4.0.2
 
 # --- Imagen, video, escritorio ---
