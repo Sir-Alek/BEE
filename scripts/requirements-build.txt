@@ -1,3 +1,1 @@
-# Opcional: solo para compilar extensiones Cython (python setup_cython.py build_ext --inplace)
-cython>=3.0.0
-setuptools>=65.0.0
+# Obsoleto: las dependencias de build (Cython, setuptools) están en requirements.txt de la raíz.

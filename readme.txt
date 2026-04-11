@@ -85,14 +85,39 @@ bee/
 
 ## Requisitos
 
-● Para uso directo con Python:
-  - Python 3.10.0
-  - Node.js 16+ (o usar el Node.js portable incluido)
-  - Chrome/Chromium instalado
+● Python **3.10.11** (64-bit en Windows; recomendado para coincidir con el runtime empaquetado).
+● Node.js **16+** (o el Node.js portable en `core/node/`; necesario para `npx` si ofuscas `recorder.js`).
+● Chrome/Chromium instalado.
+● **Tkinter:** incluido en el instalador oficial de Python para Windows (no viene de pip).
 
-● Para el ejecutable:
-  - Windows 10/11
-  - Chrome/Chromium instalado
+### Entorno virtual (recomendado para desarrollo y para PyInstaller)
+
+Usa un **venv dedicado** solo para BEE, así PyInstaller solo incluirá lo instalado ahí (no librerías globales del sistema).
+
+**Windows (PowerShell o cmd), desde la carpeta del proyecto:**
+
+```text
+py -3.10 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -U pip setuptools wheel
+pip install -r requirements.txt
+```
+
+**Activar en sesiones posteriores:** `.venv\Scripts\activate`
+
+**Ejecutar la app:** `python main.py`
+
+**Generar el .exe** (con el venv activado, frontend ya compilado si usas la UI web):
+
+```text
+python -m PyInstaller --noconfirm BEE.spec
+```
+
+o el pipeline completo: `python scripts/build_release.py` (ver sección «Protección / build de release»).
+
+**Desactivar el venv:** `deactivate`
+
+● Para el ejecutable en equipos finales: Windows 10/11 y Chrome; no hace falta Python instalado.
 
 ## Notas importantes
 
