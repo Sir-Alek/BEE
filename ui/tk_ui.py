@@ -18,12 +18,13 @@ from tkinter import (
     Label,
     Listbox,
     Scrollbar,
+    Text,
     Toplevel,
     messagebox,
     ttk,
 )
 
-from ui.interfaces import ActionItem, IUI
+from ui.interfaces import ActionItem, BDDUserCancelled, IUI
 
 
 class TkUI(IUI):
@@ -205,4 +206,84 @@ class TkUI(IUI):
 
     def yes_no_cancel(self, title: str, message: str) -> Optional[bool]:
         return messagebox.askyesnocancel(title, message, parent=self.master)
+
+    def bdd_preview_review(
+        self,
+        *,
+        feature_text: str,
+        attempt: int,
+        max_attempts: int,
+        script_excerpt: str,
+        can_manual: bool,
+    ) -> dict:
+        win = Toplevel(self.master)
+        win.title("Vista previa del escenario BDD (IA)")
+        win.geometry("900x620")
+        win.transient(self.master)
+        win.grab_set()
+        self._center_window(win)
+
+        header = (
+            f"Intento {attempt} de {max_attempts}. "
+            + ("Edita el escenario y confirma." if can_manual else "Revisa el texto generado.")
+        )
+        Label(win, text=header, font=("Arial", 11, "bold")).pack(anchor="w", padx=12, pady=(12, 6))
+
+        if script_excerpt.strip():
+            lf = Frame(win)
+            lf.pack(fill="x", padx=12, pady=(0, 6))
+            Label(lf, text="Extracto del script (referencia):", font=("Arial", 9)).pack(anchor="w")
+            st_ref = Text(lf, height=6, wrap="word", font=("Consolas", 9))
+            st_ref.pack(fill="x")
+            st_ref.insert("1.0", script_excerpt)
+            st_ref.configure(state="disabled")
+
+        Label(win, text="Feature (.feature):", font=("Arial", 9)).pack(anchor="w", padx=12)
+        body = Text(win, height=18, wrap="word", font=("Consolas", 10))
+        body.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+        body.insert("1.0", feature_text)
+        if not can_manual:
+            body.configure(state="disabled")
+
+        result: dict = {}
+
+        def on_accept() -> None:
+            txt = body.get("1.0", "end").strip()
+            result.clear()
+            result["action"] = "accept"
+            result["feature_text"] = txt
+            result["edited"] = bool(can_manual or (txt != feature_text.strip()))
+            win.destroy()
+
+        def on_reject() -> None:
+            result.clear()
+            result["action"] = "reject"
+            win.destroy()
+
+        def on_cancel() -> None:
+            win.destroy()
+
+        bf = Frame(win)
+        bf.pack(pady=(0, 12))
+        if can_manual:
+
+            def on_heuristic() -> None:
+                result.clear()
+                result["action"] = "use_heuristic"
+                win.destroy()
+
+            Button(bf, text="Aceptar escenario", command=on_accept, width=16).pack(side="left", padx=8)
+            Button(bf, text="Usar generación heurística", command=on_heuristic, width=22).pack(side="left", padx=8)
+            Button(bf, text="Cancelar conversión", command=on_cancel, width=18).pack(side="left", padx=8)
+        else:
+            Button(bf, text="Aceptar", command=on_accept, width=14).pack(side="left", padx=8)
+            Button(bf, text="Rechazar (regenerar)", command=on_reject, width=18).pack(side="left", padx=8)
+            Button(bf, text="Cancelar", command=on_cancel, width=12).pack(side="left", padx=8)
+
+        self.master.wait_window(win)
+
+        if not result:
+            raise BDDUserCancelled()
+
+        return result
 

@@ -20,16 +20,16 @@ import subprocess
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 CORE = os.path.join(ROOT, "core")
 OBFUSCATED_JS = os.path.join(CORE, "recorder.obfuscated.js")
 SOURCE_RECORDER = os.path.join(CORE, "recorder.js")
 
 # Mismos módulos que setup_cython.py; al empaquetar se pueden borrar los .py del dist si existe .pyd
-CYTHON_SOURCE_PY = [
-    "puppeteer_script_converter.py",
-    "video_recorder.py",
-    "step_by_step_converter.py",
-]
+from core._cython_build_manifest import CYTHON_REL_PATHS
+
+CYTHON_SOURCE_PY = [os.path.basename(p) for p in CYTHON_REL_PATHS]
 
 
 def run(cmd: list[str], cwd: str | None = None) -> None:

@@ -113,6 +113,7 @@ def run_llama_json_prompt(
     gguf_path: Optional[str] = None,
     max_tokens: int = 512,
     timeout_sec: float = 120.0,
+    temperature: float = 0.1,
 ) -> Optional[dict]:
     """
     Ejecuta el modelo con un prompt que debe devolver un único JSON.
@@ -136,7 +137,7 @@ def run_llama_json_prompt(
             result = llm.create_completion(
                 prompt=full_prompt,
                 max_tokens=max_tokens,
-                temperature=0.1,
+                temperature=float(temperature),
                 top_p=0.9,
             )
         except Exception:
@@ -158,10 +159,31 @@ def suggest_bdd_steps_from_actions(
     *,
     base_name: str,
     gguf_path: Optional[str] = None,
+    temperature: float = 0.1,
+    few_shot_examples: Optional[List[Dict[str, str]]] = None,
 ) -> Optional[List[Tuple[str, str]]]:
     lines_in = [{"type": t, "description": d} for t, d in actions]
+    memory_block = ""
+    if few_shot_examples:
+        parts = []
+        for i, ex in enumerate(few_shot_examples[:3], start=1):
+            sc = (ex.get("script") or "").strip()
+            ft = (ex.get("feature") or "").strip()
+            if sc and ft:
+                parts.append(
+                    f"[EJEMPLO DE ESTILO {i} — Script (extracto)]\n{sc}\n"
+                    f"[EJEMPLO DE ESTILO {i} — Feature esperado]\n{ft}\n"
+                )
+        if parts:
+            memory_block = (
+                "Imita el estilo de redacción y nivel de abstracción de estos ejemplos del usuario "
+                "(no copies selectores ni nombres técnicos de los scripts):\n"
+                + "\n".join(parts)
+                + "\n"
+            )
     prompt = (
-        "Eres analista de negocio para pruebas BDD en español. Tienes acciones técnicas grabadas (clics, textos).\n"
+        memory_block
+        + "Eres analista de negocio para pruebas BDD en español. Tienes acciones técnicas grabadas (clics, textos).\n"
         "Escribe UN escenario con EXACTAMENTE esta forma (sin pasos de más):\n"
         "- Como mucho: Given (0 o 1), When (1), And (0 o 1), Then (1). NUNCA dos When ni dos Then.\n"
         "- El And solo si hay dos fases claras (p. ej. navegación vs. datos); si no, omítelo.\n"
@@ -174,7 +196,12 @@ def suggest_bdd_steps_from_actions(
         f"Nombre feature: {base_name}\n"
         f"Acciones (referencia, no copiar literal): {json.dumps(lines_in, ensure_ascii=False)}\n"
     )
-    data = run_llama_json_prompt(prompt, gguf_path=gguf_path, max_tokens=768)
+    data = run_llama_json_prompt(
+        prompt,
+        gguf_path=gguf_path,
+        max_tokens=768,
+        temperature=temperature,
+    )
     if not data or "steps" not in data:
         return None
     out: List[Tuple[str, str]] = []

@@ -6,14 +6,23 @@ import json
 from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Tuple
 
-from ui.interfaces import IUI
+from ui.interfaces import BDDUserCancelled, IUI
+
+
+def _trim_script_for_preview(script_content: str, max_chars: int = 10000) -> str:
+    s = (script_content or "").strip()
+    if len(s) <= max_chars:
+        return s
+    return s[: max_chars - 20] + "\n... [truncado]"
 
 
 class PuppeteerToBehaveConverter:
     
     def __init__(self, base_dir, ui: IUI, use_ai: bool = False):
         self.base_dir = base_dir
-        self.projects_dir = os.path.join(base_dir, "behave", "proyectos")
+        from core.bee_paths import behave_projects_dir
+
+        self.projects_dir = str(behave_projects_dir())
         self.selected_actions = []
         self.ui = ui
         self.use_ai = use_ai
@@ -285,7 +294,11 @@ class PuppeteerToBehaveConverter:
                         feature_exists = False
 
                 if not feature_exists:
-                    feature_content = self._generate_bdd_feature(content, base_name)
+                    try:
+                        feature_content = self._generate_bdd_feature(content, base_name)
+                    except BDDUserCancelled:
+                        self.ui.info("Conversión cancelada", "Se canceló la generación del escenario BDD.")
+                        return
                     with open(file_paths['feature'], "w", encoding="utf-8") as f:
                         f.write(feature_content)
                     feature_content_for_steps = feature_content
@@ -423,15 +436,62 @@ class PuppeteerToBehaveConverter:
         if self.use_ai:
             try:
                 from core import gemma_inference
+                from core.bee_memory import append_correction, recent_examples_for_prompt
 
                 if gemma_inference.is_ai_runtime_configured():
-                    ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
-                        unique_actions, base_name=base_name
-                    )
-                    if ai_steps:
-                        rendered = self._feature_text_from_ai_steps(base_name, ai_steps)
-                        if rendered:
-                            return rendered
+                    script_excerpt = _trim_script_for_preview(script_content)
+                    temps = [0.1, 0.4]
+                    examples = recent_examples_for_prompt(limit=3)
+                    last_rendered: Optional[str] = None
+
+                    for attempt in range(1, 4):
+                        can_manual = attempt >= 3
+                        if attempt <= 2:
+                            temp = temps[attempt - 1]
+                            ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
+                                unique_actions,
+                                base_name=base_name,
+                                temperature=temp,
+                                few_shot_examples=examples,
+                            )
+                            rendered: Optional[str] = None
+                            if ai_steps:
+                                rendered = self._feature_text_from_ai_steps(base_name, ai_steps)
+                            if not rendered:
+                                rendered = self._generate_bdd_feature_heuristic_business(
+                                    unique_actions, base_name
+                                )
+                        else:
+                            rendered = last_rendered or self._generate_bdd_feature_heuristic_business(
+                                unique_actions, base_name
+                            )
+
+                        last_rendered = rendered
+                        review = self.ui.bdd_preview_review(
+                            feature_text=rendered,
+                            attempt=attempt,
+                            max_attempts=3,
+                            script_excerpt=script_excerpt,
+                            can_manual=can_manual,
+                        )
+                        action = str(review.get("action") or "")
+                        if action == "accept":
+                            ft = str(review.get("feature_text") or rendered).strip()
+                            if not ft:
+                                ft = rendered
+                            edited = bool(review.get("edited"))
+                            if edited or ft != rendered.strip():
+                                append_correction(script_snippet=script_content, feature_text=ft)
+                            return ft
+                        if action == "reject":
+                            if attempt >= 3:
+                                break
+                            continue
+                        if action == "use_heuristic":
+                            return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+
+            except BDDUserCancelled:
+                raise
             except Exception as e:
                 print(f"BEE IA BDD: fallback heurístico: {e}")
 

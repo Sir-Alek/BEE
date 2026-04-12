@@ -29,10 +29,10 @@ Rápida y eficiente como una abeja, esta herramienta graba interacciones con pá
   ● Selecciona el proyecto y el archivo JS grabado
   ● Elige las acciones a incluir en la conversión
   ● La herramienta generará automáticamente:
-    - Archivo .feature en behave/proyectos/[nombre]/features/
-    - Steps en behave/proyectos/[nombre]/features/steps/
-    - Page Objects en behave/proyectos/[nombre]/pages/
-    - Datos de prueba en behave/proyectos/[nombre]/resources/data/
+    - Archivo .feature en Documentos/BEE/behave/proyectos/[nombre]/features/ (o la ruta definida por BEE_USER_DATA)
+    - Steps en .../features/steps/
+    - Page Objects en .../pages/
+    - Datos de prueba en .../resources/data/
 
 3. Convertir a Step-by-Step:
   ● Haz clic en "Convertir a step by step"
@@ -40,9 +40,9 @@ Rápida y eficiente como una abeja, esta herramienta graba interacciones con pá
   ● Elige las acciones a incluir en la conversión
   ● Decide si reorganizar el proyecto en la estructura step-by-step
   ● La herramienta generará:
-    - Test case en step_by_step/proyectos/[nombre]/tests/
-    - JSON con información de pasos en step_by_step/proyectos/[nombre]/resources/info_steps/
-    - Evidencias en step_by_step/proyectos/[nombre]/outputs/evidences/
+    - Test case en Documentos/BEE/step_by_step/proyectos/[nombre]/tests/
+    - JSON con información de pasos en .../resources/info_steps/
+    - Evidencias en .../outputs/evidences/
 
 ## Estructura del proyecto
 
@@ -56,7 +56,7 @@ bee/
 │   ├── video_recorder.py # Grabador de pantalla
 │   ├── node/            # Node.js portable incluido
 │   └── recorder.js      # Script de grabación Puppeteer
-├── behave/              # Salida generada para Behave
+├── behave/              # Plantilla vacía en el repo (la salida real va a Documentos/BEE/behave/…)
 │   └── proyectos/       # Proyectos organizados por nombre
 │       └── [nombre_proyecto]/
 │           ├── scripts/       # Scripts grabados (.js)
@@ -66,7 +66,7 @@ bee/
 │           ├── resources/     # Datos de prueba
 │           ├── outputs/       # Resultados y salidas
 │           └── utils/         # Utilidades
-├── step_by_step/        # Salida generada para step-by-step
+├── step_by_step/        # Plantilla en el repo (salida real en Documentos/BEE/step_by_step/…)
 │   └── proyectos/       # Proyectos organizados por nombre
 │       └── [nombre_proyecto]/
 │           ├── scripts/       # Scripts grabados (.js)
@@ -123,6 +123,9 @@ o el pipeline completo: `python scripts/build_release.py` (ver sección «Protec
 
 ## Notas importantes
 
+● **Datos de usuario:** los proyectos Behave y step-by-step se crean bajo **Documentos/BEE** (Windows: `%USERPROFILE%\\Documents\\BEE`). Para otra ubicación, define **`BEE_USER_DATA`** con la ruta raíz (por ejemplo `D:\\MisDatos\\BEE`). El «motor» instalado puede seguir en `Program Files`; los artefactos generados quedan fuera.
+● **Memoria local de IA:** correcciones aceptadas (script + feature editado) se guardan en `bee_memory.json` dentro de esa misma carpeta de datos, para enriquecer prompts futuros de Gemma (sin reentrenar el GGUF).
+
 ● El producto se distribuye como ejecutable .exe que incluye Python 3.10.0 empaquetado
 ● Las grabaciones se guardan en formato JavaScript (Puppeteer)
 ● Ambas conversiones generan código compatible con Selenium WebDriver
@@ -151,7 +154,7 @@ o el pipeline completo: `python scripts/build_release.py` (ver sección «Protec
 ## Protección / build de release (Cython + JS)
 
 ● Pipeline unificado: `scripts/build_release.py` (Cython opcional + ofuscador JS + PyInstaller).
-● **Cython (opcional):** `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los módulos listados en `setup_cython.py`.
+● **Cython (opcional):** `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los módulos listados en `core/_cython_build_manifest.py`.
 ● **JavaScript:** `javascript-obfuscator` vía `npx`; perfil seguro en `scripts/build_release.py` (no `string-array` / control-flow en código que Puppeteer inyecta en el navegador).
 ● **PyInstaller:** `python scripts/build_release.py` (o con `--cython`). Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence
 
-from ui.interfaces import ActionItem, IUI
+from ui.interfaces import ActionItem, BDDUserCancelled, IUI
 
 from webui.job_manager import JobCancelledError, JobManager, Prompt
 
@@ -152,6 +152,38 @@ class WebUIAdapter(IUI):
             return False
 
         return bool(answer)
+
+    def bdd_preview_review(
+        self,
+        *,
+        feature_text: str,
+        attempt: int,
+        max_attempts: int,
+        script_excerpt: str,
+        can_manual: bool,
+    ) -> Dict[str, Any]:
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="bdd_preview",
+            title="Vista previa del escenario BDD (IA)",
+            message="Revisa el escenario generado. Puedes aceptarlo, pedir otra versión o editarlo manualmente.",
+            payload={
+                "feature_text": feature_text,
+                "attempt": attempt,
+                "max_attempts": max_attempts,
+                "script_excerpt": script_excerpt,
+                "can_manual": can_manual,
+            },
+        )
+        try:
+            answer = self._safe_wait(prompt)
+        except JobCancelledError:
+            raise BDDUserCancelled()
+
+        if answer is None or not isinstance(answer, dict):
+            raise BDDUserCancelled()
+        return answer
 
     def yes_no_cancel(self, title: str, message: str) -> Optional[bool]:
         prompt_id = self._new_prompt_id()

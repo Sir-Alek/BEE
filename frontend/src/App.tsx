@@ -84,6 +84,7 @@ export default function App() {
   } | null>(null);
   const [activationKey, setActivationKey] = useState("");
   const [activationMsg, setActivationMsg] = useState<string | null>(null);
+  const [bddPreviewText, setBddPreviewText] = useState("");
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
@@ -209,6 +210,13 @@ export default function App() {
       setTextValue("");
     }
   }, [activePrompt?.prompt_id, activePrompt?.type]);
+
+  useEffect(() => {
+    const ap = activePrompt as { type?: string; payload?: { feature_text?: string } } | null;
+    if (ap?.type === "bdd_preview" && ap.payload?.feature_text != null) {
+      setBddPreviewText(String(ap.payload.feature_text));
+    }
+  }, [activePrompt?.prompt_id, activePrompt]);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -720,6 +728,145 @@ export default function App() {
                 >
                   Cancelar
                 </button>
+              </div>
+            )}
+
+            {activePrompt.type === "bdd_preview" && activePrompt.payload && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                  Intento {activePrompt.payload.attempt} de {activePrompt.payload.max_attempts}.{" "}
+                  {activePrompt.payload.can_manual
+                    ? "Puedes editar el escenario a mano o usar la versión heurística."
+                    : "Revisa el texto; puedes aceptarlo o pedir otra versión con IA."}
+                </div>
+                {activePrompt.payload.script_excerpt?.trim() ? (
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Extracto del script (referencia)</div>
+                    <textarea
+                      readOnly
+                      value={activePrompt.payload.script_excerpt}
+                      style={{
+                        width: "100%",
+                        minHeight: 120,
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid #e5e7eb",
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: 12,
+                        background: "#f9fafb",
+                      }}
+                    />
+                  </div>
+                ) : null}
+                <div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Feature (.feature)</div>
+                  <textarea
+                    value={bddPreviewText}
+                    onChange={(e) => setBddPreviewText(e.target.value)}
+                    readOnly={!activePrompt.payload.can_manual}
+                    style={{
+                      width: "100%",
+                      minHeight: 220,
+                      padding: 10,
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      fontFamily: "ui-monospace, monospace",
+                      fontSize: 13,
+                      background: activePrompt.payload.can_manual ? "#fff" : "#f9fafb",
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!jobId) return;
+                      const orig = String(activePrompt.payload?.feature_text ?? "");
+                      const edited = bddPreviewText.trim() !== orig.trim();
+                      await sendPromptResponse({
+                        jobId,
+                        promptId: activePrompt.prompt_id,
+                        answer: {
+                          action: "accept",
+                          feature_text: bddPreviewText,
+                          edited,
+                        },
+                      });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#0ea5e9",
+                      color: "white",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {activePrompt.payload.can_manual ? "Aceptar escenario" : "Aceptar"}
+                  </button>
+                  {!activePrompt.payload.can_manual ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({
+                          jobId,
+                          promptId: activePrompt.prompt_id,
+                          answer: { action: "reject" },
+                        });
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: "#fff",
+                        color: "#111827",
+                        border: "1px solid #d1d5db",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Rechazar (regenerar)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({
+                          jobId,
+                          promptId: activePrompt.prompt_id,
+                          answer: { action: "use_heuristic" },
+                        });
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: "#fff",
+                        color: "#111827",
+                        border: "1px solid #d1d5db",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Usar generación heurística
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!jobId) return;
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#fff",
+                      color: "#6b7280",
+                      border: "1px solid #d1d5db",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             )}
 

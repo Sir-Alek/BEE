@@ -41,6 +41,12 @@ def _repo_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
+def _projects_dir() -> str:
+    from core.bee_paths import behave_projects_dir
+
+    return str(behave_projects_dir())
+
+
 def _require_localhost(request: Request) -> None:
     # Hardening: prevent exposing UI to other hosts.
     host = (request.client.host if request.client else "").strip()
@@ -147,8 +153,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.mark_error(job_id, message="Missing url", details="url is required for puppeteer_recorder")
                         return
 
-                    projects_dir = os.path.join(base_dir, "behave", "proyectos")
-                    os.makedirs(projects_dir, exist_ok=True)
+                    projects_dir = _projects_dir()
 
                     import re
                     import time
