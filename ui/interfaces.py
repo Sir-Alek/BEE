@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional, Protocol, Sequence, TypedDict
+from typing import Any, Dict, Iterable, Optional, Protocol, Sequence, TypedDict
 
 
 class ActionItem(TypedDict):
@@ -14,6 +14,10 @@ class ActionItem(TypedDict):
 class ExistingFilesPrompt:
     title: str
     message: str
+
+
+class BDDUserCancelled(Exception):
+    """Usuario canceló la revisión del escenario BDD (vista previa con IA)."""
 
 
 class IUI(Protocol):
@@ -51,4 +55,20 @@ class IUI(Protocol):
 
     def yes_no_cancel(self, title: str, message: str) -> Optional[bool]:
         """True=Sí, False=No, None=Cancelar."""
+
+    def bdd_preview_review(
+        self,
+        *,
+        feature_text: str,
+        attempt: int,
+        max_attempts: int,
+        script_excerpt: str,
+        can_manual: bool,
+    ) -> Dict[str, Any]:
+        """
+        Revisión del .feature generado (IA). Debe devolver un dict:
+          {"action": "accept", "feature_text": str, "edited": bool}
+          {"action": "reject"}
+        Si el usuario cancela el flujo, implementaciones pueden lanzar BDDUserCancelled.
+        """
 

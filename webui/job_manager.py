@@ -17,6 +17,8 @@ class Prompt:
     type: str
     title: str
     message: str
+    # Optional structured fields (bdd preview, etc.)
+    payload: Optional[Dict[str, Any]] = None
     # message_ack: info | warning | error (modal OK, like Tk messagebox)
     severity: str = "info"
     # UI payload
@@ -244,6 +246,7 @@ class JobManager:
                     "type": prompt.type,
                     "title": prompt.title,
                     "message": prompt.message,
+                    "payload": getattr(prompt, "payload", None),
                     "severity": getattr(prompt, "severity", "info") or "info",
                     "options": prompt.options,
                     "actions": prompt.actions,

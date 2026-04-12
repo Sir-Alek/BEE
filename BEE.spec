@@ -4,7 +4,15 @@ block_cipher = None
 
 import glob
 import os
+import sys
+
+# SPECPATH is set by PyInstaller when loading the .spec file.
+_spec_root = os.path.dirname(os.path.abspath(globals().get("SPECPATH", os.path.join(os.getcwd(), "BEE.spec"))))
+sys.path.insert(0, _spec_root)
+
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+from core._cython_build_manifest import CYTHON_REL_PATHS
 
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
 _cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
@@ -18,11 +26,7 @@ for _p in sorted(glob.glob(os.path.join('core', 'recorder*.js'))):
 # Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
 _cython_excludes = []
 if cython_binaries:
-    _cython_excludes = [
-        'core.puppeteer_script_converter',
-        'core.video_recorder',
-        'core.step_by_step_converter',
-    ]
+    _cython_excludes = [p.replace("\\", "/").removesuffix(".py").replace("/", ".") for p in CYTHON_REL_PATHS]
 
 # Web UI deps are imported conditionally and need help for PyInstaller.
 web_hidden = []

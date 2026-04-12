@@ -58,6 +58,21 @@ export type ActivePrompt =
     }
   | {
       prompt_id: string;
+      type: "bdd_preview";
+      title: string;
+      message: string;
+      payload: {
+        feature_text: string;
+        attempt: number;
+        max_attempts: number;
+        script_excerpt: string;
+        can_manual: boolean;
+      };
+      options: null;
+      actions: null;
+    }
+  | {
+      prompt_id: string;
       type: string;
       title: string;
       message: string;

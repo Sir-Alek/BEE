@@ -131,8 +131,9 @@ class main:
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.projects_dir = os.path.join(self.base_dir, "behave", "proyectos")
-        os.makedirs(self.projects_dir, exist_ok=True)
+        from core.bee_paths import behave_projects_dir
+
+        self.projects_dir = str(behave_projects_dir())
         # self.behave_dir = os.path.join(self.base_dir, "behave")
         self.recordings_dir = os.path.join(self.base_dir, "grabaciones")
         self.logo_path = os.path.join(self.base_dir, "resources", "logo_bee_png_transparente.png")
@@ -516,10 +517,14 @@ class main:
 
             def worker() -> None:
                 try:
+                    from ui.interfaces import BDDUserCancelled
+
                     use_ai = os.environ.get("BEE_USE_AI", "").lower() in ("1", "true", "yes")
                     converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
+                except BDDUserCancelled:
+                    self._job_manager.cancel_job(job_id)
                 except Exception as e:
                     self._job_manager.mark_error(job_id, message="Error en conversión a behave", details=str(e))
 

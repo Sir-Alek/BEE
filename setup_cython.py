@@ -20,12 +20,10 @@ try:
 except ImportError as e:
     raise SystemExit("Instala Cython: pip install cython") from e
 
+from core._cython_build_manifest import CYTHON_REL_PATHS
+
 # Módulos a compilar (rutas relativas al directorio del proyecto).
-CYTHON_MODULES = [
-    "core/puppeteer_script_converter.py",
-    "core/video_recorder.py",
-    "core/step_by_step_converter.py",
-]
+CYTHON_MODULES = list(CYTHON_REL_PATHS)
 
 compiler_directives = {"language_level": "3", "embedsignature": False}
 
