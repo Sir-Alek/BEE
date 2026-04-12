@@ -440,14 +440,14 @@ class PuppeteerToBehaveConverter:
 
                 if gemma_inference.is_ai_runtime_configured():
                     script_excerpt = _trim_script_for_preview(script_content)
-                    temps = [0.1, 0.4]
+                    ai_temps = [0.1, 0.4, 0.7]
                     examples = recent_examples_for_prompt(limit=3)
                     last_rendered: Optional[str] = None
 
-                    for attempt in range(1, 4):
-                        can_manual = attempt >= 3
-                        if attempt <= 2:
-                            temp = temps[attempt - 1]
+                    for attempt in range(1, 5):
+                        can_manual = attempt >= 4
+                        if attempt <= 3:
+                            temp = ai_temps[attempt - 1]
                             ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
                                 unique_actions,
                                 base_name=base_name,
@@ -470,7 +470,7 @@ class PuppeteerToBehaveConverter:
                         review = self.ui.bdd_preview_review(
                             feature_text=rendered,
                             attempt=attempt,
-                            max_attempts=3,
+                            max_attempts=4,
                             script_excerpt=script_excerpt,
                             can_manual=can_manual,
                         )
@@ -484,7 +484,7 @@ class PuppeteerToBehaveConverter:
                                 append_correction(script_snippet=script_content, feature_text=ft)
                             return ft
                         if action == "reject":
-                            if attempt >= 3:
+                            if attempt >= 4:
                                 break
                             continue
                         if action == "use_heuristic":
