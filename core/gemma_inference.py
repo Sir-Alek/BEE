@@ -118,8 +118,10 @@ def run_llama_json_prompt(
     """
     Ejecuta el modelo con un prompt que debe devolver un único JSON.
     timeout_sec se reserva para compatibilidad; la inferencia puede bloquear hasta terminar.
+    (No usar ``del`` sobre el parámetro: Cython no lo admite al compilar a extensión.)
     """
-    del timeout_sec  # API actual de llama-cpp-python sin timeout portable
+    # Parámetro reservado para API; llama-cpp-python no expone timeout portable aquí.
+    _ = timeout_sec
     if not is_gguf_available():
         return None
     try:
