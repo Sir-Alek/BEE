@@ -150,13 +150,15 @@ o el pipeline completo: `python scripts/build_release.py` (ver sección «Protec
 ● La aplicación no debe cerrar el navegador sola al terminar; usa la pestaña de inicio para nuevas tareas.
 ● El aviso azul en inicio desaparece cuando termina el flujo en la otra pestaña (BroadcastChannel) o a los 5 minutos.
 ● En la pestaña de resultado, «Volver al inicio» enfoca la pestaña de inicio y cierra la de trabajo (evita duplicar inicio).
+● **Modo oscuro:** botón «Oscuro / Claro» en la cabecera; la preferencia se guarda en el navegador (`localStorage`) y se sincroniza entre pestañas abiertas (`BroadcastChannel`). Las pestañas de trabajo reciben `?theme=dark|light` al abrirse desde inicio para aplicar el mismo tema.
 
 ## Protección / build de release (Cython + JS)
 
 ● Pipeline unificado: `scripts/build_release.py` (Cython opcional + ofuscador JS + PyInstaller).
 ● **Cython (opcional):** `python setup_cython.py build_ext --inplace` genera `core/*.pyd` para los módulos listados en `core/_cython_build_manifest.py`.
 ● **JavaScript:** `javascript-obfuscator` vía `npx`; perfil seguro en `scripts/build_release.py` (no `string-array` / control-flow en código que Puppeteer inyecta en el navegador).
-● **PyInstaller:** `python scripts/build_release.py` (o con `--cython`). Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
+● **PyInstaller (`BEE.spec`):** en el ejecutable solo se incluye **`core/recorder.obfuscated.js`** si existe en el momento del build (generado por `scripts/build_release.py` / ofuscador). Si no existe, se empaqueta **`recorder.js`** plano para que el grabador no quede sin motor. En entregas, ejecuta el pipeline de release **antes** de PyInstaller para incluir la versión ofuscada.
+● **PyInstaller (resto):** `python scripts/build_release.py` (o con `--cython`). Si hay `.pyd`, el script puede **retirar** los `.py` duplicados de `dist/BEE/core/`.
 
 ## Licencia offline (demo 15 días, activación por clave, kill switch)
 

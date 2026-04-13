@@ -18,10 +18,14 @@ from core._cython_build_manifest import CYTHON_REL_PATHS
 _cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
 cython_binaries = [(p, 'core') for p in _cython_globs]
 
-# Cualquier recorder*.js distinto del plano (ofuscado, test, etc.) + siempre el plano como respaldo
-js_obf = []
-for _p in sorted(glob.glob(os.path.join('core', 'recorder*.js'))):
-    js_obf.append((_p, 'core'))
+# Recorder: en release usar solo el ofuscado (el plano queda en el repo para desarrollo, no en el exe).
+_obf = os.path.join('core', 'recorder.obfuscated.js')
+if os.path.isfile(_obf):
+    js_obf = [(_obf, 'core')]
+else:
+    # Sin build de ofuscación: incluir recorder.js como respaldo para que el exe no quede sin motor.
+    _plain = os.path.join('core', 'recorder.js')
+    js_obf = [(_plain, 'core')] if os.path.isfile(_plain) else []
 
 # Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
 _cython_excludes = []
