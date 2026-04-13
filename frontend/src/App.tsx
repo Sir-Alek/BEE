@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { activateLicense, getAiStatus, getJob, getLicenseStatus, sendPromptResponse, startConvertJob } from "./api";
 import type { ActivePrompt } from "./types";
+import { themeQuerySuffix, useBeeTheme } from "./beeTheme";
 
 type JobStatus = {
   job_id: string;
@@ -59,6 +60,8 @@ function tryFocusOpenerAndCloseThisTab(): boolean {
 }
 
 export default function App() {
+  const { c, dark, toggle } = useBeeTheme();
+
   /** Pinned from first paint: home URL has no job_id; avoids any edge case mixing job UI into home. */
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
 
@@ -183,7 +186,7 @@ export default function App() {
           use_ai: mode === "puppeteer_to_behave" ? useAi : false,
         });
         const base = `${window.location.origin}${window.location.pathname}`;
-        const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}`;
+        const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}${themeQuerySuffix()}`;
         try {
           newTab.location.replace(jobUrl);
         } catch {
@@ -330,8 +333,8 @@ export default function App() {
           alignItems: "center",
           gap: 12,
           padding: "16px 18px",
-          borderBottom: "1px solid #e5e7eb",
-          background: "#ffffff",
+          borderBottom: `1px solid ${c.border}`,
+          background: c.chromeBg,
         }}
       >
         <img
@@ -346,40 +349,73 @@ export default function App() {
           }}
         />
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>BEE</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>BEE</div>
+          <div style={{ fontSize: 12, color: c.chromeHint }}>
             {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
           </div>
         </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280", textAlign: "right" }}>{statusLine}</div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            type="button"
+            title={dark ? "Modo claro" : "Modo oscuro"}
+            onClick={() => toggle()}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+              cursor: "pointer",
+              border: `1px solid ${c.border}`,
+              background: c.btnGhostBg,
+              color: c.text,
+            }}
+          >
+            {dark ? "☀ Claro" : "🌙 Oscuro"}
+          </button>
+          <div style={{ fontSize: 12, color: c.chromeHint, textAlign: "right", maxWidth: 320 }}>{statusLine}</div>
+        </div>
       </div>
     );
-  }, [job, jobId, workspaceMode, isHomeSurface]);
+  }, [job, jobId, workspaceMode, isHomeSurface, c, dark, toggle]);
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", background: "#f9fafb", minHeight: "100vh" }}>
+    <div
+      style={{
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        background: c.pageBg,
+        color: c.text,
+        minHeight: "100vh",
+      }}
+    >
       {header}
 
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
         {errorText && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: 12, borderRadius: 10, marginBottom: 16 }}>
-            <b style={{ color: "#b91c1c" }}>Error</b>
-            <div style={{ color: "#991b1b", marginTop: 6, whiteSpace: "pre-wrap" }}>{errorText}</div>
+          <div
+            style={{
+              background: c.errorBg,
+              border: `1px solid ${c.errorBorder}`,
+              padding: 12,
+              borderRadius: 10,
+              marginBottom: 16,
+            }}
+          >
+            <b style={{ color: c.errorTitle }}>Error</b>
+            <div style={{ color: c.errorBody, marginTop: 6, whiteSpace: "pre-wrap" }}>{errorText}</div>
           </div>
         )}
 
         {isHomeSurface && initialChecked && (
           <div
             style={{
-              background: "#ffffff",
-              border: "1px solid #e5e7eb",
+              background: c.surface,
+              border: `1px solid ${c.border}`,
               borderRadius: 14,
               padding: 18,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+              boxShadow: c.shadow,
             }}
           >
-            <h2 style={{ margin: "4px 0 10px", fontSize: 20 }}>BEE Web UI</h2>
-            <div style={{ color: "#374151", marginBottom: 14 }}>
+            <h2 style={{ margin: "4px 0 10px", fontSize: 20, color: c.text }}>BEE Web UI</h2>
+            <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
               esta vista.
             </div>
@@ -387,9 +423,9 @@ export default function App() {
             {homeHint && (
               <div
                 style={{
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  color: "#1e3a8a",
+                  background: c.hintBg,
+                  border: `1px solid ${c.hintBorder}`,
+                  color: c.hintText,
                   padding: 12,
                   borderRadius: 10,
                   marginBottom: 14,
@@ -403,9 +439,9 @@ export default function App() {
             {license && (
               <div
                 style={{
-                  background: license.can_run_jobs ? "#f0fdf4" : "#fffbeb",
-                  border: `1px solid ${license.can_run_jobs ? "#bbf7d0" : "#fde68a"}`,
-                  color: "#374151",
+                  background: license.can_run_jobs ? c.licOkBg : c.licWarnBg,
+                  border: `1px solid ${license.can_run_jobs ? c.licOkBorder : c.licWarnBorder}`,
+                  color: c.text,
                   padding: 12,
                   borderRadius: 10,
                   marginBottom: 14,
@@ -415,7 +451,7 @@ export default function App() {
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Licencia</div>
                 <div style={{ marginBottom: 8 }}>{license.message}</div>
                 {!license.activated && (
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, wordBreak: "break-all" }}>
+                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 8, wordBreak: "break-all" }}>
                     Huella (soporte): <code>{license.machine_fingerprint}</code>
                   </div>
                 )}
@@ -431,7 +467,9 @@ export default function App() {
                         minWidth: 200,
                         padding: "8px 10px",
                         borderRadius: 8,
-                        border: "1px solid #d1d5db",
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
                         fontSize: 14,
                       }}
                     />
@@ -464,8 +502,8 @@ export default function App() {
                       style={{
                         padding: "8px 14px",
                         borderRadius: 8,
-                        background: "#0ea5e9",
-                        color: "white",
+                        background: c.primary,
+                        color: c.primaryFg,
                         border: "none",
                         cursor: "pointer",
                       }}
@@ -488,7 +526,9 @@ export default function App() {
                   minWidth: 280,
                   padding: "10px 12px",
                   borderRadius: 10,
-                  border: "1px solid #d1d5db",
+                  border: `1px solid ${c.inputBorder}`,
+                  background: c.inputBg,
+                  color: c.text,
                   outline: "none",
                   fontSize: 14,
                 }}
@@ -503,7 +543,7 @@ export default function App() {
                 marginBottom: 14,
                 cursor: "pointer",
                 fontSize: 14,
-                color: "#374151",
+                color: c.text,
               }}
             >
               <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ marginTop: 3 }} />
@@ -511,7 +551,7 @@ export default function App() {
                 <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si hay
                 archivo <code>_bee_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo heurístico.
                 {aiStatusLine && (
-                  <span style={{ display: "block", marginTop: 6, fontSize: 12, color: "#6b7280" }}>{aiStatusLine}</span>
+                  <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>
                 )}
               </span>
             </label>
@@ -523,8 +563,8 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: license && !license.can_run_jobs ? "#94a3b8" : "#0ea5e9",
-                  color: "white",
+                  background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
+                  color: c.primaryFg,
                   border: "none",
                   cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
                 }}
@@ -537,9 +577,9 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: "#fff",
-                  color: "#111827",
-                  border: "1px solid #d1d5db",
+                  background: c.btnGhostBg,
+                  color: c.text,
+                  border: `1px solid ${c.btnGhostBorder}`,
                   cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
                   opacity: license && !license.can_run_jobs ? 0.5 : 1,
                 }}
@@ -552,9 +592,9 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: "#fff",
-                  color: "#111827",
-                  border: "1px solid #d1d5db",
+                  background: c.btnGhostBg,
+                  color: c.text,
+                  border: `1px solid ${c.btnGhostBorder}`,
                   cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
                   opacity: license && !license.can_run_jobs ? 0.5 : 1,
                 }}
@@ -565,14 +605,14 @@ export default function App() {
           </div>
         )}
 
-        {!job && jobId && <div>Cargando...</div>}
+        {!job && jobId && <div style={{ color: c.muted }}>Cargando...</div>}
 
         {!isHomeSurface && job && job.state === "running" && !activePrompt && (
           <div
             style={{
-              background: "#f3f4f6",
-              border: "1px solid #e5e7eb",
-              color: "#374151",
+              background: c.processingBg,
+              border: `1px solid ${c.processingBorder}`,
+              color: c.processingText,
               padding: 12,
               borderRadius: 10,
               marginBottom: 16,
@@ -586,9 +626,9 @@ export default function App() {
         {job && job.state === "running" && String(job.progress?.stage ?? "").includes("Ejecutando Puppeteer") && (
           <div
             style={{
-              background: "#fffbeb",
-              border: "1px solid #fde68a",
-              color: "#92400e",
+              background: c.warnBg,
+              border: `1px solid ${c.warnBorder}`,
+              color: c.warnText,
               padding: 12,
               borderRadius: 10,
               marginBottom: 16,
@@ -601,9 +641,17 @@ export default function App() {
         )}
 
         {job?.error && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: 12, borderRadius: 10, marginBottom: 16 }}>
-            <b style={{ color: "#b91c1c" }}>Job error</b>
-            <div style={{ color: "#991b1b", marginTop: 6, whiteSpace: "pre-wrap" }}>
+          <div
+            style={{
+              background: c.errorBg,
+              border: `1px solid ${c.errorBorder}`,
+              padding: 12,
+              borderRadius: 10,
+              marginBottom: 16,
+            }}
+          >
+            <b style={{ color: c.errorTitle }}>Job error</b>
+            <div style={{ color: c.errorBody, marginTop: 6, whiteSpace: "pre-wrap" }}>
               {job.error.message}
               {job.error.details ? `\n${job.error.details}` : ""}
             </div>
@@ -613,21 +661,21 @@ export default function App() {
         {job?.state === "waiting_user" && activePrompt && (
           <div
             style={{
-              background: "#ffffff",
-              border: "1px solid #e5e7eb",
+              background: c.surface,
+              border: `1px solid ${c.border}`,
               borderRadius: 14,
               padding: 18,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+              boxShadow: c.shadow,
             }}
           >
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-              <div style={{ fontSize: 13, color: "#6b7280" }}>{formatPromptType(activePrompt.type)}</div>
-              <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280" }}>job: {job.job_id.slice(0, 8)}...</div>
+              <div style={{ fontSize: 13, color: c.muted }}>{formatPromptType(activePrompt.type)}</div>
+              <div style={{ marginLeft: "auto", fontSize: 12, color: c.muted }}>job: {job.job_id.slice(0, 8)}...</div>
             </div>
 
-            <h2 style={{ margin: "10px 0 6px", fontSize: 20 }}>{activePrompt.title}</h2>
+            <h2 style={{ margin: "10px 0 6px", fontSize: 20, color: c.text }}>{activePrompt.title}</h2>
             {activePrompt.type !== "message_ack" && (
-              <div style={{ color: "#374151", marginBottom: 14 }}>{activePrompt.message}</div>
+              <div style={{ color: c.text, marginBottom: 14 }}>{activePrompt.message}</div>
             )}
 
             {/* pick_project + pick_script */}
@@ -643,8 +691,9 @@ export default function App() {
                     style={{
                       padding: "10px 12px",
                       borderRadius: 10,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      color: c.text,
                       cursor: "pointer",
                     }}
                   >
@@ -657,11 +706,12 @@ export default function App() {
             {/* pick_actions */}
             {activePrompt.type === "pick_actions" && activePrompt.actions && (
               <div>
-                <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
                   Marca las acciones a convertir
                 </div>
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, maxHeight: 320, overflow: "auto" }}>
+                <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, padding: 12, maxHeight: 320, overflow: "auto" }}>
                   <ActionsCheckboxList
+                    c={c}
                     actions={activePrompt.actions}
                     onSubmit={async (selectedLines) => {
                       if (!jobId) return;
@@ -683,7 +733,14 @@ export default function App() {
                     if (!jobId) return;
                     await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
                   }}
-                  style={{ padding: "10px 14px", borderRadius: 10, background: "#0ea5e9", color: "white", border: "none", cursor: "pointer" }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.primary,
+                    color: c.primaryFg,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
                 >
                   Sí
                 </button>
@@ -692,7 +749,14 @@ export default function App() {
                     if (!jobId) return;
                     await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: false });
                   }}
-                  style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: "pointer",
+                  }}
                 >
                   No
                 </button>
@@ -706,7 +770,14 @@ export default function App() {
                     if (!jobId) return;
                     await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
                   }}
-                  style={{ padding: "10px 14px", borderRadius: 10, background: "#0ea5e9", color: "white", border: "none", cursor: "pointer" }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.primary,
+                    color: c.primaryFg,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
                 >
                   Sí
                 </button>
@@ -715,7 +786,14 @@ export default function App() {
                     if (!jobId) return;
                     await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: false });
                   }}
-                  style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#111827", border: "1px solid #d1d5db", cursor: "pointer" }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: "pointer",
+                  }}
                 >
                   No
                 </button>
@@ -724,7 +802,14 @@ export default function App() {
                     if (!jobId) return;
                     await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
                   }}
-                  style={{ padding: "10px 14px", borderRadius: 10, background: "#fff", color: "#6b7280", border: "1px solid #d1d5db", cursor: "pointer" }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.muted,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: "pointer",
+                  }}
                 >
                   Cancelar
                 </button>
@@ -733,7 +818,7 @@ export default function App() {
 
             {activePrompt.type === "bdd_preview" && activePrompt.payload && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                <div style={{ fontSize: 13, color: c.muted }}>
                   Intento {activePrompt.payload.attempt} de {activePrompt.payload.max_attempts}.{" "}
                   {activePrompt.payload.can_manual
                     ? "Puedes editar el escenario a mano o usar la versión heurística."
@@ -741,7 +826,7 @@ export default function App() {
                 </div>
                 {activePrompt.payload.script_excerpt?.trim() ? (
                   <div>
-                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Extracto del script (referencia)</div>
+                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 6 }}>Extracto del script (referencia)</div>
                     <textarea
                       readOnly
                       value={activePrompt.payload.script_excerpt}
@@ -750,16 +835,17 @@ export default function App() {
                         minHeight: 120,
                         padding: 10,
                         borderRadius: 10,
-                        border: "1px solid #e5e7eb",
+                        border: `1px solid ${c.border}`,
                         fontFamily: "ui-monospace, monospace",
                         fontSize: 12,
-                        background: "#f9fafb",
+                        background: c.codeBg,
+                        color: c.text,
                       }}
                     />
                   </div>
                 ) : null}
                 <div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Feature (.feature)</div>
+                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 6 }}>Feature (.feature)</div>
                   <textarea
                     value={bddPreviewText}
                     onChange={(e) => setBddPreviewText(e.target.value)}
@@ -769,10 +855,11 @@ export default function App() {
                       minHeight: 220,
                       padding: 10,
                       borderRadius: 10,
-                      border: "1px solid #d1d5db",
+                      border: `1px solid ${c.inputBorder}`,
                       fontFamily: "ui-monospace, monospace",
                       fontSize: 13,
-                      background: activePrompt.payload.can_manual ? "#fff" : "#f9fafb",
+                      background: activePrompt.payload.can_manual ? c.inputBg : c.codeBg,
+                      color: c.text,
                     }}
                   />
                 </div>
@@ -796,8 +883,8 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#0ea5e9",
-                      color: "white",
+                      background: c.primary,
+                      color: c.primaryFg,
                       border: "none",
                       cursor: "pointer",
                     }}
@@ -818,9 +905,9 @@ export default function App() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: 10,
-                        background: "#fff",
-                        color: "#111827",
-                        border: "1px solid #d1d5db",
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        border: `1px solid ${c.btnGhostBorder}`,
                         cursor: "pointer",
                       }}
                     >
@@ -840,9 +927,9 @@ export default function App() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: 10,
-                        background: "#fff",
-                        color: "#111827",
-                        border: "1px solid #d1d5db",
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        border: `1px solid ${c.btnGhostBorder}`,
                         cursor: "pointer",
                       }}
                     >
@@ -858,9 +945,9 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#fff",
-                      color: "#6b7280",
-                      border: "1px solid #d1d5db",
+                      background: c.btnGhostBg,
+                      color: c.muted,
+                      border: `1px solid ${c.btnGhostBorder}`,
                       cursor: "pointer",
                     }}
                   >
@@ -876,17 +963,22 @@ export default function App() {
                   style={{
                     background:
                       activePrompt.severity === "error"
-                        ? "#fef2f2"
+                        ? c.msgErrBg
                         : activePrompt.severity === "warning"
-                          ? "#fffbeb"
-                          : "#eff6ff",
+                          ? c.msgWarnBg
+                          : c.msgInfoBg,
                     border:
                       activePrompt.severity === "error"
-                        ? "1px solid #fecaca"
+                        ? `1px solid ${c.msgErrBorder}`
                         : activePrompt.severity === "warning"
-                          ? "1px solid #fde68a"
-                          : "1px solid #bfdbfe",
-                    color: activePrompt.severity === "error" ? "#991b1b" : activePrompt.severity === "warning" ? "#92400e" : "#1e3a8a",
+                          ? `1px solid ${c.msgWarnBorder}`
+                          : `1px solid ${c.msgInfoBorder}`,
+                    color:
+                      activePrompt.severity === "error"
+                        ? c.msgErrText
+                        : activePrompt.severity === "warning"
+                          ? c.msgWarnText
+                          : c.msgInfoText,
                     padding: 12,
                     borderRadius: 10,
                     marginBottom: 14,
@@ -906,7 +998,7 @@ export default function App() {
                     marginTop: 4,
                     position: "sticky",
                     bottom: 0,
-                    background: "#ffffff",
+                    background: c.stickyBarBg,
                     paddingTop: 8,
                   }}
                 >
@@ -919,8 +1011,8 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#0ea5e9",
-                      color: "white",
+                      background: c.primary,
+                      color: c.primaryFg,
                       border: "none",
                       cursor: "pointer",
                     }}
@@ -936,9 +1028,9 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#fff",
-                      color: "#111827",
-                      border: "1px solid #d1d5db",
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
                       cursor: "pointer",
                     }}
                   >
@@ -958,7 +1050,9 @@ export default function App() {
                     width: "100%",
                     padding: "10px 12px",
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${c.inputBorder}`,
+                    background: c.inputBg,
+                    color: c.text,
                     outline: "none",
                     fontSize: 14,
                   }}
@@ -973,8 +1067,8 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#0ea5e9",
-                      color: "white",
+                      background: c.primary,
+                      color: c.primaryFg,
                       border: "none",
                       cursor: "pointer",
                     }}
@@ -989,9 +1083,9 @@ export default function App() {
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "#fff",
-                      color: "#6b7280",
-                      border: "1px solid #d1d5db",
+                      background: c.btnGhostBg,
+                      color: c.muted,
+                      border: `1px solid ${c.btnGhostBorder}`,
                       cursor: "pointer",
                     }}
                   >
@@ -1006,19 +1100,19 @@ export default function App() {
         {!isHomeSurface && job?.state === "done" && (
           <div
             style={{
-              background: "#ecfdf5",
-              border: "1px solid #bbf7d0",
+              background: c.successBg,
+              border: `1px solid ${c.successBorder}`,
               padding: 16,
               borderRadius: 14,
             }}
           >
-            <b style={{ color: "#166534" }}>Conversión finalizada</b>
-            <div style={{ marginTop: 6, color: "#065f46", whiteSpace: "pre-wrap" }}>
+            <b style={{ color: c.successTitle }}>Conversión finalizada</b>
+            <div style={{ marginTop: 6, color: c.successBody, whiteSpace: "pre-wrap" }}>
               {job?.progress?.result_file ? `Archivo: ${job.progress.result_file}` : ""}
               {job?.progress?.video_path ? `\nVideo: ${job.progress.video_path}` : ""}
               {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
             </div>
-            <div style={{ marginTop: 12, fontSize: 13, color: "#047857" }}>
+            <div style={{ marginTop: 12, fontSize: 13, color: c.successHint }}>
               <b>Volver al inicio:</b> si abriste el flujo desde la pestaña de inicio, se cierra <b>esta</b> pestaña y se
               pone al frente la de inicio (no duplicas el inicio). Si abriste solo esta URL (p. ej. desde el escritorio),
               se abrirá otra vista de inicio en esta pestaña.
@@ -1035,8 +1129,8 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: "#0ea5e9",
-                  color: "white",
+                  background: c.primary,
+                  color: c.primaryFg,
                   border: "none",
                   cursor: "pointer",
                 }}
@@ -1059,8 +1153,8 @@ export default function App() {
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
-                background: "#0ea5e9",
-                color: "white",
+                background: c.primary,
+                color: c.primaryFg,
                 border: "none",
                 cursor: "pointer",
               }}
@@ -1073,14 +1167,14 @@ export default function App() {
         {!isHomeSurface && job?.state === "cancelled" && (
           <div
             style={{
-              background: "#f9fafb",
-              border: "1px solid #e5e7eb",
+              background: c.neutralBg,
+              border: `1px solid ${c.border}`,
               padding: 16,
               borderRadius: 14,
               marginTop: 8,
             }}
           >
-            <b style={{ color: "#374151" }}>Operación cancelada</b>
+            <b style={{ color: c.text }}>Operación cancelada</b>
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <button
                 type="button"
@@ -1092,8 +1186,8 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: "#0ea5e9",
-                  color: "white",
+                  background: c.primary,
+                  color: c.primaryFg,
                   border: "none",
                   cursor: "pointer",
                 }}
@@ -1109,9 +1203,11 @@ export default function App() {
 }
 
 function ActionsCheckboxList(props: {
+  c: import("./beeTheme").BeePalette;
   actions: { type: string; description: string; original_line: string }[];
   onSubmit: (selectedLines: string[]) => void | Promise<void>;
 }) {
+  const { c } = props;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -1137,8 +1233,8 @@ function ActionsCheckboxList(props: {
               style={{ marginTop: 3 }}
             />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{a.type}</div>
-              <div style={{ fontSize: 12, color: "#4b5563" }}>{a.description}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{a.type}</div>
+              <div style={{ fontSize: 12, color: c.actionDesc }}>{a.description}</div>
             </div>
           </label>
         ))}
@@ -1147,13 +1243,27 @@ function ActionsCheckboxList(props: {
       <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
         <button
           onClick={() => setSelected((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, true])))}
-          style={{ padding: "8px 12px", borderRadius: 10, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer" }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: c.btnGhostBg,
+            border: `1px solid ${c.btnGhostBorder}`,
+            color: c.text,
+            cursor: "pointer",
+          }}
         >
           Incluir todas
         </button>
         <button
           onClick={() => setSelected((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, false])))}
-          style={{ padding: "8px 12px", borderRadius: 10, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer" }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: c.btnGhostBg,
+            border: `1px solid ${c.btnGhostBorder}`,
+            color: c.text,
+            cursor: "pointer",
+          }}
         >
           Excluir todas
         </button>
@@ -1161,7 +1271,14 @@ function ActionsCheckboxList(props: {
           onClick={async () => {
             await props.onSubmit(selectedLines);
           }}
-          style={{ padding: "8px 12px", borderRadius: 10, background: "#0ea5e9", color: "white", border: "none", cursor: "pointer" }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: c.primary,
+            color: c.primaryFg,
+            border: "none",
+            cursor: "pointer",
+          }}
         >
           Continuar
         </button>
