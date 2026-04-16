@@ -24,13 +24,6 @@ function formatJobMode(mode: string | null): string {
   return mode;
 }
 
-/**
- * Open job flow in a NEW tab without ever navigating the current (home) tab.
- *
- * Important: `window.open(url)` must NOT run after `await` — Chrome treats that as
- * a non-user gesture and may reuse the current tab. We open `about:blank` synchronously
- * on click, then assign the job URL after the API returns.
- */
 function openJobUrlInNewTabPrepared(): Window | null {
   return window.open("about:blank", "_blank");
 }
@@ -41,7 +34,6 @@ function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
 }
 
-/** Si la pestaña de trabajo fue abierta desde inicio (hay opener), enfoca inicio y cierra esta pestaña — evita duplicar inicio. */
 function tryFocusOpenerAndCloseThisTab(): boolean {
   if (!window.opener || window.opener.closed) {
     return false;
@@ -72,7 +64,6 @@ export default function App() {
   const [textValue, setTextValue] = useState<string>("");
   const [urlValue, setUrlValue] = useState<string>("");
   const [initialChecked, setInitialChecked] = useState<boolean>(false);
-  /** Label parsed from ?mode= on job workspace tabs */
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [homeHint, setHomeHint] = useState<string | null>(null);
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
@@ -192,7 +183,6 @@ export default function App() {
         } catch {
           newTab.location.href = jobUrl;
         }
-        // Mantener window.opener para que "Volver al inicio" pueda enfocar inicio y cerrar esta pestaña sin duplicar.
         setHomeHint(
           "El flujo se abrió en otra pestaña. Esta vista es el inicio: déjala abierta y usa la otra pestaña para los pasos y el resultado.",
         );
@@ -208,7 +198,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Reset text input when prompt changes.
     if (activePrompt?.type === "input_text") {
       setTextValue("");
     }
@@ -237,7 +226,6 @@ export default function App() {
     setInitialChecked(true);
   }, []);
 
-  /** Inicio: quitar el aviso azul cuando el flujo termina en la otra pestaña (BroadcastChannel) o tras un tiempo. */
   useEffect(() => {
     if (!isHomeSurface) return;
     let bc: BroadcastChannel | null = null;
@@ -266,7 +254,6 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [homeHint]);
 
-  /** Pestaña de trabajo: avisar a inicio una sola vez cuando el job llega a estado terminal. */
   useEffect(() => {
     if (isHomeSurface || !jobId || !job) return;
     const s = job.state;
@@ -323,8 +310,7 @@ export default function App() {
       : job
         ? `Estado: ${job.state}`
         : "Cargando trabajo…";
-    const sub =
-      !isHome && workspaceMode ? `${formatJobMode(workspaceMode)} · ` : "";
+    const sub = !isHome && workspaceMode ? `${formatJobMode(workspaceMode)} · ` : "";
 
     return (
       <div
@@ -678,7 +664,6 @@ export default function App() {
               <div style={{ color: c.text, marginBottom: 14 }}>{activePrompt.message}</div>
             )}
 
-            {/* pick_project + pick_script */}
             {(activePrompt.type === "pick_project" || activePrompt.type === "pick_script") && (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {activePrompt.options.map((opt) => (
@@ -703,7 +688,6 @@ export default function App() {
               </div>
             )}
 
-            {/* pick_actions */}
             {activePrompt.type === "pick_actions" && activePrompt.actions && (
               <div>
                 <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
@@ -1211,7 +1195,6 @@ function ActionsCheckboxList(props: {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Reset when actions change
     const next: Record<string, boolean> = {};
     for (const a of props.actions) next[a.original_line] = true;
     setSelected(next);
@@ -1286,4 +1269,3 @@ function ActionsCheckboxList(props: {
     </div>
   );
 }
-
