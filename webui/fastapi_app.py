@@ -25,6 +25,7 @@ class ConvertRequest(BaseModel):
         "puppeteer_recorder",
     ]
     url: Optional[str] = None
+    use_ai: bool = False
 
 
 class PromptResponseRequest(BaseModel):
@@ -64,6 +65,15 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def app_should_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         return {"exit": bool(exit_flag["value"])}
 
+    @app.get("/api/ai/status")
+    def ai_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        try:
+            from core import gemma_inference
+
+            return gemma_inference.get_ai_runtime_status()
+        except Exception as e:
+            return {"error": str(e)}
+
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
         job_id = jm.create_job(mode=req.mode)
@@ -79,7 +89,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     return
 
                 if req.mode == "puppeteer_to_behave":
-                    converter = PuppeteerToBehaveConverter(base_dir, adapter)
+                    converter = PuppeteerToBehaveConverter(base_dir, adapter, use_ai=req.use_ai)
                     converter.convert_script()
                     jm.mark_done(job_id)
                     return

@@ -11,16 +11,33 @@ export type JobStateResponse = {
 export async function startConvertJob(params: {
   mode: "demo" | "puppeteer_to_behave" | "puppeteer_to_step_by_step" | "puppeteer_recorder";
   url?: string;
+  use_ai?: boolean;
 }): Promise<{ job_id: string }> {
-  const { mode, url } = params;
+  const { mode, url, use_ai } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode, url }),
+    body: JSON.stringify({ mode, url, use_ai: use_ai ?? false }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to start job: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export type AiStatusResponse = {
+  llama_cpp_python_available?: boolean;
+  llama_cpp_python_version?: string | null;
+  import_error?: string;
+  model?: { path: string; exists: boolean; size_bytes: number; frozen: boolean };
+  error?: string;
+};
+
+export async function getAiStatus(): Promise<AiStatusResponse> {
+  const res = await fetch("/api/ai/status");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch AI status: ${res.status}`);
   }
   return res.json();
 }
