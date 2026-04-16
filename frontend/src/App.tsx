@@ -225,6 +225,19 @@ export default function App() {
     };
   }, [polling, jobId]);
 
+  const themeBtnStyle: React.CSSProperties = {
+    flexShrink: 0,
+    padding: "8px 14px",
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    border: `1px solid ${c.border}`,
+    background: dark ? c.surface : c.btnGhostBg,
+    color: c.text,
+    boxShadow: c.shadow,
+  };
+
   const header = useMemo(() => {
     const isHome = isHomeSurface;
     const statusLine = isHome
@@ -238,6 +251,7 @@ export default function App() {
       <div
         style={{
           display: "flex",
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 12,
           padding: "16px 18px",
@@ -256,30 +270,31 @@ export default function App() {
             background: "transparent",
           }}
         />
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 140, flex: "1 1 160px" }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>BEE</div>
           <div style={{ fontSize: 12, color: c.chromeHint }}>
             {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
           </div>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            type="button"
-            title={dark ? "Modo claro" : "Modo oscuro"}
-            onClick={() => toggle()}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              fontSize: 12,
-              cursor: "pointer",
-              border: `1px solid ${c.border}`,
-              background: c.btnGhostBg,
-              color: c.text,
-            }}
-          >
-            {dark ? "Claro" : "Oscuro"}
-          </button>
-          <div style={{ fontSize: 12, color: c.chromeHint, textAlign: "right", maxWidth: 320 }}>{statusLine}</div>
+        <button
+          type="button"
+          aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          title={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          onClick={() => toggle()}
+          style={themeBtnStyle}
+        >
+          {dark ? "☀ Modo claro" : "🌙 Modo oscuro"}
+        </button>
+        <div
+          style={{
+            fontSize: 12,
+            color: c.chromeHint,
+            flex: "1 1 200px",
+            minWidth: 0,
+            textAlign: "right",
+          }}
+        >
+          {statusLine}
         </div>
       </div>
     );
@@ -322,10 +337,23 @@ export default function App() {
               boxShadow: c.shadow,
             }}
           >
-            <h2 style={{ margin: "4px 0 10px", fontSize: 20, color: c.text }}>BEE Web UI</h2>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 20, color: c.text }}>BEE Web UI</h2>
+              <button
+                type="button"
+                aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                onClick={() => toggle()}
+                style={{
+                  ...themeBtnStyle,
+                  fontSize: 12,
+                }}
+              >
+                {dark ? "☀ Claro" : "🌙 Oscuro"}
+              </button>
+            </div>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
-              esta vista.
+              esta vista. Usa <b>Modo oscuro</b> arriba o aquí si prefieres trabajar con menos brillo.
             </div>
 
             {homeHint && (

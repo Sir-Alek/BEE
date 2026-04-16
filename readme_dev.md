@@ -1,4 +1,4 @@
-# BEE — Guía para desarrolladores
+# BEE — Documentación para desarrollo y despliegue
 
 ## Entorno virtual (Python)
 
@@ -11,25 +11,23 @@ python -m pip install -U pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-Activar en sesiones posteriores: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
+- Activar después: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
+- Ejecutar la app: `python main.py`
 
-Ejecutar la app: `python main.py`
+## Node.js en `core/node` (grabación con Puppeteer)
 
-## Node.js en `core/node` (grabación Puppeteer)
-
-El repositorio **no incluye** el binario de Node ni `node_modules` (demasiado pesado). Debes generarlos en tu máquina:
-
-1. Instala [Node.js LTS](https://nodejs.org/) (16+), o copia una distribución **portable** de Node en `core/node/` de forma que existan `core/node/node.exe` (Windows) y la carpeta `core/node/node_modules/`.
-2. Con Node en el PATH, desde `core/node/`:
+El repositorio solo incluye `package.json` / `package-lock.json`. Genera el runtime en tu máquina:
 
 ```text
 cd core/node
 npm install
 ```
 
-Esto instala las dependencias definidas en `package.json` (p. ej. Puppeteer). El código usa esta ruta en tiempo de ejecución y, en el `.exe`, PyInstaller empaqueta `core/node` **tal como esté en tu máquina al construir** el instalable.
+Necesitas Node.js 16+ en el PATH o una copia portable con `node.exe` bajo `core/node/`. PyInstaller empaqueta `core/node` tal como esté en el disco al construir el `.exe`.
 
 ## Frontend (React / Vite)
+
+Tras cambiar la UI web:
 
 ```text
 cd frontend
@@ -37,23 +35,37 @@ npm install
 npm run build
 ```
 
-La salida va a `frontend/dist/`, que sirve la UI web local.
+La salida queda en `frontend/dist/` (la sirve FastAPI en modo web).
 
-## Licencia (si tu rama incluye `core/bee_license.py`)
+## Build de release (Cython + JS + PyInstaller)
 
-- **Demo:** periodo limitado desde el primer arranque; estado en carpeta de datos de usuario (p. ej. `%LOCALAPPDATA%\BEE\` en Windows).
-- **Activación:** introduce la clave en la pantalla de inicio de la UI web, o define `BEE_ACTIVATION_KEY` antes de arrancar.
-- **Desarrollo:** `BEE_SKIP_LICENSE=1` omite comprobaciones (solo entorno de desarrollo).
-- **Kill switch local:** archivos indicados en el código de licencia (p. ej. `bee.kill` junto al exe) desactivan el arranque.
+Desde la raíz del repo (con el venv activado y herramientas de compilación instaladas según tu SO):
 
-Los detalles exactos dependen de la versión del módulo de licencia en tu rama.
+```text
+python scripts/build_release.py --cython
+```
 
-## Ramas Git recomendadas
+- `--cython` compila los módulos listados en `core/_cython_build_manifest.py` antes del empaquetado.
+- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `BEE.spec`.
+- Revisa `scripts/build_release.py` para flags del ofuscador de `recorder.js`.
 
-Mantener solo tres líneas de trabajo en remoto facilita el mantenimiento:
+Luego, si usas solo PyInstaller:
 
-- `main` — estable.
-- `change_tests` — integración de pruebas / plantillas Behave.
-- `cursor/<nombre>` — trabajo activo del agente (una rama a la vez o consolidar en una).
+```text
+python -m PyInstaller --noconfirm BEE.spec
+```
 
-Para limpiar ramas antiguas en GitHub: eliminar las ramas que ya no usas desde la interfaz o con `git push origin --delete <rama>`.
+## Licencia offline (cuando exista `core/bee_license.py`)
+
+- **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\BEE\` en Windows).
+- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `BEE_ACTIVATION_KEY=<clave>` antes de arrancar.
+- **Generar clave para una huella:** si el repo incluye `scripts/generate_license_key.py`, úsalo con la huella mostrada en la UI (el secreto `_LICENSE_SEED` en `bee_license.py` debe coincidir con el build que distribuyes).
+- **Solo desarrollo:** `BEE_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas).
+
+## Kill switch (desactivación local, sin red)
+
+Según la implementación en `bee_license.py`, la aplicación puede negarse a arrancar si existen archivos locales concretos (por ejemplo en `%LOCALAPPDATA%\BEE\` o junto al ejecutable). Consulta las rutas exactas en el código de `kill_switch_active()` / `bee_license` de tu rama antes de documentar a clientes.
+
+## Ramas Git
+
+Convención útil: `main`, `change_tests` y una rama de trabajo `cursor/...`. Elimina ramas fusionadas que ya no necesites en el remoto para mantener el repositorio claro.
