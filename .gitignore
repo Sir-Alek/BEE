@@ -1,5 +1,7 @@
 # Archivos ofuscados
 *.enc
+.vscode/
+.venv/
 
 # Directorios de compilación
 dist/
