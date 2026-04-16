@@ -15,3 +15,8 @@ logo-servicios-financieros.jpg
 
 # Node / React
 node_modules/
+
+# Runtime Node + Puppeteer (no versionar; generar en local — ver readme_dev.md)
+core/node/*
+!core/node/package.json
+!core/node/package-lock.json
