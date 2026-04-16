@@ -527,7 +527,8 @@ class main:
 
             def worker() -> None:
                 try:
-                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter)
+                    use_ai = os.environ.get("BEE_USE_AI", "").lower() in ("1", "true", "yes")
+                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
                 except Exception as e:
