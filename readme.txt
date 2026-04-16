@@ -1,18 +1,13 @@
-# Behave Extractor Engine (BEE) 🐝
+# Behave Extractor Engine (BEE)
 
-Rápida y eficiente como una abeja, esta herramienta graba interacciones con páginas web y las convierte en pruebas automatizadas con Behave (BDD para Python) o pruebas step-by-step tradicionales.
+Herramienta para grabar interacciones en páginas web y generar pruebas automatizadas en **Behave** (BDD con Gherkin) o pruebas **step-by-step** con evidencias.
 
-## Características principales
+## Cómo usar BEE
 
-● Grabación intuitiva: Graba tus interacciones con cualquier página web usando Puppeteer
-● Doble sistema de conversión: Transforma los scripts grabados en:
-  - Behave BDD: Archivos .feature con sintaxis Gherkin + Steps + Page Objects
-  - Step-by-Step: Pruebas unittest tradicionales con captura de evidencias
-● Grabación de video opcional: Captura video de las interacciones durante la grabación
-● Interfaz gráfica amigable: Aplicación de escritorio fácil de usar
-● Soporte para elementos complejos: Maneja clicks, formularios, dropdowns, esperas y más
-● Selección de acciones: Permite elegir qué acciones convertir de la grabación
-● Gestión de proyectos: Organiza tus pruebas por proyectos independientes
+1. Inicia la aplicación (instalable o `python main.py` según tu entorno).
+2. Abre la interfaz web local en el navegador (por defecto en `127.0.0.1`).
+3. **Grabar:** indica la URL, inicia la grabación, interactúa en el navegador que se abre y cierra el navegador al terminar.
+4. **Convertir a Behave o step-by-step:** elige el proyecto y el script grabado, selecciona las acciones y confirma. Los archivos generados se guardan en la carpeta de proyectos del usuario (por defecto bajo Documentos).
 
 ## Cómo usar
 
