@@ -133,7 +133,7 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
-  // Close home tab = close whole app (backend).
+  // Close home tab = close whole app (backend). sendBeacon + main.py polling /api/app/should-exit.
   useEffect(() => {
     if (!isHomeSurface) return;
     const fireExit = () => {
@@ -145,7 +145,11 @@ export default function App() {
       }
     };
     window.addEventListener("beforeunload", fireExit);
-    return () => window.removeEventListener("beforeunload", fireExit);
+    window.addEventListener("pagehide", fireExit);
+    return () => {
+      window.removeEventListener("beforeunload", fireExit);
+      window.removeEventListener("pagehide", fireExit);
+    };
   }, [isHomeSurface]);
 
   const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
@@ -303,6 +307,7 @@ export default function App() {
     };
   }, [polling, jobId]);
 
+  /** Siempre colores primarios: en modo claro el fondo de cabecera es blanco; un botón “fantasma” queda invisible. */
   const themeBtnStyle: React.CSSProperties = {
     flexShrink: 0,
     padding: "8px 14px",
@@ -310,10 +315,11 @@ export default function App() {
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
-    border: `1px solid ${c.border}`,
-    background: dark ? c.surface : c.btnGhostBg,
-    color: c.text,
+    border: `1px solid ${c.primary}`,
+    background: c.primary,
+    color: c.primaryFg,
     boxShadow: c.shadow,
+    zIndex: 2,
   };
 
   const header = useMemo(() => {

@@ -78,6 +78,8 @@ Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen est
 
 Tras cambios en `frontend/`, ejecuta `npm run build` y prueba en `127.0.0.1`. La UI depende de `frontend/dist` empaquetado o generado localmente.
 
+Al cerrar la **pestaña de inicio**, el frontend llama a `POST /api/app/exit` y `main.py` hace polling de `GET /api/app/should-exit` para detener Uvicorn y salir del proceso (evita que `BEE.exe` quede en segundo plano sin consola).
+
 ## Ramas Git
 
 Convención útil: `main`, `change_tests` y una rama de trabajo `cursor/...`. Elimina ramas fusionadas que ya no necesites en el remoto para mantener el repositorio claro.
