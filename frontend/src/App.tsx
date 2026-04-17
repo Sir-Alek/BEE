@@ -30,6 +30,9 @@ function openJobUrlInNewTabPrepared(): Window | null {
 
 const BEE_UI_BC = "bee-ui";
 
+/** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
+const BEE_WEB_UI_BUILD = "theme-ui-20260410";
+
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
 }
@@ -133,15 +136,32 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
-  // Close home tab = close whole app (backend). sendBeacon + main.py polling /api/app/should-exit.
+  // Close home tab = close whole app (backend). sendBeacon/fetch + main.py polling /api/app/should-exit.
   useEffect(() => {
     if (!isHomeSurface) return;
+    const body = JSON.stringify({ reason: "home_closed" });
     const fireExit = () => {
       try {
-        const data = new Blob([JSON.stringify({ reason: "home_closed" })], { type: "application/json" });
-        navigator.sendBeacon("/api/app/exit", data);
+        const blob = new Blob([body], { type: "application/json" });
+        if (!navigator.sendBeacon("/api/app/exit", blob)) {
+          void fetch("/api/app/exit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          });
+        }
       } catch {
-        // ignore
+        try {
+          void fetch("/api/app/exit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          });
+        } catch {
+          // ignore
+        }
       }
     };
     window.addEventListener("beforeunload", fireExit);
@@ -307,7 +327,7 @@ export default function App() {
     };
   }, [polling, jobId]);
 
-  /** Siempre colores primarios: en modo claro el fondo de cabecera es blanco; un botón “fantasma” queda invisible. */
+  /** Theme buttons: palette primary (header/card) + fixed high-contrast control (never blends into white chrome). */
   const themeBtnStyle: React.CSSProperties = {
     flexShrink: 0,
     padding: "8px 14px",
@@ -320,6 +340,22 @@ export default function App() {
     color: c.primaryFg,
     boxShadow: c.shadow,
     zIndex: 2,
+  };
+
+  const themeFloatingStyle: React.CSSProperties = {
+    position: "fixed",
+    right: 16,
+    bottom: 16,
+    zIndex: 99999,
+    padding: "12px 18px",
+    borderRadius: 12,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    border: "2px solid #0c4a6e",
+    background: "#0284c7",
+    color: "#ffffff",
+    boxShadow: "0 6px 20px rgba(0,0,0,0.28)",
   };
 
   const header = useMemo(() => {
@@ -394,6 +430,33 @@ export default function App() {
       }}
     >
       {header}
+
+      <button
+        type="button"
+        aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        title={`${dark ? "Modo claro" : "Modo oscuro"} · build ${BEE_WEB_UI_BUILD}`}
+        onClick={() => toggle()}
+        style={themeFloatingStyle}
+      >
+        {dark ? "☀ Claro" : "🌙 Oscuro"}
+      </button>
+
+      <div
+        style={{
+          position: "fixed",
+          left: 10,
+          bottom: 8,
+          zIndex: 99998,
+          fontSize: 11,
+          fontFamily: "ui-monospace, monospace",
+          color: c.muted,
+          opacity: 0.85,
+          pointerEvents: "none",
+        }}
+        aria-hidden
+      >
+        UI {BEE_WEB_UI_BUILD}
+      </div>
 
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
         {errorText && (
