@@ -1025,6 +1025,10 @@ if __name__ == "__main__":
         Run the web UI (FastAPI + Uvicorn) without requiring Tkinter.
         Default mode unless --tk is provided.
         """
+        import json
+        import urllib.error
+        import urllib.request
+
         create_app_fn = create_fastapi_app
         if create_app_fn is None:
             # Try a lazy import path (PyInstaller sometimes misses conditional imports).
@@ -1057,21 +1061,40 @@ if __name__ == "__main__":
         except Exception:
             pass
 
+        def _poll_exit_and_shutdown(srv: "uvicorn.Server") -> None:
+            """
+            Frontend calls POST /api/app/exit when the home tab closes (sendBeacon).
+            Nothing else was reading /api/app/should-exit, so BEE.exe stayed running.
+            """
+            exit_url = f"http://{host}:{port}/api/app/should-exit"
+            while not srv.should_exit:
+                time.sleep(0.35)
+                try:
+                    with urllib.request.urlopen(exit_url, timeout=1.0) as resp:
+                        payload = json.loads(resp.read().decode("utf-8"))
+                    if payload.get("exit") is True:
+                        srv.should_exit = True
+                        return
+                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
+                    continue
+
         # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY (or may be None),
         # which can crash Uvicorn's default logging formatter. Provide a safe log_config.
+        cfg = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            log_config=None,
+            access_log=False,
+        )
+        server = uvicorn.Server(cfg)
+        poll_thread = threading.Thread(target=_poll_exit_and_shutdown, args=(server,), daemon=True)
+        poll_thread.start()
         try:
-            cfg = uvicorn.Config(
-                app,
-                host=host,
-                port=port,
-                log_level="info",
-                log_config=None,
-                access_log=False,
-            )
-            server = uvicorn.Server(cfg)
             server.run()
         except Exception:
-            # Fallback to uvicorn.run with logging disabled.
+            # Fallback: uvicorn.run (sin hilo de salida; preferir arreglar Config si ves esto en logs).
             uvicorn.run(
                 app,
                 host=host,
