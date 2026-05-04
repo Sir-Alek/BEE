@@ -31,7 +31,7 @@ function openJobUrlInNewTabPrepared(): Window | null {
 const BEE_UI_BC = "bee-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const BEE_WEB_UI_BUILD = "theme-ui-20260411-nav";
+const BEE_WEB_UI_BUILD = "theme-ui-20260411-nav2";
 
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
@@ -390,7 +390,7 @@ export default function App() {
             justifyContent: "flex-end",
             gap: 12,
             rowGap: 8,
-            flex: "1 1 240px",
+            flex: "1 1 0",
             minWidth: 0,
           }}
         >
@@ -401,7 +401,7 @@ export default function App() {
             onClick={() => toggle()}
             style={themeBtnStyle}
           >
-            {dark ? "☀ Modo claro" : "🌙 Modo oscuro"}
+            {dark ? "Modo claro" : "Modo oscuro"}
           </button>
           <div
             style={{
@@ -410,6 +410,7 @@ export default function App() {
               textAlign: "right",
               flex: "1 1 180px",
               minWidth: 160,
+              maxWidth: "min(520px, 100%)",
             }}
           >
             {statusLine}
@@ -476,7 +477,7 @@ export default function App() {
             <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>BEE Web UI</h2>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
-              esta vista. Puedes cambiar el tema con el botón <b>Modo oscuro</b> / <b>Modo claro</b> en la barra superior.
+              esta vista. El tema se cambia con <b>Modo oscuro</b> / <b>Modo claro</b> en la barra superior.
             </div>
 
             {homeHint && (
