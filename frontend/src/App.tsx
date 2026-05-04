@@ -31,7 +31,7 @@ function openJobUrlInNewTabPrepared(): Window | null {
 const BEE_UI_BC = "bee-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const BEE_WEB_UI_BUILD = "theme-ui-20260410";
+const BEE_WEB_UI_BUILD = "theme-ui-20260411-nav";
 
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
@@ -327,7 +327,7 @@ export default function App() {
     };
   }, [polling, jobId]);
 
-  /** Theme buttons: palette primary (header/card) + fixed high-contrast control (never blends into white chrome). */
+  /** Single theme control in the top bar: primary colors stay visible on white chrome. */
   const themeBtnStyle: React.CSSProperties = {
     flexShrink: 0,
     padding: "8px 14px",
@@ -339,23 +339,6 @@ export default function App() {
     background: c.primary,
     color: c.primaryFg,
     boxShadow: c.shadow,
-    zIndex: 2,
-  };
-
-  const themeFloatingStyle: React.CSSProperties = {
-    position: "fixed",
-    right: 16,
-    bottom: 16,
-    zIndex: 99999,
-    padding: "12px 18px",
-    borderRadius: 12,
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-    border: "2px solid #0c4a6e",
-    background: "#0284c7",
-    color: "#ffffff",
-    boxShadow: "0 6px 20px rgba(0,0,0,0.28)",
   };
 
   const header = useMemo(() => {
@@ -379,46 +362,62 @@ export default function App() {
           background: c.chromeBg,
         }}
       >
-        <img
-          src="/logo.png"
-          alt="BEE"
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 12,
-            objectFit: "contain",
-            background: "transparent",
-          }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 140, flex: "1 1 160px" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>BEE</div>
-          <div style={{ fontSize: 12, color: c.chromeHint }}>
-            {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 1 auto", minWidth: 0 }}>
+          <img
+            src="/logo.png"
+            alt="BEE"
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              objectFit: "contain",
+              background: "transparent",
+            }}
+          />
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 140 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>BEE</div>
+            <div style={{ fontSize: 12, color: c.chromeHint }}>
+              {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-          title={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-          onClick={() => toggle()}
-          style={themeBtnStyle}
-        >
-          {dark ? "☀ Modo claro" : "🌙 Modo oscuro"}
-        </button>
         <div
           style={{
-            fontSize: 12,
-            color: c.chromeHint,
-            flex: "1 1 200px",
+            marginLeft: "auto",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 12,
+            rowGap: 8,
+            flex: "1 1 240px",
             minWidth: 0,
-            textAlign: "right",
           }}
         >
-          {statusLine}
+          <button
+            type="button"
+            aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+            title={`${dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"} · build ${BEE_WEB_UI_BUILD}`}
+            onClick={() => toggle()}
+            style={themeBtnStyle}
+          >
+            {dark ? "☀ Modo claro" : "🌙 Modo oscuro"}
+          </button>
+          <div
+            style={{
+              fontSize: 12,
+              color: c.chromeHint,
+              textAlign: "right",
+              flex: "1 1 180px",
+              minWidth: 160,
+            }}
+          >
+            {statusLine}
+          </div>
         </div>
       </div>
     );
-  }, [job, jobId, workspaceMode, isHomeSurface, c, dark, toggle]);
+  }, [job, workspaceMode, isHomeSurface, c, dark, toggle]);
 
   return (
     <div
@@ -430,16 +429,6 @@ export default function App() {
       }}
     >
       {header}
-
-      <button
-        type="button"
-        aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-        title={`${dark ? "Modo claro" : "Modo oscuro"} · build ${BEE_WEB_UI_BUILD}`}
-        onClick={() => toggle()}
-        style={themeFloatingStyle}
-      >
-        {dark ? "☀ Claro" : "🌙 Oscuro"}
-      </button>
 
       <div
         style={{
@@ -484,23 +473,10 @@ export default function App() {
               boxShadow: c.shadow,
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-              <h2 style={{ margin: 0, fontSize: 20, color: c.text }}>BEE Web UI</h2>
-              <button
-                type="button"
-                aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-                onClick={() => toggle()}
-                style={{
-                  ...themeBtnStyle,
-                  fontSize: 12,
-                }}
-              >
-                {dark ? "☀ Claro" : "🌙 Oscuro"}
-              </button>
-            </div>
+            <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>BEE Web UI</h2>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
-              esta vista. Usa <b>Modo oscuro</b> arriba o aquí si prefieres trabajar con menos brillo.
+              esta vista. Puedes cambiar el tema con el botón <b>Modo oscuro</b> / <b>Modo claro</b> en la barra superior.
             </div>
 
             {homeHint && (
