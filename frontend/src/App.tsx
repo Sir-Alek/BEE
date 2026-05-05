@@ -21,6 +21,9 @@ function formatJobMode(mode: string | null): string {
   if (mode === "puppeteer_recorder") return "Grabar interacciones";
   if (mode === "puppeteer_to_behave") return "Convertir a Behave";
   if (mode === "puppeteer_to_step_by_step") return "Convertir a step by step";
+  if (mode === "elia_jira_smoke") return "ELIA · Probar Jira";
+  if (mode === "elia_value_edge_smoke") return "ELIA · Probar Value Edge";
+  if (mode === "elia_gherkin_batch") return "ELIA · Gherkin batch";
   return mode;
 }
 
@@ -31,7 +34,7 @@ function openJobUrlInNewTabPrepared(): Window | null {
 const BEE_UI_BC = "bee-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const BEE_WEB_UI_BUILD = "theme-ui-20260411-nav2";
+const BEE_WEB_UI_BUILD = "elia-ui-20260505";
 
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
@@ -172,7 +175,16 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
-  const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
+  const startJob = (
+    mode:
+      | "puppeteer_recorder"
+      | "puppeteer_to_behave"
+      | "puppeteer_to_step_by_step"
+      // ELIA
+      | "elia_jira_smoke"
+      | "elia_value_edge_smoke"
+      | "elia_gherkin_batch",
+  ) => {
     setErrorText(null);
     setHomeHint(null);
     if (license && !license.can_run_jobs) {
@@ -661,6 +673,70 @@ export default function App() {
               >
                 Convertir a step by step
               </button>
+            </div>
+
+            <div style={{ height: 16 }} />
+
+            <div
+              style={{
+                background: c.neutralBg,
+                border: `1px solid ${c.border}`,
+                borderRadius: 14,
+                padding: 14,
+              }}
+            >
+              <div style={{ fontWeight: 800, color: c.text, marginBottom: 6 }}>ELIA</div>
+              <div style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>
+                Evolving Learning & Intelligent Automation (beta). Usa <code>Documentos/BEE/elia/secrets.ini</code> o variables{" "}
+                <code>ELIA_*</code>.
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  disabled={license ? !license.can_run_jobs : false}
+                  onClick={() => startJob("elia_jira_smoke")}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                    opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                  }}
+                >
+                  Probar Jira
+                </button>
+                <button
+                  disabled={license ? !license.can_run_jobs : false}
+                  onClick={() => startJob("elia_value_edge_smoke")}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                    opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                  }}
+                >
+                  Probar Value Edge
+                </button>
+                <button
+                  disabled={license ? !license.can_run_jobs : false}
+                  onClick={() => startJob("elia_gherkin_batch")}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                    opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                  }}
+                >
+                  Gherkin batch (.json → .feature)
+                </button>
+              </div>
             </div>
           </div>
         )}
