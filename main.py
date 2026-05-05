@@ -4,42 +4,30 @@ import os
 # Detectar si estamos en modo empaquetado
 IS_FROZEN = getattr(sys, 'frozen', False)
 
-# Manejo robusto de importaciones
+# Conversores: import normal o extensiones Cython (.pyd); ver core/__dynamic_importer.py
 try:
-    if IS_FROZEN:
-        # En modo empaquetado, usar importación desde archivos ofuscados
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
-        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
-        ScreenRecorder = video_recorder.ScreenRecorder
-        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
-
-    else:
-        # En modo desarrollo, usar importaciones normales
+    from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
+    PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
+    ScreenRecorder = video_recorder.ScreenRecorder
+    PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+except ImportError:
+    try:
         from core.puppeteer_script_converter import PuppeteerToBehaveConverter
         from core.video_recorder import ScreenRecorder
-        from core.step_by_step_converter import PuppeteerToStepByStepConverter   
-except ImportError as e:
-    # Fallback para casos especiales
-    try:
-        from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
-        PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
-        ScreenRecorder = video_recorder.ScreenRecorder
-        PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+        from core.step_by_step_converter import PuppeteerToStepByStepConverter
     except ImportError:
-        # Fallback extremo - definir clases vacías
         class PuppeteerToBehaveConverter:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo PuppeteerToBehaveConverter no disponible")
-        
+
         class PuppeteerToStepByStepConverter:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo PuppeteerToStepByStepConverter no disponible")
-        
+
         class ScreenRecorder:
             def __init__(self, *args, **kwargs):
                 raise RuntimeError("Módulo ScreenRecorder no disponible")
-        
-        # Mostrar advertencia
+
         print("Advertencia: Módulos críticos no disponibles")
         
 import os
@@ -143,8 +131,9 @@ class main:
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.projects_dir = os.path.join(self.base_dir, "behave", "proyectos")
-        os.makedirs(self.projects_dir, exist_ok=True)
+        from core.bee_paths import behave_projects_dir
+
+        self.projects_dir = str(behave_projects_dir())
         # self.behave_dir = os.path.join(self.base_dir, "behave")
         self.recordings_dir = os.path.join(self.base_dir, "grabaciones")
         self.logo_path = os.path.join(self.base_dir, "resources", "logo_bee_png_transparente.png")
@@ -513,6 +502,7 @@ class main:
     def convert_script(self):
         """Maneja la conversión a behave"""
         try:
+            _require_license_for_jobs()
             if not self.web_mode:
                 converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
                 converter.convert_script()
@@ -527,9 +517,14 @@ class main:
 
             def worker() -> None:
                 try:
-                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter)
+                    from ui.interfaces import BDDUserCancelled
+
+                    use_ai = os.environ.get("BEE_USE_AI", "").lower() in ("1", "true", "yes")
+                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
+                except BDDUserCancelled:
+                    self._job_manager.cancel_job(job_id)
                 except Exception as e:
                     self._job_manager.mark_error(job_id, message="Error en conversión a behave", details=str(e))
 
@@ -541,6 +536,7 @@ class main:
     def convert_to_step_by_step(self):
         """Maneja la conversión a step by step"""
         try:
+            _require_license_for_jobs()
             if not self.web_mode:
                 converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
                 converter.convert_script()
@@ -570,6 +566,15 @@ class main:
         url = self.url_entry.get().strip()
         if not url:
             messagebox.showwarning("URL requerida", "Por favor ingresa una URL válida.")
+            return
+
+        try:
+            _require_license_for_jobs()
+        except Exception as e:
+            try:
+                messagebox.showerror("Licencia", str(e))
+            except Exception:
+                pass
             return
 
         # Web mode: reemplaza los diálogos Tkinter del recorder por prompts web.
@@ -987,7 +992,21 @@ class main:
 
 
              
+def _require_license_for_jobs() -> None:
+    """Bloquea conversiones/grabación si demo caducada sin activar (modo Tk)."""
+    from core import bee_license
+
+    if not bee_license.can_run_jobs():
+        raise RuntimeError(
+            "Periodo de demostración finalizado o licencia inactiva. "
+            "Activa la aplicación con la clave de activación (UI web: inicio) o variable BEE_ACTIVATION_KEY."
+        )
+
+
 if __name__ == "__main__":
+    from core import bee_license
+
+    bee_license.ensure_license_or_exit()
     print(""""
 ██████╗ ███████╗███████╗
 ██╔══██╗██╔════╝██╔════╝
@@ -1006,6 +1025,10 @@ if __name__ == "__main__":
         Run the web UI (FastAPI + Uvicorn) without requiring Tkinter.
         Default mode unless --tk is provided.
         """
+        import json
+        import urllib.error
+        import urllib.request
+
         create_app_fn = create_fastapi_app
         if create_app_fn is None:
             # Try a lazy import path (PyInstaller sometimes misses conditional imports).
@@ -1038,21 +1061,40 @@ if __name__ == "__main__":
         except Exception:
             pass
 
+        def _poll_exit_and_shutdown(srv: "uvicorn.Server") -> None:
+            """
+            Frontend calls POST /api/app/exit when the home tab closes (sendBeacon).
+            Nothing else was reading /api/app/should-exit, so BEE.exe stayed running.
+            """
+            exit_url = f"http://{host}:{port}/api/app/should-exit"
+            while not srv.should_exit:
+                time.sleep(0.35)
+                try:
+                    with urllib.request.urlopen(exit_url, timeout=1.0) as resp:
+                        payload = json.loads(resp.read().decode("utf-8"))
+                    if payload.get("exit") is True:
+                        srv.should_exit = True
+                        return
+                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
+                    continue
+
         # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY (or may be None),
         # which can crash Uvicorn's default logging formatter. Provide a safe log_config.
+        cfg = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            log_config=None,
+            access_log=False,
+        )
+        server = uvicorn.Server(cfg)
+        poll_thread = threading.Thread(target=_poll_exit_and_shutdown, args=(server,), daemon=True)
+        poll_thread.start()
         try:
-            cfg = uvicorn.Config(
-                app,
-                host=host,
-                port=port,
-                log_level="info",
-                log_config=None,
-                access_log=False,
-            )
-            server = uvicorn.Server(cfg)
             server.run()
         except Exception:
-            # Fallback to uvicorn.run with logging disabled.
+            # Fallback: uvicorn.run (sin hilo de salida; preferir arreglar Config si ves esto en logs).
             uvicorn.run(
                 app,
                 host=host,

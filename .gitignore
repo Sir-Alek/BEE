@@ -1,5 +1,7 @@
 # Archivos ofuscados
 *.enc
+.vscode/
+.venv/
 
 # Directorios de compilación
 dist/
@@ -15,3 +17,12 @@ logo-servicios-financieros.jpg
 
 # Node / React
 node_modules/
+
+# Modelos de IA (Gemma / GGUF): no versionar; colocar el archivo localmente antes del build PyInstaller
+resources/models/**/*.gguf
+
+# Build release: JS ofuscado y extensiones Cython locales (no obligatorio en git)
+core/recorder.obfuscated.js
+core/recorder.test.js
+core/*.pyd
+core/*.c

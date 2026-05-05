@@ -3,17 +3,30 @@ import shutil
 import re
 import time
 import json
+from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Tuple
 
-from ui.interfaces import IUI
+from ui.interfaces import BDDUserCancelled, IUI
+
+
+def _trim_script_for_preview(script_content: str, max_chars: int = 10000) -> str:
+    s = (script_content or "").strip()
+    if len(s) <= max_chars:
+        return s
+    return s[: max_chars - 20] + "\n... [truncado]"
 
 
 class PuppeteerToBehaveConverter:
     
-    def __init__(self, base_dir, ui: IUI):
+    def __init__(self, base_dir, ui: IUI, use_ai: bool = False):
         self.base_dir = base_dir
-        self.projects_dir = os.path.join(base_dir, "behave", "proyectos")
+        from core.bee_paths import behave_projects_dir
+
+        self.projects_dir = str(behave_projects_dir())
         self.selected_actions = []
         self.ui = ui
+        self.use_ai = use_ai
+        self._recording_meta: Optional[Dict[str, Any]] = None
 
     def _create_project_structure(self):
         """Crea la estructura de directorios necesaria para Behave"""
@@ -210,6 +223,7 @@ class PuppeteerToBehaveConverter:
     def _process_conversion(self, js_file, content, project_path):
         """Procesa la conversión con el contenido filtrado dentro del proyecto seleccionado"""
         try:
+            self._recording_meta = self._load_recording_meta(js_file)
             # 1. Copiar archivos de soporte primero
             self._copy_support_files(project_path)
             
@@ -263,6 +277,9 @@ class PuppeteerToBehaveConverter:
                         self.ui.info("Información", "Todos los archivos ya existen en el proyecto y no se sobrescribirán.")
                         return
 
+            # Contenido del feature usado para steps: debe ser el mismo que se escribe (nuevo o existente).
+            feature_content_for_steps = ""
+
             # Procesar feature file
             if 'feature' in file_paths:
                 feature_exists = 'feature' in existing_files and not response
@@ -277,9 +294,16 @@ class PuppeteerToBehaveConverter:
                         feature_exists = False
 
                 if not feature_exists:
-                    feature_content = self._generate_bdd_feature(content, base_name)
+                    try:
+                        feature_content = self._generate_bdd_feature(content, base_name)
+                    except BDDUserCancelled:
+                        self.ui.info("Conversión cancelada", "Se canceló la generación del escenario BDD.")
+                        return
                     with open(file_paths['feature'], "w", encoding="utf-8") as f:
                         f.write(feature_content)
+                    feature_content_for_steps = feature_content
+                else:
+                    feature_content_for_steps = existing_content
 
             # Generar steps file
             if 'steps' in file_paths:
@@ -287,7 +311,7 @@ class PuppeteerToBehaveConverter:
                     base_name, 
                     class_name, 
                     content, 
-                    existing_content if feature_exists else ""
+                    feature_content_for_steps,
                 )
                 with open(file_paths['steps'], "w", encoding="utf-8") as f:
                     f.write(steps_content)
@@ -409,64 +433,267 @@ class PuppeteerToBehaveConverter:
                 unique_actions.append(action)
                 last_action = action
         
-        # Construir feature
-        feature_lines = [
+        if self.use_ai:
+            try:
+                from core import gemma_inference
+                from core.bee_memory import append_correction, recent_examples_for_prompt
+
+                if gemma_inference.is_ai_runtime_configured():
+                    script_excerpt = _trim_script_for_preview(script_content)
+                    ai_temps = [0.1, 0.4, 0.7]
+                    examples = recent_examples_for_prompt(limit=3)
+                    last_rendered: Optional[str] = None
+
+                    for attempt in range(1, 5):
+                        can_manual = attempt >= 4
+                        if attempt <= 3:
+                            temp = ai_temps[attempt - 1]
+                            ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
+                                unique_actions,
+                                base_name=base_name,
+                                temperature=temp,
+                                few_shot_examples=examples,
+                            )
+                            rendered: Optional[str] = None
+                            if ai_steps:
+                                rendered = self._feature_text_from_ai_steps(base_name, ai_steps)
+                            if not rendered:
+                                rendered = self._generate_bdd_feature_heuristic_business(
+                                    unique_actions, base_name
+                                )
+                        else:
+                            rendered = last_rendered or self._generate_bdd_feature_heuristic_business(
+                                unique_actions, base_name
+                            )
+
+                        last_rendered = rendered
+                        review = self.ui.bdd_preview_review(
+                            feature_text=rendered,
+                            attempt=attempt,
+                            max_attempts=4,
+                            script_excerpt=script_excerpt,
+                            can_manual=can_manual,
+                        )
+                        action = str(review.get("action") or "")
+                        if action == "accept":
+                            ft = str(review.get("feature_text") or rendered).strip()
+                            if not ft:
+                                ft = rendered
+                            edited = bool(review.get("edited"))
+                            if edited or ft != rendered.strip():
+                                append_correction(script_snippet=script_content, feature_text=ft)
+                            return ft
+                        if action == "reject":
+                            if attempt >= 4:
+                                break
+                            continue
+                        if action == "use_heuristic":
+                            return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+
+            except BDDUserCancelled:
+                raise
+            except Exception as e:
+                print(f"BEE IA BDD: fallback heurístico: {e}")
+
+        return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+
+    def _bdd_parse_actions(self, unique_actions: List[Tuple[str, str]]) -> Dict[str, Any]:
+        """Extrae URL, tokens de clic, textos de relleno y selecciones desde descripciones heurísticas."""
+        start_url: Optional[str] = None
+        click_tokens: List[str] = []
+        fills: List[str] = []
+        selects: List[str] = []
+
+        for action_type, description in unique_actions:
+            if action_type == "given":
+                m = re.search(r'"([^"]+)"', description)
+                if m:
+                    start_url = m.group(1)
+            elif action_type == "click":
+                m = re.search(r'"([^"]+)"', description)
+                if m:
+                    click_tokens.append(m.group(1))
+            elif action_type == "fill":
+                m = re.search(
+                    r'Ingresar\s+"[^"]+"\s+con\s+"((?:[^"\\]|\\.)*)"',
+                    description,
+                )
+                if m:
+                    fills.append(m.group(1).replace('\\"', '"'))
+            elif action_type == "select":
+                m = re.search(r'Seleccionar\s+"((?:[^"\\]|\\.)*)"\s+en', description)
+                if m:
+                    selects.append(m.group(1).replace('\\"', '"'))
+
+        blob = " ".join(click_tokens).lower()
+        return {
+            "start_url": start_url,
+            "click_tokens": click_tokens,
+            "fills": fills,
+            "selects": selects,
+            "blob": blob,
+            "n_clicks": len(click_tokens),
+        }
+
+    def _bdd_business_when_and_text(self, ctx: Dict[str, Any]) -> Tuple[str, Optional[str], str]:
+        """
+        Un solo When, opcional And, un Then — textos en lenguaje de negocio (sin nombres técnicos).
+        """
+        blob = ctx["blob"]
+        fills = ctx["fills"]
+        selects = ctx["selects"]
+        n_clicks = ctx["n_clicks"]
+
+        nav_bits: List[str] = []
+        if "prestamo" in blob or "préstamo" in blob:
+            nav_bits.append("el flujo de préstamos")
+        if "personal" in blob and "prestamo" in blob:
+            nav_bits.append("el producto de crédito personal")
+        if "modal" in blob or "aviso" in blob or "banner" in blob or "cookie" in blob:
+            nav_bits.append("gestionar avisos o modales iniciales")
+        if "nav_" in blob or "menu" in blob or "accordion" in blob:
+            nav_bits.append("el menú y las secciones del sitio")
+
+        if nav_bits:
+            nav_phrase = " y ".join(dict.fromkeys(nav_bits))  # dedupe preserve order
+            when_nav = (
+                f"el usuario navega por el sitio para acceder a {nav_phrase}"
+                if len(nav_bits) <= 2
+                else "el usuario navega por el sitio hasta el flujo de producto deseado"
+            )
+        else:
+            when_nav = (
+                "el usuario interactúa con la interfaz para avanzar en el proceso"
+                if n_clicks > 0
+                else "el usuario utiliza la aplicación"
+            )
+
+        has_data = bool(fills or selects)
+        if has_data:
+            parts_data = []
+            if fills:
+                parts_data.append("el importe o cantidad indicados")
+            if selects:
+                parts_data.append("el plazo u opción seleccionada")
+            data_phrase = " y ".join(parts_data)
+            when_body = (
+                f"{when_nav.capitalize()}, completa {data_phrase} y confirma para continuar en el flujo."
+            )
+        else:
+            when_body = f"{when_nav.capitalize()} hasta completar el paso previsto."
+
+        and_body: Optional[str] = None
+        if n_clicks >= 5 and has_data:
+            and_body = (
+                "completa los datos del formulario y confirma la solicitud cuando el sistema lo solicite"
+            )
+        elif n_clicks >= 8 and not has_data:
+            and_body = (
+                "confirma la acción en las pantallas intermedias hasta finalizar el recorrido"
+            )
+
+        then_body = (
+            "el sistema debe mostrar la confirmación o el siguiente paso del proceso "
+            "sin errores de validación"
+        )
+
+        return when_body, and_body, then_body
+
+    def _generate_bdd_feature_heuristic_business(
+        self, unique_actions: List[Tuple[str, str]], base_name: str
+    ) -> str:
+        """Given / When / (And) / Then — máximo un And; texto orientado a negocio."""
+        ctx = self._bdd_parse_actions(unique_actions)
+        given_line = ""
+        if ctx["start_url"]:
+            try:
+                netloc = urlparse(ctx["start_url"]).netloc or ctx["start_url"]
+                given_line = f'    Given el usuario ingresa al sitio "{netloc}"\n'
+            except Exception:
+                given_line = '    Given el usuario accede al sitio web bajo prueba\n'
+
+        when_body, and_body, then_body = self._bdd_business_when_and_text(ctx)
+
+        lines = [
             f"Feature: {base_name}\n",
             "\n",
-            "  Scenario: Flujo grabado\n"
+            "  Scenario: Flujo de negocio grabado\n",
+            given_line,
+            f"    When {when_body}\n",
         ]
-        
-        has_given = False
-        has_when = False
-        has_then = False
-        click_buffer = []
-        and_count_after_when = 0
-        and_count_after_then = 0
-        
-        for action_type, description in unique_actions:
-            if action_type == "given" and not has_given:
-                feature_lines.append(f"    Given {description}\n")
-                has_given = True
-            
-            elif action_type == "click":
-                click_buffer.append(description)
-            
-            elif action_type in ["fill", "select"]:
-                if click_buffer:
-                    if not has_when:
-                        feature_lines.append(f"    When {', '.join(click_buffer)}\n")
-                        has_when = True
-                    elif and_count_after_when < 2:
-                        feature_lines.append(f"    And {', '.join(click_buffer)}\n")
-                        and_count_after_when += 1
-                    click_buffer = []
-                
-                if action_type == "fill":
-                    if has_when and and_count_after_when < 2:
-                        feature_lines.append(f"    And {description}\n")
-                        and_count_after_when += 1
-                
-                elif action_type == "select":
-                    if not has_then:
-                        feature_lines.append(f"    Then {description}\n")
-                        has_then = True
-        
-        if click_buffer:
-            if not has_when:
-                feature_lines.append(f"    When {', '.join(click_buffer)}\n")
-                has_when = True
-            elif and_count_after_when < 2:
-                feature_lines.append(f"    And {', '.join(click_buffer)}\n")
-                and_count_after_when += 1
-        
-        # Agregar verificación final según reglas
-        if has_then:
-            if and_count_after_then < 2:
-                feature_lines.append("    And Verificar que se completó el flujo\n")
-        else:
-            feature_lines.append("    Then Verificar que se completó el flujo\n")
-        
-        return ''.join(feature_lines)
+        if and_body:
+            lines.append(f"    And {and_body}\n")
+        lines.append(f"    Then {then_body}\n")
+        return "".join(lines)
+
+    def _feature_text_from_ai_steps(self, base_name: str, ai_steps: List[Tuple[str, str]]) -> Optional[str]:
+        """Convierte pasos IA a .feature; exige exactamente 1 When y 1 Then, ≤1 Given, ≤1 And, orden Gherkin."""
+        if not ai_steps:
+            return None
+        given_c = sum(1 for k, _ in ai_steps if k.lower() == "given")
+        when_c = sum(1 for k, _ in ai_steps if k.lower() == "when")
+        and_c = sum(1 for k, _ in ai_steps if k.lower() == "and")
+        then_c = sum(1 for k, _ in ai_steps if k.lower() == "then")
+        if when_c != 1 or then_c != 1 or given_c > 1 or and_c > 1:
+            return None
+        seen = [k.lower() for k, _ in ai_steps]
+        expected: List[str] = []
+        if "given" in seen:
+            expected.append("given")
+        expected.extend(["when"])
+        if "and" in seen:
+            expected.append("and")
+        expected.append("then")
+        if seen != expected:
+            return None
+        lines = [f"Feature: {base_name}\n", "\n", "  Scenario: Flujo de negocio\n"]
+        kw_map = {"given": "Given", "when": "When", "then": "Then", "and": "And"}
+        for kw, txt in ai_steps:
+            lines.append(f"    {kw_map.get(kw.lower(), 'When')} {txt}\n")
+        return "".join(lines)
+
+    def _load_recording_meta(self, js_file: str) -> Optional[Dict[str, Any]]:
+        meta_path = re.sub(r"\.js$", "", js_file, flags=re.I) + "_bee_meta.json"
+        if not os.path.isfile(meta_path):
+            return None
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _preferred_selector_for_locator(self, selector: str) -> str:
+        """Si hay metadatos de grabación y IA activa, puede preferir CSS o xpath."""
+        if not self.use_ai or not self._recording_meta:
+            return selector
+        actions = self._recording_meta.get("actions") if isinstance(self._recording_meta, dict) else None
+        if not isinstance(actions, list):
+            return selector
+        for rec in actions:
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("selector") != selector:
+                continue
+            xp = (rec.get("xpath") or "").strip()
+            if not xp:
+                return selector
+            try:
+                from core import gemma_inference
+
+                if not gemma_inference.is_ai_runtime_configured():
+                    return selector
+                pref = gemma_inference.suggest_preferred_locator(
+                    selector=selector,
+                    xpath=xp,
+                    tag=str(rec.get("tag") or ""),
+                    element_id=str(rec.get("id") or ""),
+                )
+                if pref:
+                    return pref
+            except Exception:
+                pass
+            return selector
+        return selector
 
     def _group_similar_actions(self, actions):
         """Agrupa acciones similares para crear steps más lógicos"""
@@ -506,15 +733,223 @@ class PuppeteerToBehaveConverter:
     def _generate_adaptive_steps(self, base_name, class_name, script_content, existing_feature=None):
         """Genera steps adaptados al feature existente o crea nuevos steps funcionales"""
         
-        if existing_feature:
-            # Extraer steps del feature existente
+        if existing_feature and existing_feature.strip():
             feature_steps = self._extract_steps_from_feature(existing_feature)
-            steps_content = self._generate_steps_from_feature(base_name, class_name, feature_steps, script_content)
+            if self._feature_is_business_language(feature_steps):
+                return self._generate_steps_from_business_feature(
+                    base_name, class_name, feature_steps, script_content
+                )
+            return self._generate_steps_from_feature(base_name, class_name, feature_steps, script_content)
+
+        # Sin texto de feature: generar desde el script (reconstruye feature técnico internamente).
+        return self._generate_steps_from_script(base_name, class_name, script_content)
+
+    def _feature_is_business_language(self, feature_steps: List[Tuple[str, str]]) -> bool:
+        """True si el .feature usa redacción de negocio (no pasos 'clic en elemento ...')."""
+        if not feature_steps:
+            return False
+        for _t, desc in feature_steps:
+            if "clic en elemento" in desc:
+                return False
+        return True
+
+    def _extract_ordered_page_actions(self, script_content: str) -> List[Tuple[str, str, Optional[str]]]:
+        """
+        Orden de acciones del JS grabado alineado con nombres de método del Page Object.
+        Tuplas: ("goto", url, None), ("click", method_base, None), ("fill", method_base, value), ("select", method_base, option).
+        method_base sin prefijo btn_/txt_/ddl_ — se resuelve con _bdd_locator_kind_for_selector.
+        """
+        ordered: List[Tuple[str, str, Optional[str]]] = []
+        if not script_content:
+            return ordered
+        for line in script_content.split("\n"):
+            line = line.strip()
+            try:
+                if "page.goto(" in line:
+                    m = re.search(r'page\.goto\((["\'])(.*?)\1', line)
+                    if m:
+                        ordered.append(("goto", m.group(2), None))
+                    continue
+                if "page.click(" in line:
+                    m = re.search(r'page\.click\((["\'])(.*?)\1', line)
+                    if m:
+                        sel = m.group(2)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("click", name, None))
+                    continue
+                if "page.type(" in line or "page.fill(" in line:
+                    m = re.search(r'page\.(?:type|fill)\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if m:
+                        sel, val = m.group(2), m.group(4)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("fill", name, val))
+                    continue
+                if "page.select(" in line:
+                    m = re.search(r'page\.select\((["\'])(.*?)\1,\s*(["\'])(.*?)\3', line)
+                    if m:
+                        sel, opt = m.group(2), m.group(4)
+                        name = self._generate_element_name(sel)
+                        ordered.append(("select", name, opt))
+                    continue
+            except Exception:
+                continue
+        return ordered
+
+    def _page_method_name(self, kind: str, base_name: str) -> str:
+        """Nombres de método como en _generate_methods: click_, enter_, select_."""
+        if kind == "click":
+            return f"click_{base_name}"
+        if kind == "fill":
+            return f"enter_{base_name}"
+        if kind == "select":
+            return f"select_{base_name}"
+        return base_name
+
+    def _generate_steps_from_business_feature(
+        self,
+        base_name: str,
+        class_name: str,
+        feature_steps: List[Tuple[str, str]],
+        script_content: str,
+    ) -> str:
+        """
+        Feature en lenguaje de negocio: los decoradores coinciden con el .feature;
+        el cuerpo ejecuta las acciones del script en orden usando el Page Object.
+        """
+        imports = f"""from behave import *
+from pages.{base_name}_page import {class_name}
+from utils.button_functions import ui_navigate
+from environment import *
+"""
+
+        ordered = self._extract_ordered_page_actions(script_content)
+        if not ordered:
+            return imports + "\n# No se pudieron extraer acciones del script grabado.\n"
+
+        goto_url = ""
+        for kind, a, _b in ordered:
+            if kind == "goto":
+                goto_url = a
+                break
+
+        actions_after_goto = [x for x in ordered if x[0] != "goto"]
+        n_main = sum(1 for t, _ in feature_steps if t.lower() in ("when", "and"))
+        if n_main < 1:
+            n_main = 1
+        chunks: List[List[Tuple[str, str, Optional[str]]]] = []
+        n_act = len(actions_after_goto)
+        if n_act == 0:
+            chunks = [[] for _ in range(n_main)]
         else:
-            # Generar steps basados en el script de playwright
-            steps_content = self._generate_steps_from_script(base_name, class_name, script_content)
-        
-        return steps_content
+            base = n_act // n_main
+            rem = n_act % n_main
+            pos = 0
+            for i in range(n_main):
+                sz = base + (1 if i < rem else 0)
+                chunks.append(actions_after_goto[pos : pos + sz])
+                pos += sz
+
+        step_methods: List[str] = []
+        last_non_and: Optional[str] = None
+        step_counter = 0
+        chunk_i = 0
+
+        for step_type, description in feature_steps:
+            step_counter += 1
+            st = step_type.lower()
+            if st in ("given", "when", "then", "and"):
+                suffix = st
+            else:
+                suffix = "and"
+            step_id = f"{step_counter:02d}_{suffix}"
+
+            if st == "and":
+                eff = last_non_and or "when"
+            else:
+                eff = st
+                if st != "and":
+                    last_non_and = st
+
+            method_name = self._create_step_method_name(eff, description)
+            esc = description.replace("\\", "\\\\").replace("'", "\\'")
+
+            if st == "given":
+                if "Acceder a la pagina" in description:
+                    step_methods.append(f"""
+@{eff}('Acceder a la pagina "{{url}}"')
+def {method_name}(context, url):
+    context.page = {class_name}(context.driver)
+    ui_navigate(
+        driver=context.driver,
+        url=url,
+        nombre_pagina="Acceder_a_la_pagina",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
+""")
+                else:
+                    url_lit = goto_url or ""
+                    if not url_lit:
+                        m = re.search(r'"([^"]+)"', description)
+                        if m:
+                            host = m.group(1).strip()
+                            if host and not host.startswith("http"):
+                                url_lit = "https://" + host
+                            else:
+                                url_lit = host
+                    step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    ui_navigate(
+        driver=context.driver,
+        url={json.dumps(url_lit)},
+        nombre_pagina="inicio",
+        usar_create_screenshot=context.generate_evidence,
+        screenshot_step='{step_id}'
+    )
+""")
+
+            elif st in ("when", "and"):
+                body_lines: List[str] = [
+                    f"    context.page = {class_name}(context.driver)",
+                ]
+                use_chunk = chunks[chunk_i] if chunk_i < len(chunks) else []
+                chunk_i += 1
+                for act in use_chunk:
+                    ak, base, extra = act
+                    if ak == "goto":
+                        continue
+                    meth = self._page_method_name(ak, base)
+                    if ak == "click":
+                        body_lines.append(
+                            f"    context.page.{meth}(tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                    elif ak == "fill" and extra is not None:
+                        ev = json.dumps(extra)
+                        body_lines.append(
+                            f"    context.page.{meth}({ev}, tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                    elif ak == "select" and extra is not None:
+                        ev = json.dumps(extra)
+                        body_lines.append(
+                            f"    context.page.{meth}({ev}, tomar_evidencia=context.generate_evidence, step='{step_id}')"
+                        )
+                step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+{chr(10).join(body_lines)}
+""")
+
+            elif st == "then":
+                step_methods.append(f"""
+@{eff}('{esc}')
+def {method_name}(context):
+    context.page = {class_name}(context.driver)
+    assert True
+""")
+
+        return imports + "\n".join(step_methods)
 
     def _extract_steps_from_feature(self, feature_content):
         """Extrae los steps de un feature existente"""
@@ -1120,9 +1555,10 @@ class {class_name}:
         for selector in all_selectors:
             if not selector:
                 continue
-                
+
+            use_sel = self._preferred_selector_for_locator(selector)
             name = self._generate_element_name(selector)
-            xpath = self._selector_to_xpath(selector)
+            xpath = self._selector_to_xpath(use_sel)
             
             # Determinar tipo de elemento
             if any(f"page.type('{selector}'" in line or 

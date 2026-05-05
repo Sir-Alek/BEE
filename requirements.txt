@@ -1,10 +1,66 @@
-tkinter
-selenium>=4.0.0
-Pillow>=9.0.0
-psutil>=5.8.0
-behave>=1.2.6
-opencv-python>=4.5.0
-mss>=7.0.0
-pyinstaller>=5.0.0
-fastapi>=0.135.1
-uvicorn>=0.42.0
+# BEE — dependencias alineadas a un entorno Python 3.10.x que ya funciona en producción.
+# Python recomendado: 3.10.11 (64-bit, Windows)
+#
+# IMPORTANTE — dos modos de uso:
+#
+# 1) Ejecutable PyInstaller «delgado» (recomendado):
+#    Crear un venv NUEVO y SOLO instalar este archivo. No instales TensorFlow, Torch, JAX,
+#    transformers, etc. en ese venv: no los importa BEE y solo harían el .exe enorme o
+#    arrastrarían DLLs innecesarias si PyInstaller analiza ese site-packages.
+#
+# 2) Misma máquina donde ya tienes todo instalado:
+#    Puede coincidir con tu pip freeze global; las versiones abajo deberían ser coherentes
+#    entre sí. Si algo falla tras un pip install -r, resuelve conflictos priorizando las
+#    versiones de ESTE archivo para los paquetes listados.
+#
+# Entorno virtual:
+#   py -3.10 -m venv .venv
+#   .venv\Scripts\activate
+#   python -m pip install -U pip setuptools wheel
+#   pip install -r requirements.txt
+#
+# tkinter: viene con el instalador oficial de Python en Windows (no es paquete pip).
+
+# --- UI web y API local (mismo stack que tu freeze) ---
+fastapi==0.135.3
+uvicorn==0.41.0
+starlette==0.52.1
+pydantic==2.12.5
+# pydantic_core lo instala pip como dependencia de pydantic
+httpx==0.28.1
+# Resolver explícito: selenium<4.34 acotaba typing_extensions~=4.13 (incompatible con pydantic 2.12).
+typing-extensions>=4.15.0,<5
+
+# --- Selenium / pruebas generadas ---
+selenium==4.43.0
+webdriver-manager==4.0.2
+
+# --- Imagen, video, escritorio ---
+Pillow==9.0.0
+opencv-python==4.12.0.88
+mss==10.1.0
+numpy==1.24.3
+PyAutoGUI==0.9.54
+PyGetWindow==0.0.9
+
+# --- Behave y utilidades de proyectos (resources/behave, step_by_step) ---
+behave==1.2.6
+pandas==2.3.0
+python-calamine==0.6.2
+fpdf2==2.7.4
+
+# --- Informes PDF / gráficos (PDFFeatureReport, gen_reporTest, etc.) ---
+matplotlib==3.5.0
+
+# --- Sistema ---
+psutil==7.0.0
+
+# --- IA local (opcional; «Activar IA» en conversión Behave) ---
+llama-cpp-python==0.3.20
+
+# --- Empaquetado ---
+pyinstaller==6.19.0
+pyinstaller-hooks-contrib==2026.4
+
+# --- Build opcional: Cython (setup_cython.py) ---
+Cython==3.2.4

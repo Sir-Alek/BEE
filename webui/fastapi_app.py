@@ -25,15 +25,26 @@ class ConvertRequest(BaseModel):
         "puppeteer_recorder",
     ]
     url: Optional[str] = None
+    use_ai: bool = False
 
 
 class PromptResponseRequest(BaseModel):
     answer: Any = None
 
 
+class LicenseActivateRequest(BaseModel):
+    key: str
+
+
 def _repo_root() -> str:
     # webui/fastapi_app.py -> webui/ -> repo root
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _projects_dir() -> str:
+    from core.bee_paths import behave_projects_dir
+
+    return str(behave_projects_dir())
 
 
 def _require_localhost(request: Request) -> None:
@@ -64,8 +75,55 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def app_should_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         return {"exit": bool(exit_flag["value"])}
 
+    @app.get("/api/ai/status")
+    def ai_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        try:
+            from core import gemma_inference
+
+            return gemma_inference.get_ai_runtime_status()
+        except Exception as e:
+            return {"error": str(e)}
+
+    @app.get("/api/license/status")
+    def license_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core import bee_license
+
+        st = bee_license.get_license_status()
+        return {
+            "ok": st.ok,
+            "reason": st.reason,
+            "demo_days_left": st.demo_days_left,
+            "activated": st.activated,
+            "machine_fingerprint": st.machine_fingerprint,
+            "message": st.message,
+            "can_run_jobs": bee_license.can_run_jobs(),
+        }
+
+    @app.post("/api/license/activate")
+    def license_activate(
+        req: LicenseActivateRequest, _: None = Depends(_require_localhost)
+    ) -> Dict[str, Any]:
+        from core import bee_license
+
+        if bee_license.activate_with_key(req.key):
+            st = bee_license.get_license_status()
+            return {
+                "ok": True,
+                "message": "Licencia activada.",
+                "reason": st.reason,
+                "activated": st.activated,
+            }
+        return {"ok": False, "message": "Clave no válida para esta máquina."}
+
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
+        from core import bee_license
+
+        if not bee_license.can_run_jobs():
+            raise HTTPException(
+                status_code=403,
+                detail="Licencia: periodo de demostración finalizado o no activa. Activa con clave en la pantalla de inicio.",
+            )
         job_id = jm.create_job(mode=req.mode)
 
         def worker() -> None:
@@ -79,7 +137,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     return
 
                 if req.mode == "puppeteer_to_behave":
-                    converter = PuppeteerToBehaveConverter(base_dir, adapter)
+                    converter = PuppeteerToBehaveConverter(base_dir, adapter, use_ai=req.use_ai)
                     converter.convert_script()
                     jm.mark_done(job_id)
                     return
@@ -95,8 +153,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.mark_error(job_id, message="Missing url", details="url is required for puppeteer_recorder")
                         return
 
-                    projects_dir = os.path.join(base_dir, "behave", "proyectos")
-                    os.makedirs(projects_dir, exist_ok=True)
+                    projects_dir = _projects_dir()
 
                     import re
                     import time
