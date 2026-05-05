@@ -70,6 +70,14 @@ Según la implementación en `bee_license.py`, la aplicación puede negarse a ar
 
 Los proyectos generados suelen ir bajo **Documentos/BEE** (Windows). Variable opcional: **`BEE_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) puede guardarse en `bee_memory.json` en esa misma área, según la implementación de la rama.
 
+## ELIA (Evolving Learning & Intelligent Automation)
+
+Módulo en el paquete `elia/`: integración con **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), pensada para orquestarse desde la UI web de BEE.
+
+- **Configuración:** archivo recomendado `{BEE_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/BEE/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `elia/config_loader.py`).
+- **Uso programático:** `from elia import service` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, `jira_smoke_test()` / `value_edge_smoke_test()`.
+- La carpeta histórica **`DICAI/`** en el repo quedó obsoleta frente a `elia/`; no la uses como punto de entrada.
+
 ## Modelo Gemma (GGUF, opcional)
 
 Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `BEE_LLAMA_N_CTX`, `BEE_LLAMA_N_GPU_LAYERS`.

@@ -45,3 +45,15 @@ def step_by_step_dir() -> Path:
 
 def bee_memory_path() -> Path:
     return ensure_user_data_root() / "bee_memory.json"
+
+
+def elia_dir() -> Path:
+    """Directorio de datos ELIA (config opcional, salidas) bajo la raíz de datos de usuario."""
+    d = ensure_user_data_root() / "elia"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def elia_secrets_path() -> Path:
+    """Ruta recomendada para secrets.ini de ELIA (Jira + Value Edge). No versionar."""
+    return elia_dir() / "secrets.ini"

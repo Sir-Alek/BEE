@@ -11,4 +11,4 @@ BEE graba tus interacciones en páginas web y genera pruebas en **Behave** (BDD)
 5. **Convertir a Behave o a step-by-step:** pulsa el botón correspondiente, elige proyecto y archivo grabado cuando se te pida, selecciona las acciones y confirma. Los archivos generados se guardan en la carpeta de proyectos del usuario (por defecto bajo **Documentos**, carpeta **BEE**).
 6. Si aparece **licencia en modo demostración**, introduce la clave en la misma pantalla de inicio cuando tu organización te la facilite, o consulta con soporte.
 
-Documentación técnica (instalación desde código, compilación, administración): **`readme_dev.md`**.
+**ELIA** (Evolving Learning & Intelligent Automation) amplía BEE con integraciones avanzadas (p. ej. Jira, Value Edge, Gherkin en lote). Detalles de configuración: **`readme_dev.md`** junto al resto de la documentación técnica.
