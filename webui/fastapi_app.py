@@ -23,6 +23,10 @@ class ConvertRequest(BaseModel):
         "puppeteer_to_step_by_step",
         "demo",
         "puppeteer_recorder",
+        # ELIA (integrations)
+        "elia_jira_smoke",
+        "elia_value_edge_smoke",
+        "elia_gherkin_batch",
     ]
     url: Optional[str] = None
     use_ai: bool = False
@@ -45,6 +49,25 @@ def _projects_dir() -> str:
     from core.bee_paths import behave_projects_dir
 
     return str(behave_projects_dir())
+
+def _user_data_root() -> str:
+    from core.bee_paths import ensure_user_data_root
+
+    return str(ensure_user_data_root())
+
+
+def _safe_under_user_data(*parts: str) -> str:
+    """
+    Defensive path join: keep ELIA batch IO under user data root.
+    """
+    import os
+
+    root = os.path.abspath(_user_data_root())
+    target = os.path.abspath(os.path.join(root, *[p for p in parts if p]))
+    if target == root or target.startswith(root + os.sep):
+        return target
+    # Fallback to root if something weird was supplied.
+    return root
 
 
 def _require_localhost(request: Request) -> None:
@@ -382,6 +405,94 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         },
                     )
                     jm.mark_done(job_id)
+                    return
+
+                if req.mode == "elia_jira_smoke":
+                    jm.update_progress(job_id, {"stage": "ELIA: Jira (smoke)"})
+                    from elia import service as elia_service
+
+                    try:
+                        out = elia_service.jira_smoke_test()
+                        adapter.info(
+                            "ELIA · Jira",
+                            "Conexión OK." if out.get("ok") else "Conexión fallida.\n\nRevisa credenciales y URL.",
+                        )
+                        jm.add_event(job_id, "elia_jira_smoke", out)
+                        jm.mark_done(job_id)
+                    except Exception as e:
+                        jm.mark_error(job_id, message="ELIA Jira error", details=f"{e}\n{traceback.format_exc()}")
+                    return
+
+                if req.mode == "elia_value_edge_smoke":
+                    jm.update_progress(job_id, {"stage": "ELIA: Value Edge (smoke)"})
+                    from elia import service as elia_service
+
+                    try:
+                        out = elia_service.value_edge_smoke_test()
+                        adapter.info(
+                            "ELIA · Value Edge",
+                            "Login OK." if out.get("ok") else "Login fallido.\n\nRevisa credenciales y URL.",
+                        )
+                        jm.add_event(job_id, "elia_value_edge_smoke", out)
+                        jm.mark_done(job_id)
+                    except Exception as e:
+                        jm.mark_error(job_id, message="ELIA Value Edge error", details=f"{e}\n{traceback.format_exc()}")
+                    return
+
+                if req.mode == "elia_gherkin_batch":
+                    jm.update_progress(job_id, {"stage": "ELIA: Gherkin batch (configurar)"})
+                    from elia import service as elia_service
+
+                    # Ask for relative folders under user data (Documents/BEE).
+                    inp_rel = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=Prompt(
+                            prompt_id="elia_inp",
+                            type="input_text",
+                            title="ELIA · Gherkin batch",
+                            message=(
+                                "Carpeta de ENTRADA (relativa a Documentos/BEE).\n"
+                                "Debe contener archivos .json (Value Edge o Jira).\n\n"
+                                "Ejemplo: elia/inputs"
+                            ),
+                        ),
+                    )
+                    if inp_rel is None:
+                        jm.cancel_job(job_id)
+                        return
+                    out_rel = jm.create_prompt_and_wait(
+                        job_id,
+                        prompt=Prompt(
+                            prompt_id="elia_out",
+                            type="input_text",
+                            title="ELIA · Gherkin batch",
+                            message=(
+                                "Carpeta de SALIDA (relativa a Documentos/BEE).\n"
+                                "Aquí se generarán archivos .feature.\n\n"
+                                "Ejemplo: elia/outputs/features"
+                            ),
+                        ),
+                    )
+                    if out_rel is None:
+                        jm.cancel_job(job_id)
+                        return
+
+                    input_dir = _safe_under_user_data(str(inp_rel).strip())
+                    output_dir = _safe_under_user_data(str(out_rel).strip())
+                    os.makedirs(input_dir, exist_ok=True)
+                    os.makedirs(output_dir, exist_ok=True)
+
+                    jm.update_progress(job_id, {"stage": "ELIA: Ejecutando conversión", "input_dir": input_dir, "output_dir": output_dir})
+                    try:
+                        elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=False)
+                        adapter.info(
+                            "ELIA · Gherkin batch",
+                            f"Conversión completada.\n\nEntrada:\n{input_dir}\n\nSalida:\n{output_dir}",
+                        )
+                        jm.add_event(job_id, "elia_gherkin_batch", {"input_dir": input_dir, "output_dir": output_dir})
+                        jm.mark_done(job_id)
+                    except Exception as e:
+                        jm.mark_error(job_id, message="ELIA Gherkin batch error", details=f"{e}\n{traceback.format_exc()}")
                     return
 
                 jm.mark_error(job_id, message="Unknown mode", details=str(req.mode))

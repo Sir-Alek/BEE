@@ -9,7 +9,15 @@ export type JobStateResponse = {
 };
 
 export async function startConvertJob(params: {
-  mode: "demo" | "puppeteer_to_behave" | "puppeteer_to_step_by_step" | "puppeteer_recorder";
+  mode:
+    | "demo"
+    | "puppeteer_to_behave"
+    | "puppeteer_to_step_by_step"
+    | "puppeteer_recorder"
+    // ELIA
+    | "elia_jira_smoke"
+    | "elia_value_edge_smoke"
+    | "elia_gherkin_batch";
   url?: string;
   use_ai?: boolean;
 }): Promise<{ job_id: string }> {
