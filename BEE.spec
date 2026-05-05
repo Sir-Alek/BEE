@@ -40,6 +40,12 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
+elia_hidden = []
+try:
+    elia_hidden = collect_submodules("elia")
+except Exception:
+    elia_hidden = ["elia", "elia.core", "elia.config_loader", "elia.service"]
+
 # llama-cpp-python: native libs + package data
 llama_datas, llama_binaries, llama_hidden = [], [], []
 try:
@@ -58,7 +64,7 @@ a = Analysis(
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
     ] + llama_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'core.bee_license'] + web_hidden + llama_hidden,
+    hiddenimports=['mss', 'cv2', 'numpy', 'core.bee_license'] + web_hidden + llama_hidden + elia_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
