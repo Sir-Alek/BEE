@@ -1,7 +1,7 @@
 """
 Rutas del modelo Gemma (GGUF) para desarrollo y ejecutables PyInstaller.
 
-En modo frozen, los datos van a sys._MEIPASS/resources/... (ver BEE.spec).
+En modo frozen, los datos van a sys._MEIPASS/resources/... (ver ELIA.spec).
 En desarrollo, se resuelve desde la raíz del repositorio (directorio padre de core/).
 """
 

@@ -4,7 +4,8 @@ Licencia offline (demo + activación por clave + kill switch local).
 Sin servidor externo: estado en disco local, HMAC con secreto embebido (cambiar en builds de release).
 
 Variables de entorno (desarrollo / soporte):
-  BEE_SKIP_LICENSE=1  — omite comprobación (no usar en entregas a cliente).
+  ELIA_SKIP_LICENSE=1  — omite comprobación (no usar en entregas a cliente).
+  (Compat) BEE_SKIP_LICENSE=1
 """
 
 from __future__ import annotations
@@ -45,9 +46,17 @@ def _state_dir() -> Path:
         base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
     else:
         base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    d = Path(base) / "BEE"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    elia = Path(base) / "ELIA"
+    legacy = Path(base) / "BEE"
+    # Prefer ELIA, but keep reading legacy state if that's what exists on disk.
+    try:
+        if legacy.is_dir() and not elia.is_dir():
+            legacy.mkdir(parents=True, exist_ok=True)
+            return legacy
+    except Exception:
+        pass
+    elia.mkdir(parents=True, exist_ok=True)
+    return elia
 
 
 def _state_path() -> Path:
@@ -61,7 +70,8 @@ def _kill_paths() -> list[Path]:
         if getattr(sys, "frozen", False):
             exe_dir = Path(sys.executable).resolve().parent
             paths.append(exe_dir / "bee.kill")
-            paths.append(exe_dir / "BEE_KILL")
+            paths.append(exe_dir / "ELIA_KILL")
+            paths.append(exe_dir / "BEE_KILL")  # compat
     except Exception:
         pass
     return paths
@@ -160,14 +170,14 @@ def can_run_jobs() -> bool:
 
 
 def get_license_status() -> LicenseStatus:
-    if os.environ.get("BEE_SKIP_LICENSE", "").strip().lower() in ("1", "true", "yes"):
+    if (os.environ.get("ELIA_SKIP_LICENSE") or os.environ.get("BEE_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
         return LicenseStatus(
             ok=True,
             reason="skip",
             demo_days_left=None,
             activated=True,
             machine_fingerprint=get_machine_fingerprint(),
-            message="Licencia omitida (BEE_SKIP_LICENSE).",
+            message="Licencia omitida (ELIA_SKIP_LICENSE).",
         )
 
     if kill_switch_active():
@@ -232,8 +242,8 @@ def ensure_license_or_exit() -> None:
 
 
 def try_activate_from_env() -> bool:
-    """Si BEE_ACTIVATION_KEY está definida y es válida, activa y devuelve True."""
-    key = os.environ.get("BEE_ACTIVATION_KEY", "").strip()
+    """Si ELIA_ACTIVATION_KEY está definida y es válida, activa y devuelve True. (Compat: BEE_ACTIVATION_KEY)"""
+    key = (os.environ.get("ELIA_ACTIVATION_KEY") or os.environ.get("BEE_ACTIVATION_KEY") or "").strip()
     if not key:
         return False
     if verify_activation_key(key):

@@ -4,8 +4,8 @@ import sys
 
 
 def debug_build():
-    """Diagnóstico: archivos en dist/BEE/core y carga de recorder (plano / ofuscado)."""
-    dist_path = os.path.join("dist", "BEE")
+    """Diagnóstico: archivos en dist/ELIA/core y carga de recorder (plano / ofuscado)."""
+    dist_path = os.path.join("dist", "ELIA")
 
     print("🔍 Iniciando diagnóstico...")
     print(f"Ruta de distribución: {dist_path}")

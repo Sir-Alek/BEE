@@ -1,7 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { activateLicense, getAiStatus, getJob, getLicenseStatus, sendPromptResponse, startConvertJob } from "./api";
-import type { ActivePrompt } from "./types";
-import { themeQuerySuffix, useBeeTheme } from "./beeTheme";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  activateLicense,
+  getAiStatus,
+  getEliaConnectors,
+  getJob,
+  getLicenseStatus,
+  putEliaConnectors,
+  sendPromptResponse,
+  startConvertJob,
+  testEliaConnector,
+} from "./api";
+import type { ActivePrompt, EliaConnectorProfile } from "./types";
+import { ELIA_CONNECTORS_LS_KEY, emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "./connectorDefaults";
+import { themeQuerySuffix, useEliaTheme } from "./eliaTheme";
 
 type JobStatus = {
   job_id: string;
@@ -21,6 +32,9 @@ function formatJobMode(mode: string | null): string {
   if (mode === "puppeteer_recorder") return "Grabar interacciones";
   if (mode === "puppeteer_to_behave") return "Convertir a Behave";
   if (mode === "puppeteer_to_step_by_step") return "Convertir a step by step";
+  if (mode === "elia_jira_smoke") return "ELIA · Conectar a Jira";
+  if (mode === "elia_value_edge_smoke") return "ELIA · Extraer de ValueEdge";
+  if (mode === "elia_gherkin_batch") return "ELIA · Procesamiento por lotes (Gherkin)";
   return mode;
 }
 
@@ -28,13 +42,29 @@ function openJobUrlInNewTabPrepared(): Window | null {
   return window.open("about:blank", "_blank");
 }
 
-const BEE_UI_BC = "bee-ui";
+const ELIA_UI_BC = "elia-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const BEE_WEB_UI_BUILD = "theme-ui-20260411-nav2";
+const ELIA_WEB_UI_BUILD = "elia-ui-20260505-c";
 
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
+}
+
+function modalFieldStyle(c: {
+  inputBorder: string;
+  inputBg: string;
+  text: string;
+}): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: `1px solid ${c.inputBorder}`,
+    background: c.inputBg,
+    color: c.text,
+    fontSize: 14,
+  };
 }
 
 function tryFocusOpenerAndCloseThisTab(): boolean {
@@ -55,10 +85,11 @@ function tryFocusOpenerAndCloseThisTab(): boolean {
 }
 
 export default function App() {
-  const { c, dark, toggle } = useBeeTheme();
+  const { c, dark, toggle } = useEliaTheme();
 
   /** Pinned from first paint: home URL has no job_id; avoids any edge case mixing job UI into home. */
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
+  const [homeTab, setHomeTab] = useState<"ui" | "req">("ui");
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
@@ -82,8 +113,68 @@ export default function App() {
   const [activationKey, setActivationKey] = useState("");
   const [activationMsg, setActivationMsg] = useState<string | null>(null);
   const [bddPreviewText, setBddPreviewText] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [connectorProfiles, setConnectorProfiles] = useState<EliaConnectorProfile[]>([]);
+  const [reqConnectorProfileId, setReqConnectorProfileId] = useState("");
+  const [settingsProfileId, setSettingsProfileId] = useState("");
+  const [settingsTestMsg, setSettingsTestMsg] = useState<string | null>(null);
+  const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+
+  const persistConnectorProfiles = useCallback(async (next: EliaConnectorProfile[]) => {
+    const doc = { version: 1 as const, profiles: next };
+    try {
+      localStorage.setItem(ELIA_CONNECTORS_LS_KEY, JSON.stringify(doc));
+    } catch {
+      // ignore
+    }
+    try {
+      await putEliaConnectors(doc);
+    } catch {
+      // guardar local aunque backend falle (p. ej. sin cryptography instalado)
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    let alive = true;
+    void (async () => {
+      let localProfiles: EliaConnectorProfile[] = [];
+      try {
+        const raw = localStorage.getItem(ELIA_CONNECTORS_LS_KEY);
+        if (raw) {
+          const p = JSON.parse(raw) as { profiles?: EliaConnectorProfile[] };
+          if (Array.isArray(p?.profiles)) localProfiles = p.profiles;
+        }
+      } catch {
+        localProfiles = [];
+      }
+      try {
+        const remote = await getEliaConnectors();
+        if (!alive) return;
+        const r = remote?.profiles ?? [];
+        const use = r.length ? r : localProfiles;
+        setConnectorProfiles(use);
+        const firstId = use[0]?.id ?? "";
+        setReqConnectorProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
+        setSettingsProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
+      } catch {
+        if (!alive) return;
+        setConnectorProfiles(localProfiles);
+        const firstId = localProfiles[0]?.id ?? "";
+        setReqConnectorProfileId((prev) =>
+          prev && localProfiles.some((x) => x.id === prev) ? prev : firstId,
+        );
+        setSettingsProfileId((prev) =>
+          prev && localProfiles.some((x) => x.id === prev) ? prev : firstId,
+        );
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface]);
 
   useEffect(() => {
     if (!isHomeSurface) return;
@@ -172,7 +263,16 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
-  const startJob = (mode: "puppeteer_recorder" | "puppeteer_to_behave" | "puppeteer_to_step_by_step") => {
+  const startJob = (
+    mode:
+      | "puppeteer_recorder"
+      | "puppeteer_to_behave"
+      | "puppeteer_to_step_by_step"
+      // ELIA
+      | "elia_jira_smoke"
+      | "elia_value_edge_smoke"
+      | "elia_gherkin_batch",
+  ) => {
     setErrorText(null);
     setHomeHint(null);
     if (license && !license.can_run_jobs) {
@@ -181,6 +281,20 @@ export default function App() {
     }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
       setErrorText("URL requerida para 'Grabar Interacciones'.");
+      return;
+    }
+
+    const eliaNeedsProfile =
+      mode === "elia_jira_smoke" ||
+      mode === "elia_value_edge_smoke" ||
+      mode === "elia_gherkin_batch";
+    if (eliaNeedsProfile && connectorProfiles.length === 0) {
+      setErrorText("Primero crea un perfil de conectores en Configuración (⚙).");
+      return;
+    }
+    const selProf = connectorProfiles.find((x) => x.id === reqConnectorProfileId);
+    if ((mode === "elia_jira_smoke" || mode === "elia_value_edge_smoke") && !selProf) {
+      setErrorText("Selecciona un perfil de conectores en la pestaña «Inteligencia de Requerimientos».");
       return;
     }
 
@@ -195,10 +309,23 @@ export default function App() {
 
     void (async () => {
       try {
+        const eliaModes = new Set([
+          "elia_jira_smoke",
+          "elia_value_edge_smoke",
+          "elia_gherkin_batch",
+        ]);
+        const prof = connectorProfiles.find((x) => x.id === reqConnectorProfileId);
         const res = await startConvertJob({
           mode,
           url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
           use_ai: mode === "puppeteer_to_behave" ? useAi : false,
+          ...(eliaModes.has(mode)
+            ? {
+                elia_use_inline_connectors: true,
+                elia_jira: prof?.jira ?? emptyJiraCreds(),
+                elia_value_edge: prof?.value_edge ?? emptyValueEdgeCreds(),
+              }
+            : {}),
         });
         const base = `${window.location.origin}${window.location.pathname}`;
         const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}${themeQuerySuffix()}`;
@@ -254,9 +381,9 @@ export default function App() {
     if (!isHomeSurface) return;
     let bc: BroadcastChannel | null = null;
     try {
-      bc = new BroadcastChannel(BEE_UI_BC);
+      bc = new BroadcastChannel(ELIA_UI_BC);
       bc.onmessage = (ev: MessageEvent) => {
-        if (ev.data?.type === "bee_job_finished") {
+        if (ev.data?.type === "elia_job_finished" || ev.data?.type === "bee_job_finished") {
           setHomeHint(null);
         }
       };
@@ -283,11 +410,11 @@ export default function App() {
     const s = job.state;
     if (s !== "done" && s !== "error" && s !== "cancelled") return;
     try {
-      const key = `bee_job_finished_broadcast:${jobId}`;
+      const key = `elia_job_finished_broadcast:${jobId}`;
       if (sessionStorage.getItem(key)) return;
       sessionStorage.setItem(key, "1");
-      const bc = new BroadcastChannel(BEE_UI_BC);
-      bc.postMessage({ type: "bee_job_finished", job_id: jobId });
+      const bc = new BroadcastChannel(ELIA_UI_BC);
+      bc.postMessage({ type: "elia_job_finished", job_id: jobId });
       bc.close();
     } catch {
       // ignore
@@ -327,20 +454,6 @@ export default function App() {
     };
   }, [polling, jobId]);
 
-  /** Single theme control in the top bar: primary colors stay visible on white chrome. */
-  const themeBtnStyle: React.CSSProperties = {
-    flexShrink: 0,
-    padding: "8px 14px",
-    borderRadius: 10,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    border: `1px solid ${c.primary}`,
-    background: c.primary,
-    color: c.primaryFg,
-    boxShadow: c.shadow,
-  };
-
   const header = useMemo(() => {
     const isHome = isHomeSurface;
     const statusLine = isHome
@@ -365,7 +478,7 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 1 auto", minWidth: 0 }}>
           <img
             src="/logo.png"
-            alt="BEE"
+            alt="ELIA"
             style={{
               width: 42,
               height: 42,
@@ -375,7 +488,7 @@ export default function App() {
             }}
           />
           <div style={{ display: "flex", flexDirection: "column", minWidth: 140 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>BEE</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>ELIA</div>
             <div style={{ fontSize: 12, color: c.chromeHint }}>
               {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
             </div>
@@ -394,31 +507,52 @@ export default function App() {
             minWidth: 0,
           }}
         >
-          <button
-            type="button"
-            aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-            title={`${dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"} · build ${BEE_WEB_UI_BUILD}`}
-            onClick={() => toggle()}
-            style={themeBtnStyle}
-          >
-            {dark ? "Modo claro" : "Modo oscuro"}
-          </button>
           <div
             style={{
               fontSize: 12,
               color: c.chromeHint,
               textAlign: "right",
-              flex: "1 1 180px",
+              flex: "1 1 220px",
               minWidth: 160,
               maxWidth: "min(520px, 100%)",
             }}
           >
             {statusLine}
           </div>
+          <button
+            type="button"
+            aria-label="Abrir configuración"
+            title={`Configuración · build ${ELIA_WEB_UI_BUILD}`}
+            onClick={() => {
+              setSettingsOpen(true);
+              setSettingsTestMsg(null);
+              setSettingsSaveMsg(null);
+              const fallback = reqConnectorProfileId || connectorProfiles[0]?.id || "";
+              setSettingsProfileId((prev) =>
+                prev && connectorProfiles.some((x) => x.id === prev) ? prev : fallback,
+              );
+            }}
+            style={{
+              marginLeft: "auto",
+              flexShrink: 0,
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              border: `1px solid ${c.btnGhostBorder}`,
+              background: c.btnGhostBg,
+              color: c.text,
+              boxShadow: c.shadow,
+            }}
+          >
+            ⚙
+          </button>
         </div>
       </div>
     );
-  }, [job, workspaceMode, isHomeSurface, c, dark, toggle]);
+  }, [job, workspaceMode, isHomeSurface, c, connectorProfiles, reqConnectorProfileId]);
 
   return (
     <div
@@ -430,6 +564,499 @@ export default function App() {
       }}
     >
       {header}
+
+      {settingsOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Configuración"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100000,
+            background: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setSettingsOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(680px, 100%)",
+              maxHeight: "min(92vh, 920px)",
+              overflow: "auto",
+              borderRadius: 16,
+              border: `1px solid ${c.border}`,
+              background: c.surface,
+              boxShadow: c.shadow,
+              padding: 22,
+              color: c.text,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, flex: 1 }}>Configuración</div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                style={{
+                  border: `1px solid ${c.btnGhostBorder}`,
+                  background: c.btnGhostBg,
+                  color: c.text,
+                  borderRadius: 10,
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>Apariencia</div>
+              <label
+                htmlFor="elia-theme-toggle"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  cursor: "pointer",
+                  fontSize: 14,
+                }}
+              >
+                <span>{dark ? "Modo oscuro activo" : "Modo claro activo"}</span>
+                <input
+                  id="elia-theme-toggle"
+                  type="checkbox"
+                  checked={dark}
+                  onChange={() => toggle()}
+                  style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+                />
+                <span
+                  style={{
+                    position: "relative",
+                    width: 44,
+                    height: 26,
+                    borderRadius: 999,
+                    background: dark ? c.primary : c.border,
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: dark ? 22 : 3,
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left 160ms ease",
+                    }}
+                  />
+                </span>
+              </label>
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · Jira y Value Edge</div>
+              <div style={{ color: c.muted, fontSize: 13, marginBottom: 12 }}>
+                Los datos se guardan en el navegador y, si el backend tiene <code>cryptography</code>, también cifrados
+                en disco (misma máquina). Usa solo en red local (<code>127.0.0.1</code>).
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>Perfil</label>
+                <select
+                  value={settingsProfileId}
+                  onChange={(e) => setSettingsProfileId(e.target.value)}
+                  style={{
+                    flex: "1 1 240px",
+                    minWidth: 200,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${c.inputBorder}`,
+                    background: c.inputBg,
+                    color: c.text,
+                    fontSize: 14,
+                  }}
+                >
+                  {connectorProfiles.length === 0 && <option value="">— Sin perfiles —</option>}
+                  {connectorProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const np = newConnectorProfile(connectorProfiles.length + 1);
+                    setConnectorProfiles((l) => [...l, np]);
+                    setSettingsProfileId(np.id);
+                    setSettingsTestMsg(null);
+                    setSettingsSaveMsg(null);
+                  }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${c.primary}`,
+                    background: c.primary,
+                    color: c.primaryFg,
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Añadir nuevo
+                </button>
+              </div>
+
+              {connectorProfiles.length === 0 && (
+                <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
+                  Sin perfiles aún: pulsa «Añadir nuevo» para crear el primero.
+                </div>
+              )}
+
+              {connectorProfiles.length > 0 && settingsProfileId && (
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                      Nombre del perfil
+                    </label>
+                    <input
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.name ?? ""
+                      }
+                      onChange={(e) =>
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, name: e.target.value } : p,
+                          ),
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Jira</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="URL de instancia"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.url ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, url: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Usuario / Email"
+                      type="email"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.email ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, email: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="API token"
+                      type="password"
+                      autoComplete="new-password"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.api_token ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, api_token: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "jira",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                          });
+                          const data = r as { ok?: boolean; connection_ok?: boolean };
+                          const okConn = data.connection_ok ?? data.ok ?? false;
+                          setSettingsTestMsg(
+                            okConn ? "Jira · conexión correcta." : "Jira · conexión rechazada o credenciales inválidas.",
+                          );
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Jira · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Jira
+                  </button>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Value Edge</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="URL de instancia"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.url ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, url: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Shared space ID"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.shared_space ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, shared_space: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Workspace ID"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.workspace ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, workspace: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder='Tech preview flag (ej. "true")'
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge
+                          .tech_preview_flag ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, tech_preview_flag: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="URL de login (opcional)"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.login ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, login: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Usuario"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.user ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, user: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Contraseña"
+                      type="password"
+                      autoComplete="new-password"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.password ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, password: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "value_edge",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                          });
+                          const data = r as { ok?: boolean; connection_ok?: boolean };
+                          const okConn = data.connection_ok ?? data.ok ?? false;
+                          setSettingsTestMsg(
+                            okConn ? "Value Edge · login correcto." : "Value Edge · login rechazado o credenciales inválidas.",
+                          );
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Value Edge · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Value Edge
+                  </button>
+                </>
+              )}
+
+              {settingsTestMsg && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    fontSize: 13,
+                    color: c.text,
+                    background: c.hintBg,
+                    border: `1px solid ${c.hintBorder}`,
+                    borderRadius: 10,
+                    padding: 10,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {settingsTestMsg}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    setSettingsSaveMsg(null);
+                    try {
+                      await persistConnectorProfiles(connectorProfiles);
+                      setSettingsSaveMsg("Guardado en el navegador y en el backend (si está disponible).");
+                    } catch (e: unknown) {
+                      setSettingsSaveMsg(`Error al guardar: ${String((e as Error)?.message ?? e)}`);
+                    }
+                  })();
+                }}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: c.primary,
+                  color: c.primaryFg,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+            {settingsSaveMsg && (
+              <div style={{ marginTop: 10, fontSize: 13, color: c.muted }}>{settingsSaveMsg}</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div
         style={{
@@ -445,7 +1072,7 @@ export default function App() {
         }}
         aria-hidden
       >
-        UI {BEE_WEB_UI_BUILD}
+        UI {ELIA_WEB_UI_BUILD}
       </div>
 
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
@@ -474,10 +1101,54 @@ export default function App() {
               boxShadow: c.shadow,
             }}
           >
-            <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>BEE Web UI</h2>
+            <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>ELIA Web UI</h2>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
               esta vista. El tema se cambia con <b>Modo oscuro</b> / <b>Modo claro</b> en la barra superior.
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                padding: 6,
+                borderRadius: 12,
+                border: `1px solid ${c.border}`,
+                background: c.neutralBg,
+                marginBottom: 14,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setHomeTab("ui")}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${homeTab === "ui" ? c.primary : c.btnGhostBorder}`,
+                  background: homeTab === "ui" ? c.primary : c.btnGhostBg,
+                  color: homeTab === "ui" ? c.primaryFg : c.text,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Automatización UI
+              </button>
+              <button
+                type="button"
+                onClick={() => setHomeTab("req")}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${homeTab === "req" ? c.primary : c.btnGhostBorder}`,
+                  background: homeTab === "req" ? c.primary : c.btnGhostBg,
+                  color: homeTab === "req" ? c.primaryFg : c.text,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Inteligencia de Requerimientos
+              </button>
             </div>
 
             {homeHint && (
@@ -576,92 +1247,201 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-              <input
-                value={urlValue}
-                onChange={(e) => setUrlValue(e.target.value)}
-                placeholder="URL para grabar (solo para 'Grabar Interacciones')"
-                style={{
-                  flex: "1 1 360px",
-                  minWidth: 280,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${c.inputBorder}`,
-                  background: c.inputBg,
-                  color: c.text,
-                  outline: "none",
-                  fontSize: 14,
-                }}
-              />
-            </div>
+            {homeTab === "ui" && (
+              <>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+                  <input
+                    value={urlValue}
+                    onChange={(e) => setUrlValue(e.target.value)}
+                    placeholder="URL para grabar (solo para 'Grabar Interacciones')"
+                    style={{
+                      flex: "1 1 360px",
+                      minWidth: 280,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.inputBorder}`,
+                      background: c.inputBg,
+                      color: c.text,
+                      outline: "none",
+                      fontSize: 14,
+                    }}
+                  />
+                </div>
 
-            <label
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "flex-start",
-                marginBottom: 14,
-                cursor: "pointer",
-                fontSize: 14,
-                color: c.text,
-              }}
-            >
-              <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>
-                <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si hay
-                archivo <code>_bee_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo heurístico.
-                {aiStatusLine && (
-                  <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>
-                )}
-              </span>
-            </label>
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    marginBottom: 14,
+                    cursor: "pointer",
+                    fontSize: 14,
+                    color: c.text,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={useAi}
+                    onChange={(e) => setUseAi(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si
+                    hay archivo <code>_bee_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo
+                    heurístico.
+                    {aiStatusLine && (
+                      <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>
+                    )}
+                  </span>
+                </label>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                disabled={license ? !license.can_run_jobs : false}
-                onClick={() => startJob("puppeteer_recorder")}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("puppeteer_recorder")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
+                      color: c.primaryFg,
+                      border: "none",
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Grabar Interacciones
+                  </button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("puppeteer_to_behave")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >
+                    Convertir a Behave
+                  </button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("puppeteer_to_step_by_step")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >
+                    Convertir a step by step
+                  </button>
+                </div>
+              </>
+            )}
+
+            {homeTab === "req" && (
+              <div
                 style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
-                  color: c.primaryFg,
-                  border: "none",
-                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                  background: c.neutralBg,
+                  border: `1px solid ${c.border}`,
+                  borderRadius: 14,
+                  padding: 14,
                 }}
               >
-                Grabar Interacciones
-              </button>
-              <button
-                disabled={license ? !license.can_run_jobs : false}
-                onClick={() => startJob("puppeteer_to_behave")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: c.btnGhostBg,
-                  color: c.text,
-                  border: `1px solid ${c.btnGhostBorder}`,
-                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                  opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                }}
-              >
-                Convertir a Behave
-              </button>
-              <button
-                disabled={license ? !license.can_run_jobs : false}
-                onClick={() => startJob("puppeteer_to_step_by_step")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: c.btnGhostBg,
-                  color: c.text,
-                  border: `1px solid ${c.btnGhostBorder}`,
-                  cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                  opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                }}
-              >
-                Convertir a step by step
-              </button>
-            </div>
+                <div style={{ fontWeight: 800, color: c.text, marginBottom: 6 }}>Inteligencia de Requerimientos</div>
+                <div style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>
+                  Selecciona un <b>perfil de conectores</b> (credenciales definidas en ⚙ Configuración). Cada trabajo usa
+                  ese perfil sin leer <code>secrets.ini</code>.
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    alignItems: "center",
+                    marginBottom: 12,
+                  }}
+                >
+                  <label style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Perfil activo</label>
+                  <select
+                    value={reqConnectorProfileId}
+                    onChange={(e) => setReqConnectorProfileId(e.target.value)}
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.inputBorder}`,
+                      background: c.inputBg,
+                      color: c.text,
+                      fontSize: 14,
+                    }}
+                  >
+                    {connectorProfiles.length === 0 ? (
+                      <option value="">Sin perfiles — usa Configuración (⚙)</option>
+                    ) : (
+                      connectorProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_jira_smoke")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >
+                    Conectar a Jira
+                  </button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_value_edge_smoke")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >
+                    Extraer de ValueEdge
+                  </button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_gherkin_batch")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >
+                    Procesar lote (.json → .feature)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -696,7 +1476,7 @@ export default function App() {
             }}
           >
             Se está abriendo el <b>navegador de grabación</b>. En Windows intentamos pasarlo al primer plano; si sigues viendo
-            solo BEE, revisa la barra de tareas u otras ventanas de Chrome/Chromium.
+            solo ELIA, revisa la barra de tareas u otras ventanas de Chrome/Chromium.
           </div>
         )}
 
@@ -1261,7 +2041,7 @@ export default function App() {
 }
 
 function ActionsCheckboxList(props: {
-  c: import("./beeTheme").BeePalette;
+  c: import("./eliaTheme").EliaPalette;
   actions: { type: string; description: string; original_line: string }[];
   onSubmit: (selectedLines: string[]) => void | Promise<void>;
 }) {
