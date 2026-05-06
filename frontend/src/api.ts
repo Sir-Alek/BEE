@@ -1,3 +1,5 @@
+import type { EliaConnectorsDocument, EliaJiraCreds, EliaValueEdgeCreds } from "./types";
+
 export type JobStateResponse = {
   job_id: string;
   mode: string;
@@ -20,12 +22,22 @@ export async function startConvertJob(params: {
     | "elia_gherkin_batch";
   url?: string;
   use_ai?: boolean;
+  elia_use_inline_connectors?: boolean;
+  elia_jira?: EliaJiraCreds;
+  elia_value_edge?: EliaValueEdgeCreds;
 }): Promise<{ job_id: string }> {
-  const { mode, url, use_ai } = params;
+  const { mode, url, use_ai, elia_use_inline_connectors, elia_jira, elia_value_edge } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode, url, use_ai: use_ai ?? false }),
+    body: JSON.stringify({
+      mode,
+      url,
+      use_ai: use_ai ?? false,
+      ...(elia_use_inline_connectors != null ? { elia_use_inline_connectors } : {}),
+      ...(elia_jira != null ? { elia_jira } : {}),
+      ...(elia_value_edge != null ? { elia_value_edge } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -77,6 +89,43 @@ export async function activateLicense(key: string): Promise<{ ok: boolean; messa
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`Failed to activate: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getEliaConnectors(): Promise<EliaConnectorsDocument> {
+  const res = await fetch("/api/elia/connectors");
+  if (!res.ok) throw new Error(`Failed to fetch connectors: ${res.status}`);
+  return res.json();
+}
+
+export async function putEliaConnectors(doc: EliaConnectorsDocument): Promise<{ ok: boolean }> {
+  const res = await fetch("/api/elia/connectors", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(doc),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Failed to save connectors: ${res.status}`);
+  }
+  return data;
+}
+
+export async function testEliaConnector(params: {
+  kind: "jira" | "value_edge";
+  jira: EliaJiraCreds;
+  value_edge: EliaValueEdgeCreds;
+}): Promise<{ ok: boolean; connection_ok?: boolean; source?: string }> {
+  const res = await fetch("/api/elia/connectors/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : JSON.stringify(data);
+    throw new Error(`Prueba fallida (${res.status}): ${detail}`);
   }
   return data;
 }

@@ -80,3 +80,31 @@ export type ActivePrompt =
       actions: any;
     };
 
+export type EliaJiraCreds = {
+  url: string;
+  email: string;
+  api_token: string;
+};
+
+export type EliaValueEdgeCreds = {
+  url: string;
+  shared_space: string;
+  workspace: string;
+  tech_preview_flag: string;
+  login: string;
+  user: string;
+  password: string;
+};
+
+export type EliaConnectorProfile = {
+  id: string;
+  name: string;
+  jira: EliaJiraCreds;
+  value_edge: EliaValueEdgeCreds;
+};
+
+export type EliaConnectorsDocument = {
+  version: 1;
+  profiles: EliaConnectorProfile[];
+};
+

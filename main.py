@@ -61,8 +61,16 @@ except Exception:
     # Tkinter is optional in --web/--web-only mode and may be missing in some packaged environments.
     TK_AVAILABLE = False
 
-USE_TK_ONLY = ("--tk" in sys.argv) or (os.environ.get("BEE_UI", "").lower() in ("tk", "tkinter"))
-USE_WEB_ONLY = ("--web-only" in sys.argv) or (os.environ.get("BEE_UI", "").lower() in ("web-only", "webonly"))
+def _env_get_first(*keys: str) -> str:
+    for k in keys:
+        v = os.environ.get(k)
+        if v is not None:
+            return v
+    return ""
+
+
+USE_TK_ONLY = ("--tk" in sys.argv) or (_env_get_first("ELIA_UI", "BEE_UI").lower() in ("tk", "tkinter"))
+USE_WEB_ONLY = ("--web-only" in sys.argv) or (_env_get_first("ELIA_UI", "BEE_UI").lower() in ("web-only", "webonly"))
 USE_WEB = (not USE_TK_ONLY)  # default to web unless explicitly forcing Tk
 
 if USE_TK_ONLY and not TK_AVAILABLE:
@@ -108,11 +116,11 @@ class main:
         # Tk-mode class: Web UI can still be used for flows when enabled.
         # Default UI selection is handled in __main__ below.
         self.web_only = USE_WEB_ONLY
-        self.web_mode = self.web_only or ("--web" in sys.argv) or USE_WEB or (os.environ.get("BEE_WEB_UI", "").lower() in ("1", "true", "yes"))
+        self.web_mode = self.web_only or ("--web" in sys.argv) or USE_WEB or (_env_get_first("ELIA_WEB_UI", "BEE_WEB_UI").lower() in ("1", "true", "yes"))
         if not TK_AVAILABLE:
             raise RuntimeError("Tkinter no disponible. Ejecuta en --web-only/--web para usar la UI web.")
 
-        self.master.title("© BEE - Behave Extractor Engine")
+        self.master.title("© ELIA - Evolving Learning & Intelligent Automation")
         self.master.geometry("800x400")
         self.ui = TkUI(master)
 
@@ -331,7 +339,7 @@ class main:
             # Si falla la carga, mostrar un texto alternativo
             logo_label = tk.Label(
                 self.main_frame, 
-                text="© BEE\nBEHAVE EXTRACTOR ENGINE",
+                text="© ELIA\nEVOLVING LEARNING & INTELLIGENT AUTOMATION",
                 font=("Arial", 16, "bold"),
                 fg="blue"
             )
@@ -519,7 +527,7 @@ class main:
                 try:
                     from ui.interfaces import BDDUserCancelled
 
-                    use_ai = os.environ.get("BEE_USE_AI", "").lower() in ("1", "true", "yes")
+                    use_ai = _env_get_first("ELIA_USE_AI", "BEE_USE_AI").lower() in ("1", "true", "yes")
                     converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
@@ -999,7 +1007,7 @@ def _require_license_for_jobs() -> None:
     if not bee_license.can_run_jobs():
         raise RuntimeError(
             "Periodo de demostración finalizado o licencia inactiva. "
-            "Activa la aplicación con la clave de activación (UI web: inicio) o variable BEE_ACTIVATION_KEY."
+            "Activa la aplicación con la clave de activación (UI web: inicio) o variable ELIA_ACTIVATION_KEY."
         )
 
 
@@ -1008,17 +1016,15 @@ if __name__ == "__main__":
 
     bee_license.ensure_license_or_exit()
     print(""""
-██████╗ ███████╗███████╗
-██╔══██╗██╔════╝██╔════╝
-██████╔╝█████╗  █████╗  
-██╔══██═██╔══╝  ██╔══╝  
-██████║ ███████╗███████╗
-╚═════╝ ╚══════╝╚══════╝
+███████╗██╗     ██╗ █████╗ 
+██╔════╝██║     ██║██╔══██╗
+█████╗  ██║     ██║███████║
+██╔══╝  ██║     ██║██╔══██║
+███████╗███████╗██║██║  ██║
+╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
 
-🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝  
-   BEE - Behave Extractor Engine v1.0.2
-   </Alek>
-🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝     
+   ELIA - Evolving Learning & Intelligent Automation v0.1.2
+   </Sir_Alek>
           """)    
     def _run_web_ui() -> None:
         """
@@ -1064,7 +1070,7 @@ if __name__ == "__main__":
         def _poll_exit_and_shutdown(srv: "uvicorn.Server") -> None:
             """
             Frontend calls POST /api/app/exit when the home tab closes (sendBeacon).
-            Nothing else was reading /api/app/should-exit, so BEE.exe stayed running.
+            Nothing else was reading /api/app/should-exit, so the app process stayed running.
             """
             exit_url = f"http://{host}:{port}/api/app/should-exit"
             while not srv.should_exit:

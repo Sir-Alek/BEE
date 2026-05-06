@@ -4,17 +4,51 @@ import os
 import threading
 import traceback
 import sys
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.puppeteer_script_converter import PuppeteerToBehaveConverter
 from core.step_by_step_converter import PuppeteerToStepByStepConverter
 from webui.job_manager import JobManager, Prompt
 from webui.webui_adapter import WebUIAdapter
+
+
+class JiraCreds(BaseModel):
+    url: str = ""
+    email: str = ""
+    api_token: str = ""
+
+
+class ValueEdgeCreds(BaseModel):
+    url: str = ""
+    shared_space: str = ""
+    workspace: str = ""
+    tech_preview_flag: str = "true"
+    login: str = ""
+    user: str = ""
+    password: str = ""
+
+
+class ConnectorProfile(BaseModel):
+    id: str
+    name: str
+    jira: JiraCreds = Field(default_factory=JiraCreds)
+    value_edge: ValueEdgeCreds = Field(default_factory=ValueEdgeCreds)
+
+
+class ConnectorsDocument(BaseModel):
+    version: Literal[1] = 1
+    profiles: List[ConnectorProfile] = Field(default_factory=list)
+
+
+class EliaConnectorTestRequest(BaseModel):
+    kind: Literal["jira", "value_edge"]
+    jira: JiraCreds = Field(default_factory=JiraCreds)
+    value_edge: ValueEdgeCreds = Field(default_factory=ValueEdgeCreds)
 
 
 class ConvertRequest(BaseModel):
@@ -30,6 +64,9 @@ class ConvertRequest(BaseModel):
     ]
     url: Optional[str] = None
     use_ai: bool = False
+    elia_use_inline_connectors: bool = False
+    elia_jira: Optional[JiraCreds] = None
+    elia_value_edge: Optional[ValueEdgeCreds] = None
 
 
 class PromptResponseRequest(BaseModel):
@@ -78,11 +115,11 @@ def _require_localhost(request: Request) -> None:
 
 
 def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
-    app = FastAPI(title="BEE Web UI (local)")
+    app = FastAPI(title="ELIA Web UI (local)")
     jm = job_manager or JobManager()
     base_dir = _repo_root()
     frontend_dist = os.path.join(base_dir, "frontend", "dist")
-    logo_path = os.path.join(base_dir, "resources", "logo_bee_png_transparente.png")
+    logo_path = os.path.join(base_dir, "resources", "logo_elia.png")
     exit_flag = {"value": False}
 
     @app.post("/api/app/exit")
@@ -138,6 +175,45 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             }
         return {"ok": False, "message": "Clave no válida para esta máquina."}
 
+    @app.get("/api/elia/connectors")
+    def elia_connectors_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from elia.connectors_store import load_document
+
+        doc = load_document()
+        if not doc:
+            return {"version": 1, "profiles": []}
+        try:
+            return ConnectorsDocument.model_validate(doc).model_dump()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"connectors store invalid: {e}") from e
+
+    @app.put("/api/elia/connectors")
+    def elia_connectors_put(body: ConnectorsDocument, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from elia.connectors_store import save_document
+
+        try:
+            save_document(body.model_dump())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"no se pudo guardar: {e}") from e
+        return {"ok": True}
+
+    @app.post("/api/elia/connectors/test")
+    def elia_connectors_test(body: EliaConnectorTestRequest, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from elia import service as elia_service
+
+        try:
+            if body.kind == "jira":
+                out = elia_service.jira_smoke_test(inline=True, creds=body.jira.model_dump())
+            else:
+                out = elia_service.value_edge_smoke_test(inline=True, creds=body.value_edge.model_dump())
+            return {"ok": True, **out}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
         from core import bee_license
@@ -148,6 +224,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 detail="Licencia: periodo de demostración finalizado o no activa. Activa con clave en la pantalla de inicio.",
             )
         job_id = jm.create_job(mode=req.mode)
+
+        elia_inline = bool(req.elia_use_inline_connectors)
+        jira_cred_dict = req.elia_jira.model_dump() if req.elia_jira is not None else None
+        ve_cred_dict = req.elia_value_edge.model_dump() if req.elia_value_edge is not None else None
 
         def worker() -> None:
             adapter = WebUIAdapter(job_manager=jm, job_id=job_id)
@@ -412,7 +492,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from elia import service as elia_service
 
                     try:
-                        out = elia_service.jira_smoke_test()
+                        out = elia_service.jira_smoke_test(inline=elia_inline, creds=jira_cred_dict)
                         adapter.info(
                             "ELIA · Jira",
                             "Conexión OK." if out.get("ok") else "Conexión fallida.\n\nRevisa credenciales y URL.",
@@ -428,7 +508,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from elia import service as elia_service
 
                     try:
-                        out = elia_service.value_edge_smoke_test()
+                        out = elia_service.value_edge_smoke_test(inline=elia_inline, creds=ve_cred_dict)
                         adapter.info(
                             "ELIA · Value Edge",
                             "Login OK." if out.get("ok") else "Login fallido.\n\nRevisa credenciales y URL.",
@@ -443,7 +523,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     jm.update_progress(job_id, {"stage": "ELIA: Gherkin batch (configurar)"})
                     from elia import service as elia_service
 
-                    # Ask for relative folders under user data (Documents/BEE).
+                    # Ask for relative folders under user data (Documents/ELIA).
                     inp_rel = jm.create_prompt_and_wait(
                         job_id,
                         prompt=Prompt(
@@ -451,7 +531,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             type="input_text",
                             title="ELIA · Gherkin batch",
                             message=(
-                                "Carpeta de ENTRADA (relativa a Documentos/BEE).\n"
+                                "Carpeta de ENTRADA (relativa a Documentos/ELIA).\n"
                                 "Debe contener archivos .json (Value Edge o Jira).\n\n"
                                 "Ejemplo: elia/inputs"
                             ),
@@ -467,7 +547,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             type="input_text",
                             title="ELIA · Gherkin batch",
                             message=(
-                                "Carpeta de SALIDA (relativa a Documentos/BEE).\n"
+                                "Carpeta de SALIDA (relativa a Documentos/ELIA).\n"
                                 "Aquí se generarán archivos .feature.\n\n"
                                 "Ejemplo: elia/outputs/features"
                             ),

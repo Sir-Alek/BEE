@@ -85,7 +85,7 @@ def obfuscate_recorder() -> None:
 
 def strip_py_from_dist_if_pyd() -> None:
     """Quita .py del paquete core en dist/ si hay .pyd del mismo nombre (release sin fuente duplicada)."""
-    dist_core = os.path.join(ROOT, "dist", "BEE", "core")
+    dist_core = os.path.join(ROOT, "dist", "ELIA", "core")
     if not os.path.isdir(dist_core):
         return
     for name in CYTHON_SOURCE_PY:
@@ -122,7 +122,7 @@ def main() -> int:
     obfuscate_recorder()
 
     if not args.no_pyinstaller:
-        run([sys.executable, "-m", "PyInstaller", "--noconfirm", "BEE.spec"])
+        run([sys.executable, "-m", "PyInstaller", "--noconfirm", "ELIA.spec"])
         if not args.no_strip_py:
             strip_py_from_dist_if_pyd()
 

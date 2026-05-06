@@ -283,9 +283,10 @@ class ActionRecorder extends Writable {
         try {
             const payload = { version: 1, source: 'bee_recorder', actions: this.metaRecords };
             fs.writeFileSync(this.metaPath, JSON.stringify(payload, null, 2), 'utf8');
-            console.log('BEE_META_SAVED:' + this.metaPath);
+            console.log('ELIA_META_SAVED:' + this.metaPath);
+            console.log('BEE_META_SAVED:' + this.metaPath); // compat: older parsers
         } catch (e) {
-            console.warn('BEE meta no guardado:', e.message);
+            console.warn('ELIA meta no guardado:', e.message);
         }
         
         // Escribir datos pendientes en buffer

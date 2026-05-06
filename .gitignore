@@ -27,6 +27,6 @@ core/recorder.test.js
 core/*.pyd
 core/*.c
 
-# ELIA: credenciales locales (ruta canónica: Documentos/BEE/elia/secrets.ini)
+# ELIA: credenciales locales (ruta canónica: Documentos/ELIA/elia/secrets.ini)
 elia/secrets.ini
 **/elia/secrets.ini
