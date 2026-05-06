@@ -516,6 +516,7 @@ class UltimateGherkinConverter:
         return result
 
     def _format_step(self, text: str) -> str:
+        optimized_text = text
         # optimized_text = self._optimize_text_with_ai(text) if self.use_ai else text
         # Asegurarse de eliminar cualquier comilla residual
         optimized_text = re.sub(r'["\'”“‘’]', '', optimized_text)

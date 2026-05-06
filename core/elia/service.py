@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from elia.config_loader import jira_settings, load_config_parser, value_edge_settings
-from elia.core import JiraExtractor, UltimateGherkinConverter, ValueEdgeExtractor
+from core.elia.config_loader import jira_settings, load_config_parser, value_edge_settings
+from core.elia import JiraExtractor, UltimateGherkinConverter, ValueEdgeExtractor
 
 
 def _empty_jira_inline_message() -> str:

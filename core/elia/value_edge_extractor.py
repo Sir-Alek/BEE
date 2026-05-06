@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class ValueEdgeExtractor:
     """
-    Sesión Value Edge. Credenciales vía dict ``settings`` o archivo ini (ver ``elia.config_loader``).
+    Sesión Value Edge. Credenciales vía dict ``settings`` o archivo ini (ver ``core.elia.config_loader``).
     """
 
     def __init__(
@@ -183,7 +183,7 @@ def _legacy_cli_with_tk() -> None:
     import tkinter as tk
     from tkinter import messagebox, simpledialog
 
-    from elia.config_loader import load_config_parser, value_edge_settings
+    from core.elia.config_loader import load_config_parser, value_edge_settings
 
     cfg, _ = load_config_parser()
     settings = value_edge_settings(cfg)

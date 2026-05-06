@@ -15,8 +15,20 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 from core._cython_build_manifest import CYTHON_REL_PATHS
 
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
-_cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
-cython_binaries = [(p, 'core') for p in _cython_globs]
+_cython_globs = sorted(
+    set(
+        glob.glob(os.path.join(_spec_root, "core", "*.pyd"))
+        + glob.glob(os.path.join(_spec_root, "core", "*.so"))
+        + glob.glob(os.path.join(_spec_root, "core", "**", "*.pyd"), recursive=True)
+        + glob.glob(os.path.join(_spec_root, "core", "**", "*.so"), recursive=True)
+    )
+)
+cython_binaries = []
+for _cyd in _cython_globs:
+    _rel = os.path.relpath(_cyd, _spec_root).replace("\\", "/")
+    _parent = os.path.dirname(_rel)
+    _bundle_dest = _parent.replace("\\", "/") if _parent else "core"
+    cython_binaries.append((_rel, _bundle_dest))
 
 # Recorder: en release usar solo el ofuscado (el plano queda en el repo para desarrollo, no en el exe).
 _obf = os.path.join('core', 'recorder.obfuscated.js')
@@ -42,9 +54,17 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
 
 elia_hidden = []
 try:
-    elia_hidden = collect_submodules("elia")
+    elia_hidden = collect_submodules("core.elia")
 except Exception:
-    elia_hidden = ["elia", "elia.core", "elia.config_loader", "elia.connectors_store", "elia.service"]
+    elia_hidden = [
+        "core.elia",
+        "core.elia.config_loader",
+        "core.elia.connectors_store",
+        "core.elia.service",
+        "core.elia.jira_extractor",
+        "core.elia.value_edge_extractor",
+        "core.elia.gherkin_converter",
+    ]
 
 crypto_hidden = []
 try:
