@@ -72,11 +72,11 @@ Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable o
 
 ## ELIA (Evolving Learning & Intelligent Automation)
 
-Módulo en el paquete `elia/`: integración con **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), pensada para orquestarse desde la UI web de ELIA.
+Integración ELIA (`core/elia/`): **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), orquestada desde la UI web y `webui/`.
 
-- **Configuración:** archivo recomendado `{ELIA_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/ELIA/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `elia/config_loader.py`).
-- **Uso programático:** `from elia import service` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, `jira_smoke_test()` / `value_edge_smoke_test()`.
-- La carpeta histórica **`DICAI/`** en el repo quedó obsoleta frente a `elia/`; no la uses como punto de entrada.
+- **Configuración:** archivo recomendado `{ELIA_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/ELIA/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `core/elia/config_loader.py`).
+- **Uso programático:** `from core.elia import service` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, `jira_smoke_test()` / `value_edge_smoke_test()`.
+- La carpeta histórica **`DICAI/`** en el repo quedó obsoleta frente a `core/elia/`; no la uses como punto de entrada.
 
 ## Modelo Gemma (GGUF, opcional)
 

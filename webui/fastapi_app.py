@@ -177,7 +177,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/elia/connectors")
     def elia_connectors_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from elia.connectors_store import load_document
+        from core.elia.connectors_store import load_document
 
         doc = load_document()
         if not doc:
@@ -189,7 +189,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.put("/api/elia/connectors")
     def elia_connectors_put(body: ConnectorsDocument, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from elia.connectors_store import save_document
+        from core.elia.connectors_store import save_document
 
         try:
             save_document(body.model_dump())
@@ -199,7 +199,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.post("/api/elia/connectors/test")
     def elia_connectors_test(body: EliaConnectorTestRequest, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from elia import service as elia_service
+        from core.elia import service as elia_service
 
         try:
             if body.kind == "jira":
@@ -489,7 +489,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_jira_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Jira (smoke)"})
-                    from elia import service as elia_service
+                    from core.elia import service as elia_service
 
                     try:
                         out = elia_service.jira_smoke_test(inline=elia_inline, creds=jira_cred_dict)
@@ -505,7 +505,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_value_edge_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Value Edge (smoke)"})
-                    from elia import service as elia_service
+                    from core.elia import service as elia_service
 
                     try:
                         out = elia_service.value_edge_smoke_test(inline=elia_inline, creds=ve_cred_dict)
@@ -521,7 +521,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_gherkin_batch":
                     jm.update_progress(job_id, {"stage": "ELIA: Gherkin batch (configurar)"})
-                    from elia import service as elia_service
+                    from core.elia import service as elia_service
 
                     # Ask for relative folders under user data (Documents/ELIA).
                     inp_rel = jm.create_prompt_and_wait(

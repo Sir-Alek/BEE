@@ -26,6 +26,9 @@ core/recorder.obfuscated.js
 core/recorder.test.js
 core/*.pyd
 core/*.c
+core/**/*.pyd
+core/**/*.c
+core/**/*.so
 
 # ELIA: credenciales locales (ruta canónica: Documentos/ELIA/elia/secrets.ini)
 elia/secrets.ini

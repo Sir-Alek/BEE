@@ -13,4 +13,11 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/bee_memory.py",
     "core/bee_paths.py",
     "core/__dynamic_importer.py",
+    # Integraciones ELIA (Jira, Value Edge, Gherkin) — mismo pipeline de release que el resto de core/.
+    "core/elia/jira_extractor.py",
+    "core/elia/value_edge_extractor.py",
+    "core/elia/gherkin_converter.py",
+    "core/elia/config_loader.py",
+    "core/elia/connectors_store.py",
+    "core/elia/service.py",
 )
