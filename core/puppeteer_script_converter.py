@@ -20,7 +20,7 @@ class PuppeteerToBehaveConverter:
     
     def __init__(self, base_dir, ui: IUI, use_ai: bool = False):
         self.base_dir = base_dir
-        from core.bee_paths import behave_projects_dir
+        from core.elia_paths import behave_projects_dir
 
         self.projects_dir = str(behave_projects_dir())
         self.selected_actions = []
@@ -436,7 +436,7 @@ class PuppeteerToBehaveConverter:
         if self.use_ai:
             try:
                 from core import gemma_inference
-                from core.bee_memory import append_correction, recent_examples_for_prompt
+                from core.elia_memory import append_correction, recent_examples_for_prompt
 
                 if gemma_inference.is_ai_runtime_configured():
                     script_excerpt = _trim_script_for_preview(script_content)
@@ -493,7 +493,7 @@ class PuppeteerToBehaveConverter:
             except BDDUserCancelled:
                 raise
             except Exception as e:
-                print(f"BEE IA BDD: fallback heurístico: {e}")
+                print(f"ELIA IA BDD: fallback heurístico: {e}")
 
         return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
 
@@ -653,8 +653,12 @@ class PuppeteerToBehaveConverter:
         return "".join(lines)
 
     def _load_recording_meta(self, js_file: str) -> Optional[Dict[str, Any]]:
-        meta_path = re.sub(r"\.js$", "", js_file, flags=re.I) + "_bee_meta.json"
-        if not os.path.isfile(meta_path):
+        base = re.sub(r"\.js$", "", js_file, flags=re.I)
+        for suffix in ("_elia_meta.json", "_bee_meta.json"):
+            meta_path = base + suffix
+            if os.path.isfile(meta_path):
+                break
+        else:
             return None
         try:
             with open(meta_path, "r", encoding="utf-8") as f:

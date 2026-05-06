@@ -11,7 +11,7 @@ from ui.interfaces import IUI
 class PuppeteerToStepByStepConverter:
     def __init__(self, base_dir, ui: IUI):
         self.base_dir = base_dir
-        from core.bee_paths import behave_projects_dir, step_by_step_dir
+        from core.elia_paths import behave_projects_dir, step_by_step_dir
 
         self.projects_dir = str(behave_projects_dir())
         self.step_by_step_dir = str(step_by_step_dir())

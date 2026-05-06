@@ -52,19 +52,17 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
-elia_hidden = []
-try:
-    elia_hidden = collect_submodules("core.elia")
-except Exception:
-    elia_hidden = [
-        "core.elia",
-        "core.elia.config_loader",
-        "core.elia.connectors_store",
-        "core.elia.service",
-        "core.elia.jira_extractor",
-        "core.elia.value_edge_extractor",
-        "core.elia.gherkin_converter",
-    ]
+integrations_hidden = [
+    "core.jira_extractor",
+    "core.value_edge_extractor",
+    "core.gherkin_converter",
+    "core.integrations_config_loader",
+    "core.connectors_profiles_store",
+    "core.integrations_service",
+    "core.elia_paths",
+    "core.elia_license",
+    "core.elia_memory",
+]
 
 crypto_hidden = []
 try:
@@ -90,7 +88,7 @@ a = Analysis(
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
     ] + llama_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'core.bee_license'] + web_hidden + llama_hidden + elia_hidden + crypto_hidden,
+    hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -244,7 +244,7 @@ class PDF(FPDF):
         pdf.set_text_color(0, 0, 0)
         pdf.multi_cell(0, 5, testName, align='C')
 
-        logo_path = os.path.join(BASE_DIR, 'resources', 'logo_bee_png_transparente.png')
+        logo_path = os.path.join(BASE_DIR, 'resources', 'logo_elia.png')
         if os.path.exists(logo_path):
             pdf.image(logo_path, 70, 19, 60, 15)
         else:
@@ -398,7 +398,7 @@ class PDF(FPDF):
         
         pdf.set_author(author='Sir-Alek-2026')
         pdf.set_title(title=testName)
-        pdf.set_creator('BEE - Sir-Alek')
+        pdf.set_creator('ELIA - Sir-Alek')
         
         output_dir = os.path.join(BASE_DIR, 'outputs', 'pdfReports')
         os.makedirs(output_dir, exist_ok=True)
