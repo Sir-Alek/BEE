@@ -1,4 +1,4 @@
-# BEE — Documentación para desarrollo y despliegue
+# ELIA — Documentación para desarrollo y despliegue
 
 ## Entorno virtual (Python)
 
@@ -46,21 +46,21 @@ python scripts/build_release.py --cython
 ```
 
 - `--cython` compila los módulos listados en `core/_cython_build_manifest.py` antes del empaquetado.
-- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `BEE.spec`.
+- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `ELIA.spec` (**o** el legado `BEE.spec` si aún no migraste los nombres).
 - Revisa `scripts/build_release.py` para flags del ofuscador de `recorder.js`.
 
 Luego, si usas solo PyInstaller:
 
 ```text
-python -m PyInstaller --noconfirm BEE.spec
+python -m PyInstaller --noconfirm ELIA.spec
 ```
 
 ## Licencia offline (cuando exista `core/bee_license.py`)
 
-- **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\BEE\` en Windows).
-- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `BEE_ACTIVATION_KEY=<clave>` antes de arrancar.
+- **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\ELIA\` en Windows).
+- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar (se acepta `BEE_ACTIVATION_KEY` por compatibilidad si tu build aún lo usa).
 - **Generar clave para una huella:** si el repo incluye `scripts/generate_license_key.py`, úsalo con la huella mostrada en la UI (el secreto `_LICENSE_SEED` en `bee_license.py` debe coincidir con el build que distribuyes).
-- **Solo desarrollo:** `BEE_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas).
+- **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas). (Compat: `BEE_SKIP_LICENSE=1` si tu rama aún lo usa.)
 
 ## Kill switch (desactivación local, sin red)
 
@@ -68,25 +68,25 @@ Según la implementación en `bee_license.py`, la aplicación puede negarse a ar
 
 ## Datos de usuario y proyectos
 
-Los proyectos generados suelen ir bajo **Documentos/BEE** (Windows). Variable opcional: **`BEE_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) puede guardarse en `bee_memory.json` en esa misma área, según la implementación de la rama.
+Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable opcional: **`ELIA_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) puede guardarse en `bee_memory.json` en esa misma área, según la implementación de la rama.
 
 ## ELIA (Evolving Learning & Intelligent Automation)
 
-Módulo en el paquete `elia/`: integración con **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), pensada para orquestarse desde la UI web de BEE.
+Módulo en el paquete `elia/`: integración con **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), pensada para orquestarse desde la UI web de ELIA.
 
-- **Configuración:** archivo recomendado `{BEE_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/BEE/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `elia/config_loader.py`).
+- **Configuración:** archivo recomendado `{ELIA_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/ELIA/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `elia/config_loader.py`).
 - **Uso programático:** `from elia import service` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, `jira_smoke_test()` / `value_edge_smoke_test()`.
 - La carpeta histórica **`DICAI/`** en el repo quedó obsoleta frente a `elia/`; no la uses como punto de entrada.
 
 ## Modelo Gemma (GGUF, opcional)
 
-Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `BEE_LLAMA_N_CTX`, `BEE_LLAMA_N_GPU_LAYERS`.
+Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `ELIA_LLAMA_N_CTX`, `ELIA_LLAMA_N_GPU_LAYERS` (compat: `BEE_LLAMA_N_CTX`, `BEE_LLAMA_N_GPU_LAYERS`).
 
 ## Interfaz web (recordatorio para desarrollo)
 
 Tras cambios en `frontend/`, ejecuta `npm run build` y prueba en `127.0.0.1`. La UI depende de `frontend/dist` empaquetado o generado localmente. Si no ves controles nuevos (p. ej. tema oscuro), casi siempre es que el `.exe` o `frontend/dist` no se regeneró tras el `git pull`.
 
-Al cerrar la **pestaña de inicio**, el frontend llama a `POST /api/app/exit` y `main.py` hace polling de `GET /api/app/should-exit` para detener Uvicorn y salir del proceso (evita que `BEE.exe` quede en segundo plano sin consola).
+Al cerrar la **pestaña de inicio**, el frontend llama a `POST /api/app/exit` y `main.py` hace polling de `GET /api/app/should-exit` para detener Uvicorn y salir del proceso (evita que la app quede en segundo plano sin consola).
 
 ## Ramas Git
 

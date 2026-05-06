@@ -1,11 +1,11 @@
-# BEE — dependencias alineadas a un entorno Python 3.10.x que ya funciona en producción.
+# ELIA — dependencias alineadas a un entorno Python 3.10.x que ya funciona en producción.
 # Python recomendado: 3.10.11 (64-bit, Windows)
 #
 # IMPORTANTE — dos modos de uso:
 #
 # 1) Ejecutable PyInstaller «delgado» (recomendado):
 #    Crear un venv NUEVO y SOLO instalar este archivo. No instales TensorFlow, Torch, JAX,
-#    transformers, etc. en ese venv: no los importa BEE y solo harían el .exe enorme o
+#    transformers, etc. en ese venv: no los importa ELIA y solo harían el .exe enorme o
 #    arrastrarían DLLs innecesarias si PyInstaller analiza ese site-packages.
 #
 # 2) Misma máquina donde ya tienes todo instalado:
@@ -21,13 +21,16 @@
 #
 # tkinter: viene con el instalador oficial de Python en Windows (no es paquete pip).
 
-# --- UI web y API local (mismo stack que tu freeze) ---
+# --- UI web y API local ---
 fastapi==0.135.3
 uvicorn==0.41.0
 starlette==0.52.1
 pydantic==2.12.5
 # pydantic_core lo instala pip como dependencia de pydantic
 httpx==0.28.1
+
+# --- Cifrado local (perfiles Jira / Value Edge en disco, vía API localhost) ---
+cryptography==44.0.0
 # Resolver explícito: selenium<4.34 acotaba typing_extensions~=4.13 (incompatible con pydantic 2.12).
 typing-extensions>=4.15.0,<5
 

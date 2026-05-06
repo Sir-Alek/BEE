@@ -2,7 +2,7 @@
 Carga de configuración ELIA (Jira + Value Edge) desde datos de usuario o variables de entorno.
 
 Prioridad:
-1. Archivo en core.bee_paths.elia_secrets_path() si existe
+1. Archivo en «Documentos/ELIA/elia/secrets.ini» (equivalente a `elia_secrets_path()`) si existe
 2. ELIA_SECRETS_INI (ruta absoluta a un secrets.ini)
 3. Env individuales (prefijo ELIA_ / BEE_ELIA_) para sustituir claves del ini cuando existan
 """
@@ -14,6 +14,13 @@ from pathlib import Path
 from typing import Optional
 
 from core import bee_paths
+
+
+def _default_elia_secrets_ini() -> Path:
+    """Ruta canónica secrets.ini bajo datos de usuario (sin depender de bee_paths.elia_secrets_path en .pyd legacy)."""
+    d = bee_paths.ensure_user_data_root() / "elia"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "secrets.ini"
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -30,7 +37,7 @@ def secrets_ini_path() -> Path:
     override = _env("ELIA_SECRETS_INI")
     if override:
         return Path(override)
-    return bee_paths.elia_secrets_path()
+    return _default_elia_secrets_ini()
 
 
 def load_config_parser() -> tuple[configparser.ConfigParser, Path]:
