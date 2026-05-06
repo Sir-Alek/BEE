@@ -46,7 +46,7 @@ python scripts/build_release.py --cython
 ```
 
 - `--cython` compila los módulos listados en `core/_cython_build_manifest.py` antes del empaquetado.
-- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `ELIA.spec` (**o** el legado `BEE.spec` si aún no migraste los nombres).
+- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `ELIA.spec`.
 - Revisa `scripts/build_release.py` para flags del ofuscador de `recorder.js`.
 
 Luego, si usas solo PyInstaller:
@@ -55,32 +55,32 @@ Luego, si usas solo PyInstaller:
 python -m PyInstaller --noconfirm ELIA.spec
 ```
 
-## Licencia offline (cuando exista `core/bee_license.py`)
+## Licencia offline (`core/elia_license.py`)
 
 - **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\ELIA\` en Windows).
-- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar (se acepta `BEE_ACTIVATION_KEY` por compatibilidad si tu build aún lo usa).
-- **Generar clave para una huella:** si el repo incluye `scripts/generate_license_key.py`, úsalo con la huella mostrada en la UI (el secreto `_LICENSE_SEED` en `bee_license.py` debe coincidir con el build que distribuyes).
-- **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas). (Compat: `BEE_SKIP_LICENSE=1` si tu rama aún lo usa.)
+- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar.
+- **Generar clave para una huella:** si el repo incluye `scripts/generate_license_key.py`, úsalo con la huella mostrada en la UI (el secreto `_LICENSE_SEED` en `elia_license.py` debe coincidir con el build que distribuyes).
+- **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas).
 
 ## Kill switch (desactivación local, sin red)
 
-Según la implementación en `bee_license.py`, la aplicación puede negarse a arrancar si existen archivos locales concretos (por ejemplo en `%LOCALAPPDATA%\BEE\` o junto al ejecutable). Consulta las rutas exactas en el código de `kill_switch_active()` / `bee_license` de tu rama antes de documentar a clientes.
+Según la implementación en `elia_license.py`, la aplicación puede negarse a arrancar si existen archivos locales concretos (por ejemplo en `%LOCALAPPDATA%\ELIA\` o junto al ejecutable). Consulta las rutas exactas en `kill_switch_active()` antes de documentar a clientes.
 
 ## Datos de usuario y proyectos
 
-Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable opcional: **`ELIA_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) puede guardarse en `bee_memory.json` en esa misma área, según la implementación de la rama.
+Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable opcional: **`ELIA_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) se guarda en **`elia_memory.json`** en esa misma área (`core/elia_memory.py`).
 
-## ELIA (Evolving Learning & Intelligent Automation)
+## Integraciones (Jira, Value Edge, Gherkin)
 
-Integración ELIA (`core/elia/`): **Jira** (API REST), **Value Edge / ALM Octane** y conversión **Gherkin** por lotes (clase `UltimateGherkinConverter`), orquestada desde la UI web y `webui/`.
+Módulos Python en la raíz del paquete **`core/`** (mismo nivel que los demás conversores y utilidades): **`jira_extractor.py`**, **`value_edge_extractor.py`**, **`gherkin_converter.py`**, **`integrations_config_loader.py`**, **`connectors_profiles_store.py`**, **`integrations_service.py`**.
 
-- **Configuración:** archivo recomendado `{ELIA_USER_DATA}/elia/secrets.ini` (p. ej. `Documentos/ELIA/elia/secrets.ini`) con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Alternativa: variable **`ELIA_SECRETS_INI`** con ruta absoluta a otro `secrets.ini`, o variables de entorno con prefijo **`ELIA_`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`, etc.; ver `core/elia/config_loader.py`).
-- **Uso programático:** `from core.elia import service` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, `jira_smoke_test()` / `value_edge_smoke_test()`.
-- La carpeta histórica **`DICAI/`** en el repo quedó obsoleta frente a `core/elia/`; no la uses como punto de entrada.
+- **Configuración recomendada:** `{ELIA_USER_DATA}/external_connectors/secrets.ini` con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Si existía una instalación anterior con `.../elia/secrets.ini` bajo datos de usuario, ese archivo se sigue leyendo hasta migrar. Alternativa: **`ELIA_SECRETS_INI`** con ruta absoluta, o variables **`ELIA_*`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`; ver `integrations_config_loader.py`).
+- **Uso programático:** `import core.integrations_service as integrations` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, etc.
+- La carpeta histórica **`DICAI/`** quedó obsoleta; no la uses como punto de entrada.
 
 ## Modelo Gemma (GGUF, opcional)
 
-Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `ELIA_LLAMA_N_CTX`, `ELIA_LLAMA_N_GPU_LAYERS` (compat: `BEE_LLAMA_N_CTX`, `BEE_LLAMA_N_GPU_LAYERS`).
+Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `ELIA_LLAMA_N_CTX`, `ELIA_LLAMA_N_GPU_LAYERS`.
 
 ## Interfaz web (recordatorio para desarrollo)
 

@@ -69,8 +69,8 @@ def _env_get_first(*keys: str) -> str:
     return ""
 
 
-USE_TK_ONLY = ("--tk" in sys.argv) or (_env_get_first("ELIA_UI", "BEE_UI").lower() in ("tk", "tkinter"))
-USE_WEB_ONLY = ("--web-only" in sys.argv) or (_env_get_first("ELIA_UI", "BEE_UI").lower() in ("web-only", "webonly"))
+USE_TK_ONLY = ("--tk" in sys.argv) or (_env_get_first("ELIA_UI").lower() in ("tk", "tkinter"))
+USE_WEB_ONLY = ("--web-only" in sys.argv) or (_env_get_first("ELIA_UI").lower() in ("web-only", "webonly"))
 USE_WEB = (not USE_TK_ONLY)  # default to web unless explicitly forcing Tk
 
 if USE_TK_ONLY and not TK_AVAILABLE:
@@ -116,7 +116,7 @@ class main:
         # Tk-mode class: Web UI can still be used for flows when enabled.
         # Default UI selection is handled in __main__ below.
         self.web_only = USE_WEB_ONLY
-        self.web_mode = self.web_only or ("--web" in sys.argv) or USE_WEB or (_env_get_first("ELIA_WEB_UI", "BEE_WEB_UI").lower() in ("1", "true", "yes"))
+        self.web_mode = self.web_only or ("--web" in sys.argv) or USE_WEB or (_env_get_first("ELIA_WEB_UI").lower() in ("1", "true", "yes"))
         if not TK_AVAILABLE:
             raise RuntimeError("Tkinter no disponible. Ejecuta en --web-only/--web para usar la UI web.")
 
@@ -139,12 +139,12 @@ class main:
         
         # Configuración de paths base
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        from core.bee_paths import behave_projects_dir
+        from core.elia_paths import behave_projects_dir
 
         self.projects_dir = str(behave_projects_dir())
         # self.behave_dir = os.path.join(self.base_dir, "behave")
         self.recordings_dir = os.path.join(self.base_dir, "grabaciones")
-        self.logo_path = os.path.join(self.base_dir, "resources", "logo_bee_png_transparente.png")
+        self.logo_path = os.path.join(self.base_dir, "resources", "logo_elia.png")
         
         # Frame principal para mejor organización
         self.main_frame = tk.Frame(master, padx=20, pady=20)
@@ -156,7 +156,7 @@ class main:
         # Título principal
         # self.title_label = tk.Label(
         #     self.main_frame, 
-        #     text="© BEE - Behave Extractor Engine",
+        #     text="© ELIA",
         #     font=("Arial", 16, "bold")
         # )
         # self.title_label.pack(pady=(0, 30))
@@ -527,7 +527,7 @@ class main:
                 try:
                     from ui.interfaces import BDDUserCancelled
 
-                    use_ai = _env_get_first("ELIA_USE_AI", "BEE_USE_AI").lower() in ("1", "true", "yes")
+                    use_ai = _env_get_first("ELIA_USE_AI").lower() in ("1", "true", "yes")
                     converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
@@ -1002,9 +1002,9 @@ class main:
              
 def _require_license_for_jobs() -> None:
     """Bloquea conversiones/grabación si demo caducada sin activar (modo Tk)."""
-    from core import bee_license
+    from core import elia_license
 
-    if not bee_license.can_run_jobs():
+    if not elia_license.can_run_jobs():
         raise RuntimeError(
             "Periodo de demostración finalizado o licencia inactiva. "
             "Activa la aplicación con la clave de activación (UI web: inicio) o variable ELIA_ACTIVATION_KEY."
@@ -1012,9 +1012,9 @@ def _require_license_for_jobs() -> None:
 
 
 if __name__ == "__main__":
-    from core import bee_license
+    from core import elia_license
 
-    bee_license.ensure_license_or_exit()
+    elia_license.ensure_license_or_exit()
     print(""""
 ███████╗██╗     ██╗ █████╗ 
 ██╔════╝██║     ██║██╔══██╗
@@ -1118,7 +1118,7 @@ if __name__ == "__main__":
         except Exception as e:
             # Always write a crash log (useful when console=False in PyInstaller).
             try:
-                log_path = os.path.join(os.path.expanduser("~"), "bee_webui_crash.log")
+                log_path = os.path.join(os.path.expanduser("~"), "elia_webui_crash.log")
                 with open(log_path, "a", encoding="utf-8") as f:
                     f.write("\n\n=== Web UI startup failed ===\n")
                     f.write(str(e) + "\n")

@@ -383,7 +383,7 @@ export default function App() {
     try {
       bc = new BroadcastChannel(ELIA_UI_BC);
       bc.onmessage = (ev: MessageEvent) => {
-        if (ev.data?.type === "elia_job_finished" || ev.data?.type === "bee_job_finished") {
+        if (ev.data?.type === "elia_job_finished") {
           setHomeHint(null);
         }
       };
@@ -1287,7 +1287,7 @@ export default function App() {
                   />
                   <span>
                     <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si
-                    hay archivo <code>_bee_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo
+                    hay archivo <code>_elia_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo
                     heurístico.
                     {aiStatusLine && (
                       <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>

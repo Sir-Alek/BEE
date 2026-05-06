@@ -83,12 +83,12 @@ def _repo_root() -> str:
 
 
 def _projects_dir() -> str:
-    from core.bee_paths import behave_projects_dir
+    from core.elia_paths import behave_projects_dir
 
     return str(behave_projects_dir())
 
 def _user_data_root() -> str:
-    from core.bee_paths import ensure_user_data_root
+    from core.elia_paths import ensure_user_data_root
 
     return str(ensure_user_data_root())
 
@@ -146,9 +146,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/license/status")
     def license_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core import bee_license
+        from core import elia_license
 
-        st = bee_license.get_license_status()
+        st = elia_license.get_license_status()
         return {
             "ok": st.ok,
             "reason": st.reason,
@@ -156,17 +156,17 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "activated": st.activated,
             "machine_fingerprint": st.machine_fingerprint,
             "message": st.message,
-            "can_run_jobs": bee_license.can_run_jobs(),
+            "can_run_jobs": elia_license.can_run_jobs(),
         }
 
     @app.post("/api/license/activate")
     def license_activate(
         req: LicenseActivateRequest, _: None = Depends(_require_localhost)
     ) -> Dict[str, Any]:
-        from core import bee_license
+        from core import elia_license
 
-        if bee_license.activate_with_key(req.key):
-            st = bee_license.get_license_status()
+        if elia_license.activate_with_key(req.key):
+            st = elia_license.get_license_status()
             return {
                 "ok": True,
                 "message": "Licencia activada.",
@@ -177,7 +177,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/elia/connectors")
     def elia_connectors_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.elia.connectors_store import load_document
+        from core.connectors_profiles_store import load_document
 
         doc = load_document()
         if not doc:
@@ -189,7 +189,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.put("/api/elia/connectors")
     def elia_connectors_put(body: ConnectorsDocument, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.elia.connectors_store import save_document
+        from core.connectors_profiles_store import save_document
 
         try:
             save_document(body.model_dump())
@@ -199,7 +199,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.post("/api/elia/connectors/test")
     def elia_connectors_test(body: EliaConnectorTestRequest, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.elia import service as elia_service
+        import core.integrations_service as elia_service
 
         try:
             if body.kind == "jira":
@@ -216,9 +216,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.post("/api/jobs/convert")
     def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
-        from core import bee_license
+        from core import elia_license
 
-        if not bee_license.can_run_jobs():
+        if not elia_license.can_run_jobs():
             raise HTTPException(
                 status_code=403,
                 detail="Licencia: periodo de demostración finalizado o no activa. Activa con clave en la pantalla de inicio.",
@@ -489,7 +489,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_jira_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Jira (smoke)"})
-                    from core.elia import service as elia_service
+                    import core.integrations_service as elia_service
 
                     try:
                         out = elia_service.jira_smoke_test(inline=elia_inline, creds=jira_cred_dict)
@@ -505,7 +505,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_value_edge_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Value Edge (smoke)"})
-                    from core.elia import service as elia_service
+                    import core.integrations_service as elia_service
 
                     try:
                         out = elia_service.value_edge_smoke_test(inline=elia_inline, creds=ve_cred_dict)
@@ -521,7 +521,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_gherkin_batch":
                     jm.update_progress(job_id, {"stage": "ELIA: Gherkin batch (configurar)"})
-                    from core.elia import service as elia_service
+                    import core.integrations_service as elia_service
 
                     # Ask for relative folders under user data (Documents/ELIA).
                     inp_rel = jm.create_prompt_and_wait(
@@ -533,7 +533,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             message=(
                                 "Carpeta de ENTRADA (relativa a Documentos/ELIA).\n"
                                 "Debe contener archivos .json (Value Edge o Jira).\n\n"
-                                "Ejemplo: elia/inputs"
+                                "Ejemplo: gherkin_batch/inputs"
                             ),
                         ),
                     )
@@ -549,7 +549,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             message=(
                                 "Carpeta de SALIDA (relativa a Documentos/ELIA).\n"
                                 "Aquí se generarán archivos .feature.\n\n"
-                                "Ejemplo: elia/outputs/features"
+                                "Ejemplo: gherkin_batch/output/features"
                             ),
                         ),
                     )

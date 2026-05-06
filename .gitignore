@@ -30,6 +30,5 @@ core/**/*.pyd
 core/**/*.c
 core/**/*.so
 
-# ELIA: credenciales locales (ruta canónica: Documentos/ELIA/elia/secrets.ini)
-elia/secrets.ini
-**/elia/secrets.ini
+# Integraciones: no versionar credenciales locales
+**/external_connectors/secrets.ini

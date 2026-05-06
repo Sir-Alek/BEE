@@ -192,7 +192,7 @@ class PDF(FPDF):
         pdf.multi_cell(0, 5, '\n' + moduloName, align='C')
 
         # Logo - buscar en resources generales
-        logo_path = os.path.join(paths['base_dir'], 'resources', 'logo_bee_png_transparente.png')
+        logo_path = os.path.join(paths['base_dir'], 'resources', 'logo_elia.png')
         if os.path.exists(logo_path):
             pdf.image(logo_path, 70, 19, 60, 15)
         
@@ -286,7 +286,7 @@ class PDF(FPDF):
         # Metadatos
         pdf.set_author(author='Sir-Alek-2026')
         pdf.set_title(title=testName)
-        pdf.set_creator('BEE - Sir-Alek')
+        pdf.set_creator('ELIA - Sir-Alek')
 
         # Finalizar PDF
         safe_dt_format = dt_format.replace(" ", "_").replace(":", "-").replace(".", "-")

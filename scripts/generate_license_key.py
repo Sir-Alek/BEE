@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Genera la clave de activación offline para una huella de máquina (misma lógica que core/bee_license.py).
+Genera la clave de activación offline para una huella de máquina (misma lógica que core/elia_license.py).
 
 Uso (desde la raíz del repo, mismo Python que el build de release):
   python scripts/generate_license_key.py --machine 0123456789abcdef0123456789abcdef
 
 La huella la obtiene el usuario desde la UI (inicio) o con:
-  python -c "from core.bee_license import get_machine_fingerprint; print(get_machine_fingerprint())"
+  python -c "from core.elia_license import get_machine_fingerprint; print(get_machine_fingerprint())"
 
-IMPORTANTE: el secreto _LICENSE_SEED en bee_license.py debe coincidir entre
+IMPORTANTE: el secreto _LICENSE_SEED en elia_license.py debe coincidir entre
 generador y ejecutable; cámbialo solo en el pipeline de release y recompila.
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ import hashlib
 import hmac
 import sys
 
-# Debe ser idéntico a core/bee_license.py
-_LICENSE_SEED = b"BEE-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
+# Debe ser idéntico a core/elia_license.py
+_LICENSE_SEED = b"ELIA-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
 
 
 def _secret_key() -> bytes:

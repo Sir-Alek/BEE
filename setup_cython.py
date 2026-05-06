@@ -5,7 +5,7 @@ Uso (Windows, desde la raíz del repo, con MSVC build tools + Cython):
   pip install cython setuptools
   python setup_cython.py build_ext --inplace
 
-Genera p.ej. core/puppeteer_script_converter.*.pyd o core/elia/*.so junto al .py.
+Genera p.ej. core/puppeteer_script_converter.*.pyd junto al .py (también otros módulos del manifiesto).
 En el empaquetado de release, el script scripts/build_release.py puede apartar los .py
 para que el ejecutable solo incluya los .pyd.
 """
@@ -36,7 +36,7 @@ extensions = [
 ]
 
 setup(
-    name="bee_cython_extensions",
+    name="elia_cython_extensions",
     ext_modules=cythonize(
         extensions,
         compiler_directives=compiler_directives,

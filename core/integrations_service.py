@@ -3,15 +3,17 @@ Fachada ELIA para invocar desde la UI web sin acoplarse al legacy DICAI.
 
 Credenciales:
 - Por job (`inline=True`): objeto enviado en la API por job — no lee secrets.ini ni variables.
-- Legacy (`inline=False`): `secrets.ini`, `ELIA_SECRETS_INI` o variables `ELIA_*` / `BEE_ELIA_*`.
+- Legacy (`inline=False`): `secrets.ini`, `ELIA_SECRETS_INI` o variables `ELIA_*`.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from core.elia.config_loader import jira_settings, load_config_parser, value_edge_settings
-from core.elia import JiraExtractor, UltimateGherkinConverter, ValueEdgeExtractor
+from core.gherkin_converter import UltimateGherkinConverter
+from core.integrations_config_loader import jira_settings, load_config_parser, value_edge_settings
+from core.jira_extractor import JiraExtractor
+from core.value_edge_extractor import ValueEdgeExtractor
 
 
 def _empty_jira_inline_message() -> str:

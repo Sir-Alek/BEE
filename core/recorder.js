@@ -90,7 +90,7 @@ class ActionRecorder extends Writable {
         super({ objectMode: true });
         this.outputPath = outputPath;
         /** Ruta JSON opcional con metadatos por acción (xpath, selector) para IA / Page Objects */
-        this.metaPath = outputPath.replace(/\.js$/i, '') + '_bee_meta.json';
+        this.metaPath = outputPath.replace(/\.js$/i, '') + '_elia_meta.json';
         this.metaRecords = [];
         this.headerWritten = false;
         this.pendingActions = [];
@@ -281,10 +281,9 @@ class ActionRecorder extends Writable {
         clearTimeout(this.batchFlushTimeout);
 
         try {
-            const payload = { version: 1, source: 'bee_recorder', actions: this.metaRecords };
+            const payload = { version: 1, source: 'elia_recorder', actions: this.metaRecords };
             fs.writeFileSync(this.metaPath, JSON.stringify(payload, null, 2), 'utf8');
             console.log('ELIA_META_SAVED:' + this.metaPath);
-            console.log('BEE_META_SAVED:' + this.metaPath); // compat: older parsers
         } catch (e) {
             console.warn('ELIA meta no guardado:', e.message);
         }

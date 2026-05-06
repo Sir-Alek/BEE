@@ -2,7 +2,7 @@
 Rutas de datos de usuario: proyectos fuera del directorio de instalación.
 
 Por defecto: carpeta «Documents/ELIA» (Windows) o ~/Documents/ELIA (Linux/macOS).
-Sobrescribible con ELIA_USER_DATA (ruta absoluta a la raíz de datos). (Compat: BEE_USER_DATA)
+Sobrescribible con ELIA_USER_DATA (ruta absoluta a la raíz de datos).
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def _default_documents() -> Path:
 
 
 def user_data_root() -> Path:
-    override = (os.environ.get("ELIA_USER_DATA") or os.environ.get("BEE_USER_DATA") or "").strip()
+    override = (os.environ.get("ELIA_USER_DATA") or "").strip()
     if override:
         return Path(override)
     return _default_documents() / "ELIA"
@@ -43,17 +43,17 @@ def step_by_step_dir() -> Path:
     return d
 
 
-def bee_memory_path() -> Path:
-    return ensure_user_data_root() / "bee_memory.json"
+def elia_memory_path() -> Path:
+    return ensure_user_data_root() / "elia_memory.json"
 
 
-def elia_dir() -> Path:
-    """Directorio de datos ELIA (config opcional, salidas) bajo la raíz de datos de usuario."""
-    d = ensure_user_data_root() / "elia"
+def external_connectors_dir() -> Path:
+    """Jira / Value Edge: secrets.ini y almacenes locales bajo datos de usuario (sin carpeta «elia»)."""
+    d = ensure_user_data_root() / "external_connectors"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def elia_secrets_path() -> Path:
-    """Ruta recomendada para secrets.ini de ELIA (Jira + Value Edge). No versionar."""
-    return elia_dir() / "secrets.ini"
+def integrations_secrets_path() -> Path:
+    """Ruta recomendada para secrets.ini (Jira + Value Edge). No versionar."""
+    return external_connectors_dir() / "secrets.ini"
