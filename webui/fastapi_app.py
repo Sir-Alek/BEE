@@ -564,7 +564,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     jm.update_progress(job_id, {"stage": "ELIA: Ejecutando conversión", "input_dir": input_dir, "output_dir": output_dir})
                     try:
-                        elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=False)
+                        elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=req.use_ai)
                         adapter.info(
                             "ELIA · Gherkin batch",
                             f"Conversión completada.\n\nEntrada:\n{input_dir}\n\nSalida:\n{output_dir}",
