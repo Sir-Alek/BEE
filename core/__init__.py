@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 Paquete core: carga de assets (recorder JS) para runtime y empaquetado.
 
-recorder.js: prioridad `BEE_RECORDER_JS`, `recorder.obfuscated.js`, otros `recorder.*.js`, `recorder.js` plano.
+recorder.js: prioridad `ELIA_RECORDER_JS`, `recorder.obfuscated.js`, otros `recorder.*.js`, `recorder.js` plano.
 """
 import os
 import sys
@@ -38,7 +38,7 @@ class _RecorderLoader:
     def _resolve_js_path(self, file_name: str) -> str | None:
         if file_name != "recorder.js":
             return None
-        env_name = (os.environ.get("BEE_RECORDER_JS") or "").strip()
+        env_name = (os.environ.get("ELIA_RECORDER_JS") or "").strip()
         candidates: list[str] = []
         if env_name:
             if os.path.isabs(env_name):
@@ -86,7 +86,7 @@ class _RecorderLoader:
                     "recorder.min.js",
                 ):
                     candidates.insert(0, os.path.join(meipass, "core", extra))
-                env_name = (os.environ.get("BEE_RECORDER_JS") or "").strip()
+                env_name = (os.environ.get("ELIA_RECORDER_JS") or "").strip()
                 if env_name:
                     candidates.insert(
                         0,

@@ -16,8 +16,8 @@ class PDFFeatureReport(FPDF):
         self.scenarios = []
     
     def header(self):
-        # Logo de BEE con validación de existencia
-        logo_path = os.path.join('resources', 'logo_bee_png_transparente.png')
+        # Logo ELIA con validación de existencia
+        logo_path = os.path.join('resources', 'logo_elia.png')
         if os.path.exists(logo_path):
             self.image(logo_path, x=70, y=15, w=60, h=15)
         else:
@@ -291,7 +291,7 @@ class PDFFeatureReport(FPDF):
             pdf.output(os.path.join(output_dir, pdf_filename))
             
             pdf.set_author(author='Sir-Alek-2026')
-            pdf.set_creator('BEE - Sir-Alek')
+            pdf.set_creator('ELIA - Sir-Alek')
             
             return pdf_filename
             

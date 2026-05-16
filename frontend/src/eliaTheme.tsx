@@ -1,9 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "elia_theme";
-const LEGACY_STORAGE_KEY = "bee_theme";
 const BC_NAME = "elia-theme";
-const LEGACY_BC_NAME = "bee-theme";
+
+function migrateLegacyThemePrefs(): void {
+  try {
+    const legacy = localStorage.getItem("bee_theme");
+    if (legacy && !localStorage.getItem(STORAGE_KEY)) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+    }
+    if (legacy) localStorage.removeItem("bee_theme");
+  } catch {
+    // ignore
+  }
+}
 
 export type EliaPalette = {
   pageBg: string;
@@ -178,8 +188,9 @@ const ThemeCtx = createContext<Ctx | null>(null);
 
 export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
   const [dark, setDarkState] = useState<boolean>(() => {
+    migrateLegacyThemePrefs();
     try {
-      const v = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+      const v = localStorage.getItem(STORAGE_KEY);
       return v === "dark";
     } catch {
       return false;
@@ -195,8 +206,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       document.documentElement.setAttribute("data-elia-theme", v ? "dark" : "light");
-      // Back-compat: allow older CSS selectors to keep working if present.
-      document.documentElement.setAttribute("data-bee-theme", v ? "dark" : "light");
     } catch {
       // ignore
     }
@@ -204,9 +213,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
       const bc = new BroadcastChannel(BC_NAME);
       bc.postMessage({ type: "elia_theme", dark: v });
       bc.close();
-      const legacy = new BroadcastChannel(LEGACY_BC_NAME);
-      legacy.postMessage({ type: "bee_theme", dark: v });
-      legacy.close();
     } catch {
       // ignore
     }
@@ -215,7 +221,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       document.documentElement.setAttribute("data-elia-theme", dark ? "dark" : "light");
-      document.documentElement.setAttribute("data-bee-theme", dark ? "dark" : "light");
     } catch {
       // ignore
     }
@@ -223,7 +228,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
-    let legacy: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(BC_NAME);
       bc.onmessage = (ev: MessageEvent) => {
@@ -236,28 +240,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
           }
           try {
             document.documentElement.setAttribute("data-elia-theme", ev.data.dark ? "dark" : "light");
-            document.documentElement.setAttribute("data-bee-theme", ev.data.dark ? "dark" : "light");
-          } catch {
-            // ignore
-          }
-        }
-      };
-    } catch {
-      // ignore
-    }
-    try {
-      legacy = new BroadcastChannel(LEGACY_BC_NAME);
-      legacy.onmessage = (ev: MessageEvent) => {
-        if (ev.data?.type === "bee_theme" && typeof ev.data?.dark === "boolean") {
-          setDarkState(ev.data.dark);
-          try {
-            localStorage.setItem(STORAGE_KEY, ev.data.dark ? "dark" : "light");
-          } catch {
-            // ignore
-          }
-          try {
-            document.documentElement.setAttribute("data-elia-theme", ev.data.dark ? "dark" : "light");
-            document.documentElement.setAttribute("data-bee-theme", ev.data.dark ? "dark" : "light");
           } catch {
             // ignore
           }
@@ -269,11 +251,6 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
     return () => {
       try {
         bc?.close();
-      } catch {
-        // ignore
-      }
-      try {
-        legacy?.close();
       } catch {
         // ignore
       }
@@ -296,8 +273,9 @@ export function useEliaTheme(): Ctx {
 
 /** Append to job URLs so a new tab applies theme before first paint logic runs. */
 export function themeQuerySuffix(): string {
+  migrateLegacyThemePrefs();
   try {
-    const d = (localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)) === "dark";
+    const d = localStorage.getItem(STORAGE_KEY) === "dark";
     return `&theme=${d ? "dark" : "light"}`;
   } catch {
     return "&theme=light";
@@ -311,7 +289,6 @@ export function applyThemeFromUrl(): void {
     if (t === "dark" || t === "light") {
       localStorage.setItem(STORAGE_KEY, t === "dark" ? "dark" : "light");
       document.documentElement.setAttribute("data-elia-theme", t);
-      document.documentElement.setAttribute("data-bee-theme", t);
     }
   } catch {
     // ignore

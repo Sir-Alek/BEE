@@ -14,7 +14,7 @@ from typing import Iterable, List, Sequence
 
 def _candidate_executables() -> List[str]:
     out: List[str] = []
-    env_path = (os.environ.get("ELIA_BROWSER_PATH") or os.environ.get("BEE_BROWSER_PATH") or os.environ.get("CHROME_PATH") or "").strip()
+    env_path = (os.environ.get("ELIA_BROWSER_PATH") or os.environ.get("CHROME_PATH") or "").strip()
     if env_path:
         out.append(env_path)
 

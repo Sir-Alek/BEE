@@ -15,8 +15,20 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 from core._cython_build_manifest import CYTHON_REL_PATHS
 
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
-_cython_globs = glob.glob(os.path.join('core', '*.pyd')) + glob.glob(os.path.join('core', '*.so'))
-cython_binaries = [(p, 'core') for p in _cython_globs]
+_cython_globs = sorted(
+    set(
+        glob.glob(os.path.join(_spec_root, "core", "*.pyd"))
+        + glob.glob(os.path.join(_spec_root, "core", "*.so"))
+        + glob.glob(os.path.join(_spec_root, "core", "**", "*.pyd"), recursive=True)
+        + glob.glob(os.path.join(_spec_root, "core", "**", "*.so"), recursive=True)
+    )
+)
+cython_binaries = []
+for _cyd in _cython_globs:
+    _rel = os.path.relpath(_cyd, _spec_root).replace("\\", "/")
+    _parent = os.path.dirname(_rel)
+    _bundle_dest = _parent.replace("\\", "/") if _parent else "core"
+    cython_binaries.append((_rel, _bundle_dest))
 
 # Recorder: en release usar solo el ofuscado (el plano queda en el repo para desarrollo, no en el exe).
 _obf = os.path.join('core', 'recorder.obfuscated.js')
@@ -40,11 +52,17 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
-elia_hidden = []
-try:
-    elia_hidden = collect_submodules("elia")
-except Exception:
-    elia_hidden = ["elia", "elia.core", "elia.config_loader", "elia.connectors_store", "elia.service"]
+integrations_hidden = [
+    "core.jira_extractor",
+    "core.value_edge_extractor",
+    "core.gherkin_converter",
+    "core.integrations_config_loader",
+    "core.connectors_profiles_store",
+    "core.integrations_service",
+    "core.elia_paths",
+    "core.elia_license",
+    "core.elia_memory",
+]
 
 crypto_hidden = []
 try:
@@ -70,7 +88,7 @@ a = Analysis(
         ('resources', 'resources'),
         ('step_by_step', 'step_by_step')
     ] + llama_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'core.bee_license'] + web_hidden + llama_hidden + elia_hidden + crypto_hidden,
+    hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

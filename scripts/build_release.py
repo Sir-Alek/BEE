@@ -29,8 +29,6 @@ SOURCE_RECORDER = os.path.join(CORE, "recorder.js")
 # Mismos módulos que setup_cython.py; al empaquetar se pueden borrar los .py del dist si existe .pyd
 from core._cython_build_manifest import CYTHON_REL_PATHS
 
-CYTHON_SOURCE_PY = [os.path.basename(p) for p in CYTHON_REL_PATHS]
-
 
 def run(cmd: list[str], cwd: str | None = None) -> None:
     print("+", " ".join(cmd))
@@ -85,24 +83,34 @@ def obfuscate_recorder() -> None:
 
 def strip_py_from_dist_if_pyd() -> None:
     """Quita .py del paquete core en dist/ si hay .pyd del mismo nombre (release sin fuente duplicada)."""
-    dist_core = os.path.join(ROOT, "dist", "ELIA", "core")
-    if not os.path.isdir(dist_core):
+    dist_core_root = os.path.join(ROOT, "dist", "ELIA", "core")
+    if not os.path.isdir(dist_core_root):
         return
-    for name in CYTHON_SOURCE_PY:
-        base = name[:-3]
-        py_path = os.path.join(dist_core, name)
+    for rel_py in CYTHON_REL_PATHS:
+        if not rel_py.startswith("core/"):
+            continue
+        under_core = rel_py[len("core/") :].replace("/", os.sep)
+        py_path = os.path.join(dist_core_root, under_core)
         if not os.path.isfile(py_path):
             continue
-        # ¿Hay algún .pyd para este módulo?
-        found_pyd = False
-        for fn in os.listdir(dist_core):
-            if fn.startswith(base + ".") and fn.endswith(".pyd"):
-                found_pyd = True
+        base_noext, _ext = os.path.splitext(os.path.basename(rel_py))
+        parent = os.path.dirname(py_path)
+        found_native = False
+        try:
+            names = os.listdir(parent)
+        except OSError:
+            continue
+        for fn in names:
+            stem, ext = os.path.splitext(fn)
+            if stem.split(".")[0] != base_noext:
+                continue
+            if ext.lower() in (".pyd", ".so"):
+                found_native = True
                 break
-        if found_pyd:
+        if found_native:
             try:
                 os.remove(py_path)
-                print(f"✓ Retirado del bundle: core/{name} (existe extensión compilada)")
+                print(f"✓ Retirado del bundle: {rel_py} (existe extensión compilada)")
             except OSError as e:
                 print(f"⚠ No se pudo eliminar {py_path}: {e}")
 

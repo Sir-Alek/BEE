@@ -26,9 +26,9 @@ class NodeJSWrapper:
         base = (
             os.environ.get("LOCALAPPDATA")
             or os.environ.get("APPDATA")
-            or os.path.join(tempfile.gettempdir(), "bee-cache")
+            or os.path.join(tempfile.gettempdir(), "elia-cache")
         )
-        d = os.path.join(base, "BEE", "node_runtime")
+        d = os.path.join(base, "ELIA", "node_runtime")
         os.makedirs(d, exist_ok=True)
         self._runtime_dir = d
         return d
@@ -117,7 +117,7 @@ class NodeJSWrapper:
             # Escribir el JS en la raíz del runtime para que `__dirname` sea `runtime_dir`.
             # `core/recorder.js` usa `path.join(__dirname, 'node', 'node_modules', ...)`, por lo que
             # si lo ejecutamos desde un subdirectorio (p.ej. runtime_dir/_js) fallará.
-            temp_file = os.path.join(runtime_dir, f"_bee_{uuid.uuid4().hex}_{js_file_name}")
+            temp_file = os.path.join(runtime_dir, f"_elia_{uuid.uuid4().hex}_{js_file_name}")
             with open(temp_file, "wb") as f:
                 f.write(content)
             self.temp_files.append(temp_file)
