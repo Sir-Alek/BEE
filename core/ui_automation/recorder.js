@@ -15,7 +15,7 @@ function getChromePath() {
     // Fallback para webdriver-manager portable
     try {
         // Ruta relativa al webdriver-manager incluido en el paquete
-        const webdriverPath = path.join(__dirname, 'node', 'node_modules', 'webdriver-manager');
+        const webdriverPath = path.join(__dirname, '..', 'node', 'node_modules', 'webdriver-manager');
         const { getInstalledChromePath } = require(webdriverPath);
         
         const chromePath = getInstalledChromePath();
@@ -34,7 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const { Writable } = require('stream');
 const { Worker } = require('worker_threads');
-const puppeteer = require(path.join(__dirname, 'node', 'node_modules', 'puppeteer'));
+const puppeteer = require(path.join(__dirname, '..', 'node', 'node_modules', 'puppeteer'));
 const targetUrl = process.argv[3] || 'https://www.google.com';
 
 // Worker para escritura asíncrona en hilo separado

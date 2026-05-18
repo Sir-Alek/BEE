@@ -10,7 +10,7 @@ try:
     PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
     ScreenRecorder = video_recorder.ScreenRecorder
     PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
-    except ImportError:
+except ImportError:
     try:
         from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
         from core.ui_automation.video_recorder import ScreenRecorder
@@ -1023,7 +1023,7 @@ if __name__ == "__main__":
 ███████╗███████╗██║██║  ██║
 ╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
 
-   ELIA - Evolving Learning & Intelligent Automation v0.1.2
+   ELIA - Evolving Learning & Intelligent Automation v0.2.1
    </Sir_Alek>
           """)    
     def _run_web_ui() -> None:

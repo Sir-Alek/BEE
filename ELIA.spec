@@ -122,10 +122,8 @@ a = Analysis(
     binaries=llama_binaries + cython_binaries,
     datas=_datas_if_exists(
         ('core/node',       'core/node'),
-        ('behave',          'behave'),
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
-        ('step_by_step',    'step_by_step'),
     ) + llama_datas + js_obf,
     hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
