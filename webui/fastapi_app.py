@@ -78,7 +78,20 @@ class LicenseActivateRequest(BaseModel):
 
 
 def _repo_root() -> str:
-    # webui/fastapi_app.py -> webui/ -> repo root
+    """
+    Devuelve la raíz del proyecto / directorio del bundle.
+
+    En modo frozen (PyInstaller):
+      - --onefile: sys._MEIPASS es el directorio de extracción temporal.
+      - --onedir:  sys._MEIPASS no existe; los datas están junto al ejecutable.
+    En desarrollo: sube un nivel desde webui/ hasta la raíz del repo.
+    """
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return meipass                          # --onefile
+        return os.path.dirname(sys.executable)      # --onedir
+    # Desarrollo: webui/fastapi_app.py -> webui/ -> repo root
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 

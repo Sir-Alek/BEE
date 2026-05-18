@@ -138,7 +138,13 @@ class main:
         self._job_manager = JobManager() if (self.web_mode and JobManager is not None) else None
         
         # Configuración de paths base
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        # En frozen (PyInstaller --onedir): __file__ apunta al ejecutable; usamos su directorio.
+        # En frozen (--onefile): sys._MEIPASS es el directorio de extracción temporal.
+        if getattr(sys, "frozen", False):
+            _meipass = getattr(sys, "_MEIPASS", None)
+            self.base_dir = _meipass if _meipass else os.path.dirname(sys.executable)
+        else:
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
         from core.elia_paths import behave_projects_dir
 
         self.projects_dir = str(behave_projects_dir())
