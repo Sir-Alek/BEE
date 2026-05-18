@@ -1104,7 +1104,7 @@ export default function App() {
             <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>ELIA Web UI</h2>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
-              esta vista. El tema se cambia con <b>Modo oscuro</b> / <b>Modo claro</b> en la barra superior.
+              esta vista.
             </div>
 
             <div

@@ -1029,7 +1029,7 @@ if __name__ == "__main__":
 ███████╗███████╗██║██║  ██║
 ╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
 
-   ELIA - Evolving Learning & Intelligent Automation v0.2.1
+   ELIA - Evolving Learning & Intelligent Automation v0.2.3
    </Sir_Alek>
           """)    
     def _run_web_ui() -> None:
