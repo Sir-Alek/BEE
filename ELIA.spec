@@ -6,8 +6,10 @@ import glob
 import os
 import sys
 
-# SPECPATH is set by PyInstaller when loading the .spec file.
-_spec_root = os.path.dirname(os.path.abspath(globals().get("SPECPATH", os.path.join(os.getcwd(), "ELIA.spec"))))
+# SPECPATH is the directory that contains the spec file (set by PyInstaller).
+# Do NOT apply os.path.dirname — it is already the project root.
+# Fallback: cwd, which build_release.py forces to ROOT before calling PyInstaller.
+_spec_root = os.path.abspath(globals().get("SPECPATH", os.getcwd()))
 sys.path.insert(0, _spec_root)
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
