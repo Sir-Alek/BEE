@@ -42,7 +42,14 @@ class NodeJSWrapper:
         if self._runtime_prepared:
             return runtime_dir
 
-        node_src = os.path.join(os.path.dirname(__file__), "node")
+        # node/ lives at core/node/ — one level above core/ui_automation/ (this file's location).
+        # os.path.dirname(__file__) = .../core/ui_automation/
+        # os.path.dirname(os.path.dirname(__file__)) = .../core/
+        _this_dir = os.path.dirname(os.path.abspath(__file__))
+        node_src = os.path.join(os.path.dirname(_this_dir), "node")
+        # Fallback: if packaged differently, also check same directory
+        if not os.path.isdir(node_src):
+            node_src = os.path.join(_this_dir, "node")
         node_dst = os.path.join(runtime_dir, "node")
 
         # If already prepared (e.g. previous run), skip heavy copy.
@@ -77,8 +84,65 @@ class NodeJSWrapper:
             # Fallback: will try system node later.
             print("⚠ No se encontró core/node; se intentará usar Node.js del sistema.")
 
+        # Install npm dependencies (puppeteer, webdriver-manager) if not present.
+        # This runs once and the result is cached in runtime_dir.
+        self._install_node_dependencies(node_dst)
+
         self._runtime_prepared = True
         return runtime_dir
+
+    def _install_node_dependencies(self, node_dst: str) -> None:
+        """
+        Runs `npm install` inside node_dst if puppeteer is not already present.
+        This is a one-time setup step; the result is cached in the runtime dir.
+        """
+        puppeteer_dir = os.path.join(node_dst, "node_modules", "puppeteer")
+        puppeteer_core_dir = os.path.join(node_dst, "node_modules", "puppeteer-core")
+        if os.path.isdir(puppeteer_dir) or os.path.isdir(puppeteer_core_dir):
+            return  # Already installed
+
+        pkg_json = os.path.join(node_dst, "package.json")
+        if not os.path.isfile(pkg_json):
+            print("⚠ No se encontró package.json en el runtime Node; omitiendo npm install.")
+            return
+
+        # Prefer system npm (the bundled npm.cmd needs its own node_modules/npm).
+        system_npm = shutil.which("npm")
+        npm_candidates = [c for c in [system_npm] if c]
+
+        if not npm_candidates:
+            print("⚠ npm no encontrado en el sistema. Instala Node.js LTS para habilitar la grabación.")
+            return
+
+        npm_cmd = npm_candidates[0]
+        print("⏳ Instalando dependencias Node (puppeteer) por primera vez…")
+        print(f"   Directorio: {node_dst}")
+        print("   Esto puede tardar varios minutos la primera vez.")
+        try:
+            env = os.environ.copy()
+            env["PATH"] = node_dst + os.pathsep + env.get("PATH", "")
+            result = subprocess.run(
+                [npm_cmd, "install", "--no-audit", "--no-fund"],
+                cwd=node_dst,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=600,  # 10 min máx
+            )
+            if result.returncode == 0:
+                print("✓ Dependencias Node instaladas correctamente.")
+            else:
+                print(f"⚠ npm install terminó con código {result.returncode}:")
+                if result.stderr:
+                    print(result.stderr[:1000])
+        except subprocess.TimeoutExpired:
+            print("⚠ npm install tardó demasiado (>10 min). Reintenta manualmente:")
+            print(f"   cd \"{node_dst}\" && npm install")
+        except Exception as exc:
+            print(f"⚠ npm install falló: {exc}")
+            print(f"   Ejecuta manualmente: cd \"{node_dst}\" && npm install")
 
     def run_obfuscated_js(
         self,
@@ -114,10 +178,13 @@ class NodeJSWrapper:
             runtime_dir = self._ensure_runtime_prepared()
             node_modules_dir = os.path.join(runtime_dir, "node", "node_modules")
 
-            # Escribir el JS en la raíz del runtime para que `__dirname` sea `runtime_dir`.
-            # `core/ui_automation/recorder.js` usa `path.join(__dirname, '..', 'node', 'node_modules', ...)`,
-            # por lo que si lo ejecutamos desde un subdirectorio (p.ej. runtime_dir/_js) fallará.
-            temp_file = os.path.join(runtime_dir, f"_elia_{uuid.uuid4().hex}_{js_file_name}")
+            # Escribir el JS en runtime_dir/ui_automation/ de modo que __dirname sea
+            # ese subdirectorio y `path.join(__dirname, '..', 'node', ...)` resuelva
+            # correctamente a runtime_dir/node/ (igual que en desarrollo donde
+            # recorder.js está en core/ui_automation/ y node/ está en core/node/).
+            _js_subdir = os.path.join(runtime_dir, "ui_automation")
+            os.makedirs(_js_subdir, exist_ok=True)
+            temp_file = os.path.join(_js_subdir, f"_elia_{uuid.uuid4().hex}_{js_file_name}")
             with open(temp_file, "wb") as f:
                 f.write(content)
             self.temp_files.append(temp_file)
@@ -183,9 +250,12 @@ class NodeJSWrapper:
             
             if result.returncode != 0:
                 error_msg = result.stderr if result.stderr else "Error desconocido en Node.js"
-                # Filtrar errores de módulo no encontrado
                 if "MODULE_NOT_FOUND" in error_msg:
-                    error_msg = "Puppeteer no está instalado correctamente. Ejecuta install_puppeteer.bat"
+                    runtime_node = os.path.join(self._get_runtime_dir(), "node")
+                    error_msg = (
+                        "Puppeteer no está instalado. "
+                        f"Ejecuta: cd \"{runtime_node}\" && npm install"
+                    )
                 raise Exception(f"Error en Node.js: {error_msg}")
             
             return result
@@ -206,13 +276,20 @@ class NodeJSWrapper:
         except Exception:
             pass
 
-        core_node_path = os.path.join(os.path.dirname(__file__), 'node', 'node.exe')
+        # core/node/ is one level above core/ui_automation/ (this file)
+        _this_dir = os.path.dirname(os.path.abspath(__file__))
+        core_node_path = os.path.join(os.path.dirname(_this_dir), 'node', 'node.exe')
         if os.path.exists(core_node_path):
             return core_node_path
-        
-        local_node_path = os.path.join(os.path.dirname(__file__), 'node.exe')
+
+        # Fallback: node.exe in same directory as this file
+        local_node_path = os.path.join(_this_dir, 'node', 'node.exe')
         if os.path.exists(local_node_path):
             return local_node_path
+
+        alt_node_path = os.path.join(_this_dir, 'node.exe')
+        if os.path.exists(alt_node_path):
+            return alt_node_path
         
         try:
             result = subprocess.run(['node', '--version'], capture_output=True, text=True, timeout=10)
