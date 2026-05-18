@@ -3,8 +3,10 @@ import tempfile
 import subprocess
 import sys
 import shutil
+import threading
 import time
 import uuid
+from typing import Callable, Optional
 
 class NodeJSWrapper:
     def __init__(self):
@@ -151,6 +153,7 @@ class NodeJSWrapper:
         *,
         subprocess_timeout=180,
         focus_automation_browser: bool = False,
+        on_browser_ready: Optional[Callable[[], None]] = None,
     ):
         """Ejecuta un archivo JavaScript ofuscado.
 
@@ -223,19 +226,31 @@ class NodeJSWrapper:
                     cwd=runtime_dir,
                     env=env,
                     timeout=subprocess_timeout,
+                    on_browser_ready=on_browser_ready,
                 )
             else:
-                run_kw = dict(
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    env=env,
-                    cwd=runtime_dir,
-                )
-                if subprocess_timeout is not None:
-                    run_kw["timeout"] = subprocess_timeout
-                result = subprocess.run(cmd, **run_kw)
+                # When on_browser_ready is supplied we need line-by-line stdout monitoring,
+                # even without the focus helper. Use Popen + reader threads.
+                if on_browser_ready is not None:
+                    result = self._run_with_ready_signal(
+                        cmd,
+                        cwd=runtime_dir,
+                        env=env,
+                        timeout=subprocess_timeout,
+                        on_browser_ready=on_browser_ready,
+                    )
+                else:
+                    run_kw: dict = dict(
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        env=env,
+                        cwd=runtime_dir,
+                    )
+                    if subprocess_timeout is not None:
+                        run_kw["timeout"] = subprocess_timeout
+                    result = subprocess.run(cmd, **run_kw)
         
             
             if result.stdout:
@@ -265,6 +280,71 @@ class NodeJSWrapper:
         except Exception as e:
             raise Exception(f"Error ejecutando Node.js: {str(e)}")
     
+    def _run_with_ready_signal(
+        self,
+        cmd: list,
+        *,
+        cwd: Optional[str] = None,
+        env=None,
+        timeout: Optional[float] = None,
+        on_browser_ready: Optional[Callable[[], None]] = None,
+    ) -> subprocess.CompletedProcess:
+        """Run cmd as Popen; fire on_browser_ready once when 'BROWSER_READY' appears in stdout."""
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=cwd,
+            env=env,
+        )
+        stdout_lines: list = []
+        stderr_lines: list = []
+        _fired = threading.Event()
+
+        def _read_stdout() -> None:
+            try:
+                assert proc.stdout is not None
+                for raw in proc.stdout:
+                    stdout_lines.append(raw)
+                    if not _fired.is_set() and "BROWSER_READY" in raw:
+                        _fired.set()
+                        if on_browser_ready:
+                            threading.Thread(target=on_browser_ready, daemon=True).start()
+            except Exception:
+                pass
+
+        def _read_stderr() -> None:
+            try:
+                assert proc.stderr is not None
+                for raw in proc.stderr:
+                    stderr_lines.append(raw)
+            except Exception:
+                pass
+
+        t_out = threading.Thread(target=_read_stdout, daemon=True)
+        t_err = threading.Thread(target=_read_stderr, daemon=True)
+        t_out.start()
+        t_err.start()
+        try:
+            if timeout is not None:
+                proc.wait(timeout=timeout)
+            else:
+                proc.wait()
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise
+        finally:
+            t_out.join(timeout=5.0)
+            t_err.join(timeout=5.0)
+        return subprocess.CompletedProcess(
+            cmd, int(proc.returncode or 0),
+            "".join(stdout_lines), "".join(stderr_lines),
+        )
+
     def get_node_path(self):
         """Obtener la ruta de node.exe"""
         # Prefer cached runtime node.exe when available

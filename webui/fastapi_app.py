@@ -436,24 +436,33 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         ),
                     )
 
-                    recorder_obj = None
+                    # Video: se prepara el objeto pero NO se inicia aún.
+                    # La grabación comienza solo cuando recorder.js señaliza BROWSER_READY,
+                    # es decir, cuando el browser ya abrió la URL y está listo para interactuar.
                     video_path: Optional[str] = None
+                    _recorder_holder: list = [None]  # mutable ref para el callback
 
                     if grabar_video:
-                        jm.update_progress(job_id, {"stage": "Grabando video"})
-                        # Lazy import to avoid requiring video-capture deps when not used.
                         from core.ui_automation.video_recorder import ScreenRecorder
 
                         file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
                         videos_dir = os.path.join(project_path, "grabaciones")
                         os.makedirs(videos_dir, exist_ok=True)
                         video_path = os.path.join(videos_dir, file_name_vid)
-                        try:
-                            recorder_obj = ScreenRecorder(video_path)
-                            if not recorder_obj.start():
-                                recorder_obj = None
-                        except Exception:
-                            recorder_obj = None
+
+                        def _start_video_on_browser_ready() -> None:
+                            """Called from a daemon thread when BROWSER_READY arrives."""
+                            try:
+                                r = ScreenRecorder(video_path)
+                                if r.start():
+                                    _recorder_holder[0] = r
+                                    jm.update_progress(job_id, {"stage": "Grabando video"})
+                            except Exception:
+                                pass
+
+                        _on_browser_ready = _start_video_on_browser_ready
+                    else:
+                        _on_browser_ready = None
 
                     jm.update_progress(job_id, {"stage": "Preparando runtime de grabación"})
 
@@ -471,6 +480,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             [output_file, req.url],
                             subprocess_timeout=None,
                             focus_automation_browser=True,
+                            on_browser_ready=_on_browser_ready,
                         )
                     else:
                         from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
@@ -481,7 +491,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             ["node", recorder_js_path, output_file, req.url],
                             cwd=base_dir,
                             timeout=None,
+                            on_browser_ready=_on_browser_ready,
                         )
+
+                    recorder_obj = _recorder_holder[0]
 
                     if result.returncode != 0:
                         error = result.stderr if result.stderr else "Error desconocido en Node.js"

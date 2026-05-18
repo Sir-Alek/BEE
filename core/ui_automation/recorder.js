@@ -335,7 +335,14 @@ let actionRecorder = null;
         '--disable-dev-shm-usage',
         '--remote-debugging-port=9222',
         '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process'
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-extensions',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--disable-default-apps'
       ],
       executablePath: getChromePath(),
       ignoreDefaultArgs: ['--enable-automation'],
@@ -818,6 +825,10 @@ let actionRecorder = null;
 
     await page.goto(targetUrl);
     initialUrl = page.url();
+
+    // Signal to Python that the browser is open and the URL is loaded.
+    // Python uses this to start video recording only from this point.
+    console.log('BROWSER_READY');
 
     console.log('\n[Recorder] Comienza a interactuar con la página.');
     console.log('[Recorder] Cierra el navegador para guardar las acciones.\n');

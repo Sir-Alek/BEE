@@ -12,7 +12,7 @@ import sys
 from ctypes import wintypes
 import threading
 import time
-from typing import Optional, Set
+from typing import Callable, Optional, Set
 
 
 def chrome_like_pids_snapshot() -> Set[int]:
@@ -124,10 +124,16 @@ def run_subprocess_with_automation_focus(
     env: Optional[dict] = None,
     timeout: Optional[float] = None,
     focus_delay_sec: float = 2.2,
+    on_browser_ready: Optional[Callable[[], None]] = None,
 ) -> subprocess.CompletedProcess:
     """
     Launch a subprocess (e.g. node recorder.js) and try to focus the new automation
     browser window after a short delay while waiting for the process to exit.
+
+    on_browser_ready: optional zero-arg callable called (once, in a daemon thread)
+    when the line 'BROWSER_READY' is detected in the subprocess stdout.
+    This allows the caller to start video recording only after the browser has
+    finished opening and navigating to the target URL.
     """
     old = chrome_like_pids_snapshot()
     proc = subprocess.Popen(
@@ -141,10 +147,52 @@ def run_subprocess_with_automation_focus(
         env=env,
     )
     spawn_focus_thread_for_automation_browser(old, delay_sec=focus_delay_sec)
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    _ready_fired = threading.Event()
+
+    def _read_stdout() -> None:
+        try:
+            assert proc.stdout is not None
+            for raw in proc.stdout:
+                stdout_lines.append(raw)
+                if not _ready_fired.is_set() and "BROWSER_READY" in raw:
+                    _ready_fired.set()
+                    if on_browser_ready:
+                        threading.Thread(target=on_browser_ready, daemon=True).start()
+        except Exception:
+            pass
+
+    def _read_stderr() -> None:
+        try:
+            assert proc.stderr is not None
+            for raw in proc.stderr:
+                stderr_lines.append(raw)
+        except Exception:
+            pass
+
+    t_out = threading.Thread(target=_read_stdout, daemon=True)
+    t_err = threading.Thread(target=_read_stderr, daemon=True)
+    t_out.start()
+    t_err.start()
+
     try:
-        out, err = proc.communicate(timeout=timeout)
+        if timeout is not None:
+            proc.wait(timeout=timeout)
+        else:
+            proc.wait()
     except subprocess.TimeoutExpired:
         proc.kill()
-        out, err = proc.communicate()
+        proc.wait()
         raise
-    return subprocess.CompletedProcess(cmd, int(proc.returncode or 0), out, err)
+    finally:
+        t_out.join(timeout=5.0)
+        t_err.join(timeout=5.0)
+
+    return subprocess.CompletedProcess(
+        cmd,
+        int(proc.returncode or 0),
+        "".join(stdout_lines),
+        "".join(stderr_lines),
+    )
