@@ -1034,13 +1034,9 @@ if __name__ == "__main__":
           """)    
     def _run_web_ui() -> None:
         """
-        Arranca FastAPI + Uvicorn en un hilo daemon y gestiona el ciclo de vida
-        desde el hilo principal:
-          - Si Tkinter está disponible: muestra una ventana de control mínima en
-            la barra de tareas. El usuario la cierra para terminar el proceso.
-          - Si no: espera a que el servidor se detenga y luego fuerza os._exit(0).
-        En ambos casos, cuando el servidor para (señal del browser o botón cerrar),
-        el proceso se termina limpiamente con os._exit(0).
+        Arranca FastAPI + Uvicorn en el hilo principal (bloqueante).
+        Un hilo daemon monitorea la señal de salida del frontend y, cuando la recibe,
+        para Uvicorn. Al retornar server.run(), el proceso termina con os._exit(0).
         """
         import json
         import urllib.error
@@ -1101,70 +1097,23 @@ if __name__ == "__main__":
                 except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
                     continue
 
-        def _shutdown(after_s: float = 0.6) -> None:
-            """Para el servidor y termina el proceso."""
-            server.should_exit = True
-            time.sleep(after_s)
-            os._exit(0)
-
-        # Uvicorn en hilo daemon — el hilo principal sigue libre para Tk o join()
-        server_thread = threading.Thread(target=server.run, daemon=True)
-        server_thread.start()
-
         poll_thread = threading.Thread(target=_poll_exit_and_shutdown, daemon=True)
         poll_thread.start()
 
-        if TK_AVAILABLE:
-            # ── Ventana de control mínima ─────────────────────────────────────────────
-            # Permanece en la barra de tareas y da al usuario un botón para cerrar ELIA.
-            # Posicionada en la esquina inferior derecha para no molestar.
-            ctrl = tk.Tk()
-            ctrl.title("ELIA")
-            ctrl.resizable(False, False)
-            ctrl.attributes("-topmost", False)
-
-            # Posicionar en esquina inferior derecha
-            ctrl.update_idletasks()
-            sw = ctrl.winfo_screenwidth()
-            sh = ctrl.winfo_screenheight()
-            ctrl.geometry(f"260x62+{sw - 274}+{sh - 100}")
-
-            tk.Label(ctrl, text="ELIA está en ejecución  ●", font=("Arial", 10)).pack(pady=(8, 4))
-            tk.Button(
-                ctrl,
-                text="✕  Cerrar ELIA",
-                command=lambda: threading.Thread(target=_shutdown, daemon=True).start(),
-                width=20,
-                relief="flat",
-                bg="#d9534f",
-                fg="white",
-                activebackground="#c9302c",
-                activeforeground="white",
-            ).pack(pady=(0, 6))
-
-            ctrl.protocol(
-                "WM_DELETE_WINDOW",
-                lambda: threading.Thread(target=_shutdown, daemon=True).start(),
+        try:
+            server.run()
+        except Exception:
+            uvicorn.run(
+                app,
+                host=host,
+                port=port,
+                log_level="info",
+                log_config=None,
+                access_log=False,
             )
 
-            # Cuando el servidor para (señal del browser), cerrar también la ventana
-            def _watch_server() -> None:
-                server_thread.join()
-                try:
-                    ctrl.event_generate("<<ELIAServerStopped>>", when="tail")
-                except Exception:
-                    pass
-
-            ctrl.bind("<<ELIAServerStopped>>", lambda _: ctrl.quit())
-            threading.Thread(target=_watch_server, daemon=True).start()
-
-            ctrl.mainloop()
-            # mainloop salió (ventana cerrada por el usuario o por señal del server)
-            _shutdown(after_s=0.3)
-        else:
-            # Sin Tkinter: esperar a que el servidor se detenga y forzar la salida
-            server_thread.join()
-            os._exit(0)
+        # Garantiza la terminación completa del proceso (incluye hilos no-daemon).
+        os._exit(0)
 
     if USE_WEB:
         # Default path: run web UI.

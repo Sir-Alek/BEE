@@ -8,8 +8,50 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import webbrowser
 from typing import Iterable, List, Sequence
+
+
+def _maximize_browser_windows_later(delay: float = 2.0) -> None:
+    """
+    Windows-only: espera `delay` segundos y maximiza todas las ventanas de
+    Chrome/Edge/Chromium visibles. Se ejecuta en un hilo daemon para no bloquear.
+    Cuando Chrome ya tiene una instancia abierta, --start-maximized no afecta la
+    nueva ventana que se abre; este mecanismo lo compensa.
+    """
+    if sys.platform != "win32":
+        return
+
+    def _run() -> None:
+        time.sleep(delay)
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            SW_MAXIMIZE = 3
+            BROWSER_KEYWORDS = ("Chrome", "Edge", "Chromium")
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+
+            def _cb(hwnd: int, _: int) -> bool:
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if any(kw in buf.value for kw in BROWSER_KEYWORDS):
+                    user32.ShowWindow(hwnd, SW_MAXIMIZE)
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_cb), 0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _candidate_executables() -> List[str]:
@@ -62,13 +104,13 @@ def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
         if not os.path.isfile(exe):
             continue
         try:
-            # Dedicated top-level window (works for Chromium-based browsers).
             subprocess.Popen(
                 [exe, "--new-window", "--start-maximized", "--window-size=1920,1080", url],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
+            _maximize_browser_windows_later()
             return True
         except Exception:
             continue
@@ -88,6 +130,7 @@ def open_url_in_new_browser_window(url: str) -> None:
             webbrowser.open(url)
         except Exception:
             pass
+    _maximize_browser_windows_later()
 
 
 def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> bool:
@@ -105,6 +148,7 @@ def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> 
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
+            _maximize_browser_windows_later()
             return True
         except Exception:
             continue
