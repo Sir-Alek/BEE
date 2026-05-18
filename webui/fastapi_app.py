@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from core.puppeteer_script_converter import PuppeteerToBehaveConverter
-from core.step_by_step_converter import PuppeteerToStepByStepConverter
+from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
+from core.ui_automation.step_by_step_converter import PuppeteerToStepByStepConverter
 from webui.job_manager import JobManager, Prompt
 from webui.webui_adapter import WebUIAdapter
 
@@ -177,7 +177,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/elia/connectors")
     def elia_connectors_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.connectors_profiles_store import load_document
+        from core.req_intelligence.connectors_profiles_store import load_document
 
         doc = load_document()
         if not doc:
@@ -189,7 +189,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.put("/api/elia/connectors")
     def elia_connectors_put(body: ConnectorsDocument, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.connectors_profiles_store import save_document
+        from core.req_intelligence.connectors_profiles_store import save_document
 
         try:
             save_document(body.model_dump())
@@ -199,7 +199,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.post("/api/elia/connectors/test")
     def elia_connectors_test(body: EliaConnectorTestRequest, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        import core.integrations_service as elia_service
+        import core.req_intelligence.integrations_service as elia_service
 
         try:
             if body.kind == "jira":
@@ -421,7 +421,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     if grabar_video:
                         jm.update_progress(job_id, {"stage": "Grabando video"})
                         # Lazy import to avoid requiring video-capture deps when not used.
-                        from core.video_recorder import ScreenRecorder
+                        from core.ui_automation.video_recorder import ScreenRecorder
 
                         file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
                         videos_dir = os.path.join(project_path, "grabaciones")
@@ -438,7 +438,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     # --- Ejecutar recorder.js
                     if is_frozen():
-                        from core.node_wrapper import node_wrapper
+                        from core.ui_automation.node_wrapper import node_wrapper
                         try:
                             if getattr(node_wrapper, "was_runtime_prepared_now", False):
                                 jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (primera vez)"})
@@ -452,10 +452,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             focus_automation_browser=True,
                         )
                     else:
-                        from core.recorder_focus import run_subprocess_with_automation_focus
+                        from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
-                        recorder_js_path = os.path.join(base_dir, "core", "recorder.js")
+                        recorder_js_path = os.path.join(base_dir, "core", "ui_automation", "recorder.js")
                         result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, req.url],
                             cwd=base_dir,
@@ -489,7 +489,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_jira_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Jira (smoke)"})
-                    import core.integrations_service as elia_service
+                    import core.req_intelligence.integrations_service as elia_service
 
                     try:
                         out = elia_service.jira_smoke_test(inline=elia_inline, creds=jira_cred_dict)
@@ -505,7 +505,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_value_edge_smoke":
                     jm.update_progress(job_id, {"stage": "ELIA: Value Edge (smoke)"})
-                    import core.integrations_service as elia_service
+                    import core.req_intelligence.integrations_service as elia_service
 
                     try:
                         out = elia_service.value_edge_smoke_test(inline=elia_inline, creds=ve_cred_dict)
@@ -521,7 +521,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "elia_gherkin_batch":
                     jm.update_progress(job_id, {"stage": "ELIA: Gherkin batch (configurar)"})
-                    import core.integrations_service as elia_service
+                    import core.req_intelligence.integrations_service as elia_service
 
                     # Ask for relative folders under user data (Documents/ELIA).
                     inp_rel = jm.create_prompt_and_wait(

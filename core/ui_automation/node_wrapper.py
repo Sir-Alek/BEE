@@ -115,8 +115,8 @@ class NodeJSWrapper:
             node_modules_dir = os.path.join(runtime_dir, "node", "node_modules")
 
             # Escribir el JS en la raíz del runtime para que `__dirname` sea `runtime_dir`.
-            # `core/recorder.js` usa `path.join(__dirname, 'node', 'node_modules', ...)`, por lo que
-            # si lo ejecutamos desde un subdirectorio (p.ej. runtime_dir/_js) fallará.
+            # `core/ui_automation/recorder.js` usa `path.join(__dirname, 'node', 'node_modules', ...)`,
+            # por lo que si lo ejecutamos desde un subdirectorio (p.ej. runtime_dir/_js) fallará.
             temp_file = os.path.join(runtime_dir, f"_elia_{uuid.uuid4().hex}_{js_file_name}")
             with open(temp_file, "wb") as f:
                 f.write(content)
@@ -149,7 +149,7 @@ class NodeJSWrapper:
             print(f"Comando: {' '.join(cmd)}")
 
             if focus_automation_browser:
-                from core.recorder_focus import run_subprocess_with_automation_focus
+                from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
                 result = run_subprocess_with_automation_focus(
                     cmd,

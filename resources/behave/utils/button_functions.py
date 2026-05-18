@@ -3,7 +3,7 @@ import os
 import uuid
 import logging
 from time import sleep
-from typing import Optional, Literal, Tuple
+from typing import Any, Optional, Literal, Tuple
 import re
 import time
 import subprocess
@@ -18,6 +18,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
+from selenium.webdriver.common.alert import Alert
 from selenium.common.exceptions import (
     TimeoutException,
     ElementClickInterceptedException,
@@ -685,15 +686,68 @@ def _topmost_ok(driver: WebDriver, el) -> bool:
         return el===t || (t && (el.contains(t)||t.contains(el)));
     """, el)
 
-def _restore_outline(driver: WebDriver, el, prev: Optional[str]) -> None:
-    if el is None:
-        return
+def hide_material_tooltips(driver: WebDriver, *, blur_active: bool = True) -> None:
+    """
+    Oculta/remueve tooltips de Angular Material/CDK para evitar esperas
+    innecesarias e interferencias visuales durante la ejecución.
+
+    No elimina menús, selects, dialogs ni backdrops; solo nodos con rol/clase
+    de tooltip y sus cdk-overlay-pane contenedores cuando corresponda.
+    """
     try:
-        driver.execute_script("arguments[0].style.outline=arguments[1];", el, prev)
+        driver.execute_script("""
+            const blurActive = arguments[0];
+
+            if (blurActive && document.activeElement && document.activeElement !== document.body) {
+                try { document.activeElement.blur(); } catch (e) {}
+            }
+
+            const tooltipSelectors = [
+                '.mat-mdc-tooltip',
+                '.mat-tooltip',
+                '.mdc-tooltip',
+                '[role="tooltip"]',
+                '.cdk-overlay-pane mat-tooltip-component',
+                '.cdk-overlay-pane .mat-mdc-tooltip-surface'
+            ];
+
+            const tooltipNodes = Array.from(document.querySelectorAll(tooltipSelectors.join(',')));
+
+            tooltipNodes.forEach(node => {
+                const pane = node.closest('.cdk-overlay-pane');
+                if (pane) {
+                    pane.remove();
+                } else {
+                    node.remove();
+                }
+            });
+        """, bool(blur_active))
+    except Exception:
+        pass
+
+
+def _restore_outline(driver: WebDriver, *args, **kwargs) -> None:
+    """
+    Barredora universal: limpia TODOS los elementos marcados con data-qa-highlight.
+    Acepta *args y **kwargs para ser retrocompatible con cualquier firma anterior.
+    """
+    try:
+        driver.execute_script("""
+            document.querySelectorAll('[data-qa-highlight="true"]').forEach(el => {
+                el.style.outline = '';
+                el.style.boxShadow = '';
+                el.style.backgroundColor = '';
+                el.style.position = '';
+                el.style.zIndex = '';
+                el.style.outlineOffset = '';
+                el.removeAttribute('data-qa-highlight');
+            });
+        """)
     except Exception:
         pass
 
 def ui_cleanup_state(driver: WebDriver, timeout: int = 3) -> None:
+    hide_material_tooltips(driver, blur_active=True)
     try:
         ActionChains(driver).move_by_offset(-10_000, -10_000).perform()
         ActionChains(driver).move_by_offset(1, 1).perform()
@@ -705,6 +759,8 @@ def ui_cleanup_state(driver: WebDriver, timeout: int = 3) -> None:
         except Exception:
             pass
 
+    hide_material_tooltips(driver, blur_active=True)
+
     try:
         WebDriverWait(driver, timeout).until(
             EC.invisibility_of_element_located(
@@ -713,12 +769,8 @@ def ui_cleanup_state(driver: WebDriver, timeout: int = 3) -> None:
         )
     except Exception:
         pass
-    try:
-        WebDriverWait(driver, timeout).until_not(
-            lambda d: len(d.find_elements(By.CSS_SELECTOR, ".cdk-overlay-pane")) > 0
-        )
-    except Exception:
-        pass
+
+    hide_material_tooltips(driver, blur_active=True)
 
 # ============================================================
 # Helpers STALE-SAFE
@@ -745,17 +797,51 @@ def _center_and_highlight_stalesafe(
     pause: float = 0.1,
     visible: bool = True
 ):
-    def _op(el):
-        driver.execute_script("arguments[0].scrollIntoView({block:'center',inline:'center'})", el)
-        prev = driver.execute_script(
-            "const el=arguments[0]; const prev=el.style.outline; el.style.outline=arguments[1]; return prev;",
-            el, outline_css
-        )
+    try:
+        if visible:
+            wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
+        else:
+            wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+
+        elementos = driver.find_elements(By.XPATH, xpath)
+        if not elementos:
+            return None, None
+
+        el = elementos[0]
+        driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'nearest'});", el)
+
+        prev_style = driver.execute_script("return arguments[0].getAttribute('style');", el) or ""
+
+        color = outline_css.split()[-1] if len(outline_css.split()) > 0 else "#00FF00"
+        script_resaltado = f"""
+            var el = arguments[0];
+            el.style.outline = '{outline_css}';
+            el.style.boxShadow = '0 0 0 4px {color}';
+            el.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+            el.style.position = 'relative';
+            el.style.zIndex = '9999';
+            el.setAttribute('data-qa-highlight', 'true');
+        """
+        try:
+            driver.execute_script("""
+                document.querySelectorAll('[data-qa-highlight="true"]').forEach(function(n) {{
+                    n.style.outline = ''; n.style.boxShadow = '';
+                    n.style.backgroundColor = ''; n.style.position = '';
+                    n.style.zIndex = ''; n.removeAttribute('data-qa-highlight');
+                }});
+            """)
+        except Exception:
+            pass
+        driver.execute_script(script_resaltado, el)
+
         if pause > 0:
             sleep(pause)
-        return el, prev
 
-    return _do_with_refetch(driver, wait, xpath, visible=visible, func=_op, max_retries=3)
+        return el, prev_style
+
+    except Exception as e:
+        logging.warning(f"No se pudo resaltar el elemento {xpath}: {e}")
+        return None, None
 
 
 # ============================================================
@@ -990,7 +1076,7 @@ def ui_validate_text(
             _restore_outline(driver, el, prev_outline)
 
 
-ActionType = Literal["click", "insertTxt", "getValue", "highlight", "assertNotVisible"]
+ActionType = Literal["click", "insertTxt", "insertTxtTab", "getValue", "highlight", "assertNotVisible"]
 
 def ui_interact(
     driver: WebDriver,
@@ -999,7 +1085,7 @@ def ui_interact(
     nombre_elemento: str = "Elemento",
     valor: Optional[str] = None,
     iframe_xpath: Optional[str] = None,
-    timeout: int = 15,
+    timeout: int = 60,
     borde_css: str = "4px solid #00FF00",
     usar_click_js_si_falla: bool = True,
     usar_js_para_input: bool = True,
@@ -1016,17 +1102,23 @@ def ui_interact(
 
     try:
         _switch_into_iframe_if_needed(driver, wait, iframe_xpath)
+        _restore_outline(driver)
 
         if accion == "assertNotVisible":
             _wait_overlays(driver)
             elementos = driver.find_elements(By.XPATH, xPath_elemento)
             visibles = [e for e in elementos if e.is_displayed()]
-            
+
             if visibles:
                 el_error = visibles[0]
                 try:
-                    driver.execute_script("arguments[0].style.outline='6px solid #FF0000';", el_error)
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el_error)
+                    driver.execute_script("""
+                        var el = arguments[0];
+                        el.style.outline = '6px solid #FF0000';
+                        el.style.boxShadow = '0 0 0 4px #FF0000';
+                        el.setAttribute('data-qa-highlight', 'true');
+                        el.scrollIntoView({block: 'center'});
+                    """, el_error)
                 except Exception:
                     pass
                 msg = f"FALLO DEL TEST: Apareció el mensaje/pop-up inesperado '{nombre_elemento}'. XPATH: {xPath_elemento}"
@@ -1036,7 +1128,7 @@ def ui_interact(
                 take_global_evidence(driver, accion, nombre_elemento, usar_create_screenshot, screenshot_step)
                 return True
 
-        if accion in ["click", "insertTxt"]:
+        if accion in ["click", "insertTxt", "insertTxtTab"]:
             wait.until(EC.element_to_be_clickable((By.XPATH, xPath_elemento)))
         else:
             wait.until(EC.visibility_of_element_located((By.XPATH, xPath_elemento)))
@@ -1048,9 +1140,11 @@ def ui_interact(
         )
 
         if accion == "click":
+            time.sleep(0.2)
             take_global_evidence(driver, accion, nombre_elemento, usar_create_screenshot, screenshot_step)
             try:
                 _do_with_refetch(driver, wait, xPath_elemento, visible=True, func=lambda e: e.click(), max_retries=2)
+                hide_material_tooltips(driver, blur_active=True)
                 return el
             except (ElementClickInterceptedException, ElementNotInteractableException, StaleElementReferenceException):
                 try:
@@ -1059,6 +1153,7 @@ def ui_interact(
                         func=lambda e: ActionChains(driver).move_to_element(e).pause(0.1).click(e).perform(),
                         max_retries=2
                     )
+                    hide_material_tooltips(driver, blur_active=True)
                     return el
                 except Exception:
                     if usar_click_js_si_falla:
@@ -1067,6 +1162,7 @@ def ui_interact(
                             func=lambda e: driver.execute_script("arguments[0].click();", e),
                             max_retries=2
                         )
+                        hide_material_tooltips(driver, blur_active=True)
                         return el
 
                     snap = take_global_evidence(driver, "click_error", nombre_elemento, usar_create_screenshot, screenshot_step) or _screenshot(driver, "click_error")
@@ -1075,7 +1171,7 @@ def ui_interact(
                     logging.error(msg)
                     raise AssertionError(msg)
 
-        elif accion == "insertTxt":
+        elif accion in ["insertTxt", "insertTxtTab"]:
             if valor is None:
                 raise AssertionError(f'Para "insertTxt" debes proporcionar `valor` para "{nombre_elemento}".')
 
@@ -1109,7 +1205,15 @@ def ui_interact(
                     """, e, valor),
                     max_retries=3
                 )
-            
+            if accion == "insertTxtTab":
+                _do_with_refetch(
+                    driver, wait, xPath_elemento, visible=True,
+                    func=lambda e: e.send_keys(Keys.TAB),
+                    max_retries=2
+                )
+                time.sleep(0.2)
+
+            hide_material_tooltips(driver, blur_active=True)
             take_global_evidence(driver, accion, nombre_elemento, usar_create_screenshot, screenshot_step)
             return el
 
@@ -1124,7 +1228,7 @@ def ui_interact(
             value = _do_with_refetch(driver, wait, xPath_elemento, visible=True, func=_get_value, max_retries=2)
             take_global_evidence(driver, accion, nombre_elemento, usar_create_screenshot, screenshot_step)
             return value
-        
+
         elif accion == "highlight":
             take_global_evidence(driver, accion, nombre_elemento, usar_create_screenshot, screenshot_step)
             return el
@@ -1146,6 +1250,68 @@ def ui_interact(
             pass
         if cleanup_al_final:
             ui_cleanup_state(driver)
+
+def ui_highlight_no_scroll(
+    driver: WebDriver,
+    xpath: str,
+    nombre_elemento: str = "Elemento_Efimero",
+    timeout: int = 5,
+    borde_css: str = "4px solid #FF5733",
+    restaurar_borde: bool = True,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None
+):
+    """
+    Resalta un elemento en pantalla y toma evidencia SIN ejecutar scrollIntoView.
+    Ideal para tooltips, popovers o elementos gráficos (como ApexCharts) que
+    desaparecen si el navegador detecta un evento de scroll.
+    """
+    wait = WebDriverWait(driver, timeout)
+    el = None
+
+    try:
+        el = wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
+        time.sleep(0.3)
+
+        color = borde_css.split()[-1] if len(borde_css.split()) > 0 else "#FF5733"
+        script_resaltado = f"""
+            var el = arguments[0];
+            el.dataset.prevOutline = el.style.outline || '';
+            el.dataset.prevBoxShadow = el.style.boxShadow || '';
+            el.dataset.prevZIndex = el.style.zIndex || '';
+            el.style.outline = '{borde_css}';
+            el.style.boxShadow = '0 0 0 4px {color}';
+            el.style.zIndex = '99999';
+        """
+        driver.execute_script(script_resaltado, el)
+
+        take_global_evidence(
+            driver=driver,
+            default_step="highlight_no_scroll",
+            nombre_elemento=nombre_elemento,
+            usar_create_screenshot=usar_create_screenshot,
+            screenshot_step=screenshot_step
+        )
+
+    except TimeoutException as e:
+        msg = f"El elemento '{nombre_elemento}' no se hizo visible para resaltar sin scroll. XPath: {xpath}"
+        logging.error(msg)
+        raise AssertionError(msg) from e
+
+    finally:
+        if restaurar_borde and el:
+            try:
+                driver.execute_script("""
+                    var el = arguments[0];
+                    if (el && el.dataset) {
+                        el.style.outline = el.dataset.prevOutline || '';
+                        el.style.boxShadow = el.dataset.prevBoxShadow || '';
+                        el.style.zIndex = el.dataset.prevZIndex || '';
+                    }
+                """, el)
+            except Exception:
+                pass
+
 
 def ui_menu_action(
     driver: WebDriver,
@@ -1631,9 +1797,24 @@ def ui_validate_flatpickr_future_disabled(
 def _mark_element(driver, el):
     driver.execute_script(
         "arguments[0].style.outline='2px solid #00A000';"
-        "arguments[0].style.outlineOffset='2px';",
+        "arguments[0].style.outlineOffset='2px';"
+        "arguments[0].setAttribute('data-qa-highlight', 'true');",
         el
     )
+
+
+def _unmark_element(driver, el):
+    """Limpia el enmarcado inyectado por _mark_element."""
+    if el is None:
+        return
+    try:
+        driver.execute_script(
+            "arguments[0].style.outline='';"
+            "arguments[0].style.outlineOffset='';",
+            el
+        )
+    except Exception:
+        pass
 
 def _mark_by_xpath(driver, xpath: str, timeout: int = 3):
     el = WebDriverWait(driver, timeout).until(EC.visibility_of_element_located((By.XPATH, xpath)))
@@ -2020,6 +2201,193 @@ def ui_upload_file(
         return False
 
 # @staticmethod
+def click_angular_menu(
+    driver,
+    root_xpath,
+    option_xpath,
+    nombre_elemento="Opcion_Menu_Angular",
+    timeout=15,
+    usar_create_screenshot=False,
+    screenshot_step=None
+):
+    """
+    Abre un menú Angular Material con clic JS directo y selecciona la opción del overlay.
+    Evita ActionChains para no cerrar el overlay de Angular prematuramente.
+    """
+    wait = WebDriverWait(driver, timeout)
+    try:
+        root_btn = wait.until(EC.element_to_be_clickable((By.XPATH, root_xpath)))
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center', inline:'center'});", root_btn
+        )
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", root_btn)
+
+        wait.until(EC.visibility_of_element_located((By.XPATH, option_xpath)))
+        time.sleep(0.2)
+
+        option_btn = driver.find_element(By.XPATH, option_xpath)
+        driver.execute_script("arguments[0].style.outline='4px solid lime';", option_btn)
+
+        take_global_evidence(driver, "click_angular_menu", nombre_elemento, usar_create_screenshot, screenshot_step)
+        driver.execute_script("arguments[0].click();", option_btn)
+        return True
+
+    except Exception as e:
+        take_global_evidence(driver, "error_angular_menu", nombre_elemento, usar_create_screenshot, screenshot_step)
+        raise AssertionError(f"No fue posible seleccionar opción Angular: {option_xpath}") from e
+
+
+def hover_root_and_click_submenu(
+    driver,
+    root_xpath: str,
+    submenu_click_xpath: str,
+    timeout: int = 15,
+    mark_root: bool = True,
+    mark_submenu: bool = True,
+    pause: float = 0.35,
+    nombre_elemento: str = "Submenu_Opcion",
+    usar_create_screenshot: bool = False,
+    screenshot_step: str = None
+):
+    """Hover sobre elemento raíz (menú de 3 puntos, etc.) y clic en el submenú desplegado."""
+    wait = WebDriverWait(driver, timeout)
+    try:
+        root = wait.until(EC.visibility_of_element_located((By.XPATH, root_xpath)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", root)
+        time.sleep(0.2)
+
+        if mark_root:
+            try:
+                _mark_element(driver, root)
+            except StaleElementReferenceException:
+                try:
+                    root = wait.until(EC.visibility_of_element_located((By.XPATH, root_xpath)))
+                    _mark_element(driver, root)
+                except Exception:
+                    pass
+
+        try:
+            ActionChains(driver).move_to_element(root).pause(pause).perform()
+        except Exception:
+            try:
+                driver.execute_script("""
+                    arguments[0].dispatchEvent(new MouseEvent('mouseenter', {bubbles:true}));
+                    arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles:true}));
+                    arguments[0].dispatchEvent(new MouseEvent('mousemove', {bubbles:true}));
+                """, root)
+            except Exception:
+                pass
+
+        sub = wait.until(EC.visibility_of_element_located((By.XPATH, submenu_click_xpath)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", sub)
+        time.sleep(0.2)
+
+        if mark_submenu:
+            try:
+                _mark_element(driver, sub)
+            except StaleElementReferenceException:
+                try:
+                    sub = wait.until(EC.visibility_of_element_located((By.XPATH, submenu_click_xpath)))
+                    _mark_element(driver, sub)
+                except Exception:
+                    pass
+
+        take_global_evidence(driver, "hover_root_click_submenu", nombre_elemento, usar_create_screenshot, screenshot_step)
+        _restore_outline(driver)
+
+        for click_fn in [
+            lambda: ActionChains(driver).move_to_element(
+                wait.until(EC.visibility_of_element_located((By.XPATH, submenu_click_xpath)))
+            ).pause(0.15).click(
+                wait.until(EC.visibility_of_element_located((By.XPATH, submenu_click_xpath)))
+            ).perform(),
+            lambda: wait.until(EC.element_to_be_clickable((By.XPATH, submenu_click_xpath))).click(),
+            lambda: driver.execute_script(
+                "arguments[0].click();",
+                wait.until(EC.visibility_of_element_located((By.XPATH, submenu_click_xpath)))
+            ),
+        ]:
+            try:
+                click_fn()
+                return True
+            except Exception:
+                pass
+
+        raise AssertionError(
+            f"No se pudo dar click en el submenú. "
+            f"root_xpath={root_xpath} submenu_click_xpath={submenu_click_xpath}"
+        )
+
+    except TimeoutException:
+        raise AssertionError(
+            f"No se pudo ejecutar hover raíz y click submenú. "
+            f"root_xpath={root_xpath} submenu_click_xpath={submenu_click_xpath}"
+        )
+
+
+def ui_select_mat_option(
+    driver: WebDriver,
+    mat_select_xpath: str,
+    option_text: str,
+    nombre_elemento: str = "Mat_Select",
+    timeout: int = 15,
+    borde_css: str = "4px solid #00FF00",
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+) -> bool:
+    """Selecciona una opción de un mat-select / mat-option de Angular Material."""
+    wait = WebDriverWait(driver, timeout)
+    prev_outline = None
+
+    try:
+        _wait_overlays(driver)
+        el, prev_outline = _center_and_highlight_stalesafe(
+            driver, wait, mat_select_xpath, outline_css=borde_css, pause=0.2, visible=True
+        )
+
+        try:
+            wait.until(EC.element_to_be_clickable((By.XPATH, mat_select_xpath))).click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", el)
+
+        option_xpath = (
+            "//div[contains(@class,'cdk-overlay-pane')]"
+            "//mat-option[.//span[normalize-space(.)='{0}'] or normalize-space(.)='{0}']"
+        ).format(option_text)
+
+        option = wait.until(EC.element_to_be_clickable((By.XPATH, option_xpath)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", option)
+        driver.execute_script("""
+            var el = arguments[0];
+            el.style.outline = '4px solid #00FF00';
+            el.style.boxShadow = '0 0 0 4px #00FF00';
+            el.setAttribute('data-qa-highlight', 'true');
+        """, option)
+
+        take_global_evidence(driver, "select_mat_option", nombre_elemento, usar_create_screenshot, screenshot_step)
+
+        try:
+            option.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", option)
+
+        time.sleep(0.3)
+        return True
+
+    except TimeoutException as e:
+        raise AssertionError(
+            f"No se pudo seleccionar '{option_text}' en '{nombre_elemento}'. XPATH: {mat_select_xpath}"
+        ) from e
+
+    finally:
+        try:
+            if prev_outline is not None:
+                _restore_outline(driver)
+        except Exception:
+            pass
+
+
 def ui_open_new_tab(driver, url):
     """Abre una nueva pestaña y cambia el foco a ella"""
     driver.execute_script(f"window.open('{url}', '_blank');")
@@ -2139,3 +2507,515 @@ def ui_simulate_session_timeout(driver: WebDriver):
     driver.delete_all_cookies()
     driver.execute_script("window.localStorage.clear(); window.sessionStorage.clear();")
     logging.info("✓ Sesión expirada mediante limpieza de cookies/storage.")
+
+
+def ui_validate_not_editable(
+    driver: WebDriver,
+    xPath_elemento: str,
+    nombre_elemento: str = "Elemento_No_Editable",
+    timeout: int = 15,
+    borde_ok_css: str = "4px solid #00FF00",
+    borde_error_css: str = "4px solid #FF0000",
+    restaurar_borde: bool = False,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+) -> bool:
+    """
+    Valida que un elemento NO permita edición.
+
+    Se considera NO editable si tiene `disabled`, `readonly`, `aria-disabled=true`
+    o `is_enabled() == False`. Lanza AssertionError si el elemento sí permite edición.
+    """
+    wait = WebDriverWait(driver, timeout)
+    el = None
+
+    try:
+        wait.until(EC.presence_of_element_located((By.XPATH, xPath_elemento)))
+        _wait_overlays(driver)
+
+        el = wait.until(EC.presence_of_element_located((By.XPATH, xPath_elemento)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", el)
+        time.sleep(0.2)
+
+        elementos = driver.find_elements(By.XPATH, xPath_elemento)
+        if not elementos:
+            raise AssertionError(f'No se encontró el elemento "{nombre_elemento}". XPATH: {xPath_elemento}')
+        el = elementos[0]
+
+        disabled_attr  = (el.get_attribute("disabled")      or "").strip().lower()
+        readonly_attr  = (el.get_attribute("readonly")       or "").strip().lower()
+        aria_disabled  = (el.get_attribute("aria-disabled")  or "").strip().lower()
+        try:
+            enabled_state = el.is_enabled()
+        except Exception:
+            enabled_state = True
+
+        no_editable = (
+            disabled_attr in ("true", "disabled", "")
+            or readonly_attr in ("true", "readonly", "")
+            or aria_disabled == "true"
+            or not enabled_state
+        )
+
+        if no_editable:
+            driver.execute_script("""
+                var el = arguments[0];
+                el.style.outline = arguments[1];
+                el.style.boxShadow = '0 0 0 4px #00FF00';
+                el.style.backgroundColor = 'rgba(0, 255, 0, 0.15)';
+                el.style.position = 'relative';
+                el.style.zIndex = '9999';
+            """, el, borde_ok_css)
+            take_global_evidence(driver, "validate_not_editable_ok", nombre_elemento, usar_create_screenshot, screenshot_step)
+            logging.info(f'✓ El elemento "{nombre_elemento}" está inhabilitado / no editable.')
+            return True
+
+        driver.execute_script("""
+            var el = arguments[0];
+            el.style.outline = arguments[1];
+            el.style.boxShadow = '0 0 0 4px #FF0000';
+            el.style.backgroundColor = 'rgba(255, 0, 0, 0.15)';
+            el.style.position = 'relative';
+            el.style.zIndex = '9999';
+        """, el, borde_error_css)
+        take_global_evidence(driver, "validate_not_editable_error", nombre_elemento, usar_create_screenshot, screenshot_step)
+        raise AssertionError(
+            f'FALLO: El elemento "{nombre_elemento}" está habilitado para edición. XPATH: {xPath_elemento}'
+        )
+
+    except TimeoutException as e:
+        raise AssertionError(
+            f'El elemento "{nombre_elemento}" no estuvo disponible tras {timeout}s. XPATH: {xPath_elemento}'
+        ) from e
+
+    finally:
+        if restaurar_borde:
+            try:
+                _restore_outline(driver)
+            except Exception:
+                pass
+
+
+def mover_scroll_horizontal_derecha(
+    driver,
+    xpath_contenedor: str = "//div[contains(@class,'repeat-table-container')]",
+    pixeles: int = 600,
+    timeout: int = 10,
+) -> bool:
+    """Desplaza el scroll horizontal del contenedor hacia la derecha."""
+    wait = WebDriverWait(driver, timeout)
+    contenedor = wait.until(EC.presence_of_element_located((By.XPATH, xpath_contenedor)))
+    driver.execute_script(
+        "arguments[0].scrollLeft = arguments[0].scrollLeft + arguments[1];",
+        contenedor, pixeles
+    )
+    return True
+
+
+def create_screenshot_current_case(
+    *,
+    step: str,
+    label: str,
+    web_driver: Optional[WebDriver] = None,
+) -> Optional[str]:
+    """
+    Guarda la captura SIEMPRE en la carpeta de evidencias del caso en ejecución.
+
+    Prioridad:
+      1) _evidence_state.dir_name  → contexto del hilo actual
+      2) get_evidence_dir()        → contexto global del caso
+      3) Lanza ValueError si ninguno existe (no crea carpetas _unscoped)
+    """
+    if web_driver is None:
+        raise ValueError("create_screenshot_current_case requiere web_driver")
+    try:
+        target_dir = getattr(_evidence_state, "dir_name", "") or ""
+        if target_dir:
+            if not os.path.isabs(target_dir):
+                target_dir = os.path.join(BASE_DIR, "outputs", "evidences", target_dir)
+        else:
+            target_dir = get_evidence_dir()
+
+        if not target_dir:
+            raise ValueError(
+                "No hay un directorio de evidencias activo para el caso en ejecución. "
+                "Inicializa con set_evidence_case(...) o set_global_evidence_config(dir_name=...)."
+            )
+
+        os.makedirs(target_dir, exist_ok=True)
+        safe_step  = _sanitize_fs_name(step,  max_len=30)
+        safe_label = _sanitize_fs_name(label, max_len=70)
+        filename = f"{safe_step}_{safe_label}_{uuid.uuid4().hex[:8]}.png"
+        fpath = os.path.join(target_dir, filename)
+        ok = web_driver.save_screenshot(fpath)
+        return fpath if ok else None
+    except Exception as ex:
+        logging.warning(f"create_screenshot_current_case falló ({type(ex).__name__}): {ex}")
+        return None
+
+
+def ui_scroll_by_direction(
+    driver: WebDriver,
+    pixels: int,
+    direction: Literal["up", "down", "arriba", "abajo"] = "down",
+    *,
+    nombre_elemento: str = "Scroll_Pantalla",
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+    wait_after_scroll: float = 0.5,
+) -> bool:
+    """Desplaza la pantalla hacia arriba o abajo la cantidad de píxeles indicada."""
+    direction_norm = (direction or "").strip().lower()
+    pixels = abs(int(pixels))
+
+    if direction_norm in ("down", "abajo"):
+        scroll_pixels = pixels
+    elif direction_norm in ("up", "arriba"):
+        scroll_pixels = -pixels
+    else:
+        raise AssertionError("direction debe ser 'up', 'down', 'arriba' o 'abajo'.")
+
+    try:
+        driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_pixels)
+        if wait_after_scroll > 0:
+            time.sleep(wait_after_scroll)
+        take_global_evidence(driver, "scroll", nombre_elemento, usar_create_screenshot, screenshot_step)
+        return True
+    except Exception as e:
+        raise AssertionError(
+            f"No se pudo desplazar la pantalla hacia '{direction}' {pixels}px. Detalle: {e}"
+        )
+
+
+def simular_falla_de_red(driver) -> None:
+    """Desconecta la red simulando offline a través del Chrome DevTools Protocol."""
+    driver.execute_cdp_cmd("Network.enable", {})
+    driver.execute_cdp_cmd("Network.emulateNetworkConditions", {
+        "offline": True,
+        "latency": 0,
+        "downloadThroughput": 0,
+        "uploadThroughput": 0,
+    })
+
+
+def restaurar_conexion_red(driver) -> None:
+    """Restaura la red, limpia la caché de errores y apaga el protocolo CDP."""
+    for cmd, params in [
+        ("Network.clearBrowserCache", {}),
+        ("Network.emulateNetworkConditions", {
+            "offline": False, "latency": 0,
+            "downloadThroughput": -1, "uploadThroughput": -1,
+        }),
+        ("Network.disable", {}),
+    ]:
+        try:
+            driver.execute_cdp_cmd(cmd, params)
+        except Exception:
+            pass
+
+
+def ui_validar_alerta_nativa(
+    driver,
+    texto_esperado: str,
+    nombre_elemento: str = "Alerta",
+    window_title_contains: str = "",
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+    directorio_evidencia: Optional[str] = None,
+) -> str:
+    """
+    Valida el texto de una alerta nativa del navegador (window.alert) y la acepta.
+    Toma captura de pantalla del SO antes de aceptar si usar_create_screenshot=True.
+    """
+    WebDriverWait(driver, 5).until(EC.alert_is_present())
+    time.sleep(0.5)
+
+    if usar_create_screenshot and directorio_evidencia:
+        ruta_abs = (
+            directorio_evidencia
+            if os.path.isabs(directorio_evidencia)
+            else os.path.join(os.getcwd(), "outputs", "evidences", directorio_evidencia)
+        )
+        os.makedirs(ruta_abs, exist_ok=True)
+        nombre_archivo = f"{screenshot_step}_{nombre_elemento}.png"
+        import pyautogui as _pag
+        _pag.screenshot(os.path.join(ruta_abs, nombre_archivo))
+
+    alerta = Alert(driver)
+    texto_real = alerta.text
+    if texto_esperado not in texto_real:
+        alerta.accept()
+        raise AssertionError(
+            f"Alerta nativa inesperada. Esperado: '{texto_esperado}', Real: '{texto_real}'"
+        )
+    alerta.accept()
+    return texto_real
+
+
+# ============================================================
+# SHADOW DOM — Angular ShadowDom mode & Web Components
+# ============================================================
+
+def ui_click_shadow(
+    driver: WebDriver,
+    css_selector_final: str,
+    nombre_elemento: str = "Elemento Shadow",
+    timeout: int = 15,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+):
+    """
+    Hace clic en un elemento atravesando N niveles de Shadow DOM.
+
+    Usa el separador `>>` para Shadow DOM anidado:
+        "shadow-host >> inner-host >> button"
+
+    Si solo hay un nivel, pasa el CSS selector directamente sin separador.
+    La búsqueda es recursiva: si el selector no se encuentra directamente
+    en el nivel actual, busca en todos los shadowRoots descendientes.
+    """
+    time.sleep(1)
+    script_nuclear = """
+    const path = arguments[0].split('>>').map(s => s.trim());
+
+    function findInAllShadows(selector, root) {
+        let res = root.querySelector(selector);
+        if (res) return res;
+        const walkers = root.querySelectorAll('*');
+        for (const node of walkers) {
+            if (node.shadowRoot) {
+                res = findInAllShadows(selector, node.shadowRoot);
+                if (res) return res;
+            }
+        }
+        return null;
+    }
+
+    function findDeep(selectors) {
+        let currentRoot = document;
+        let element = null;
+        for (let i = 0; i < selectors.length; i++) {
+            element = currentRoot.querySelector(selectors[i]);
+            if (!element) {
+                element = findInAllShadows(selectors[i], currentRoot);
+            }
+            if (!element) return null;
+            if (i < selectors.length - 1) {
+                if (!element.shadowRoot) return null;
+                currentRoot = element.shadowRoot;
+            }
+        }
+        return element;
+    }
+
+    const target = findDeep(path);
+    if (target) { target.click(); return "EXITO"; }
+    return "FALLO";
+    """
+    try:
+        resultado = driver.execute_script(script_nuclear, css_selector_final)
+        if resultado == "EXITO":
+            take_global_evidence(driver, "click", nombre_elemento, usar_create_screenshot, screenshot_step)
+            return True
+        take_global_evidence(driver, "click_error", nombre_elemento, usar_create_screenshot, screenshot_step)
+        msg = f"FALLO: No se encontró el elemento Shadow '{nombre_elemento}' con selector: {css_selector_final}"
+        logging.error(msg)
+        raise AssertionError(msg)
+    except AssertionError:
+        raise
+    except Exception as e:
+        take_global_evidence(driver, "error", nombre_elemento, usar_create_screenshot, screenshot_step)
+        raise AssertionError(f"Error crítico al interactuar con Shadow DOM: {e}") from e
+
+
+def ui_set_value_shadow(
+    driver: WebDriver,
+    css_selector_final: str,
+    valor: str,
+    nombre_elemento: str = "Input Shadow",
+    timeout: int = 15,
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+):
+    """
+    Inserta un valor en un input dentro de Shadow DOM.
+
+    Usa el separador `>>` igual que `ui_click_shadow`.
+    Dispara eventos `input` y `change` con `composed: true` para que
+    frameworks como Angular detecten el cambio en componentes reactivos.
+    """
+    time.sleep(0.5)
+    script_insercion = """
+    const pathRaw   = arguments[0];
+    const nuevoValor = arguments[1];
+    const parts     = pathRaw.split('>>').map(p => p.trim());
+
+    function findRecursive(selector, root) {
+        let el = root.querySelector(selector);
+        if (el) return el;
+        const walkers = root.querySelectorAll('*');
+        for (const node of walkers) {
+            if (node.shadowRoot) {
+                const found = findRecursive(selector, node.shadowRoot);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function navigateShadows(selectors) {
+        let currentRoot = document;
+        let element = null;
+        for (let i = 0; i < selectors.length; i++) {
+            element = findRecursive(selectors[i], currentRoot);
+            if (!element) return null;
+            if (i < selectors.length - 1) {
+                if (!element.shadowRoot) return null;
+                currentRoot = element.shadowRoot;
+            }
+        }
+        return element;
+    }
+
+    const input = navigateShadows(parts);
+    if (input) {
+        input.value = nuevoValor;
+        input.dispatchEvent(new Event('input',  { bubbles: true, composed: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        input.style.outline = '4px solid #00FF00';
+        return "EXITO";
+    }
+    return "FALLO";
+    """
+    try:
+        resultado = driver.execute_script(script_insercion, css_selector_final, str(valor))
+        if resultado == "EXITO":
+            take_global_evidence(driver, "set_value", nombre_elemento, usar_create_screenshot, screenshot_step)
+            return True
+        take_global_evidence(driver, "set_value_error", nombre_elemento, usar_create_screenshot, screenshot_step)
+        msg = f"FALLO: No se encontró el input Shadow '{nombre_elemento}' con path: {css_selector_final}"
+        logging.error(msg)
+        raise AssertionError(msg)
+    except AssertionError:
+        raise
+    except Exception as e:
+        take_global_evidence(driver, "error_critico", nombre_elemento, usar_create_screenshot, screenshot_step)
+        raise AssertionError(f"Error crítico en Shadow DOM al setear valor: {e}") from e
+
+
+def pierce_shadow(
+    driver: WebDriver,
+    host_locator: str,
+    inner_css: str,
+    *,
+    timeout: float = 10.0,
+) -> Any:
+    """
+    Accede a un elemento dentro de un Shadow Root.
+
+    Soporta:
+      • Angular con ViewEncapsulation.ShadowDom (shadowRoot real).
+      • Web Components nativos.
+
+    Args:
+        driver:        WebDriver activo.
+        host_locator:  XPath o CSS selector del host del Shadow Root.
+                       Si empieza con '/' o '//' se interpreta como XPath;
+                       en caso contrario, como CSS selector.
+        inner_css:     CSS selector del elemento dentro del shadowRoot
+                       (relativo al shadowRoot, no al documento).
+        timeout:       Segundos de espera para que el host sea visible.
+
+    Returns:
+        WebElement dentro del Shadow Root.
+
+    Raises:
+        TimeoutException:  Si el host no aparece en el tiempo dado.
+        RuntimeError:      Si el host no tiene shadowRoot o el inner no se encuentra.
+    """
+    # Localizar el host
+    if host_locator.startswith("/") or host_locator.startswith("("):
+        by, value = By.XPATH, host_locator
+    else:
+        by, value = By.CSS_SELECTOR, host_locator
+
+    host_el = WebDriverWait(driver, timeout).until(
+        EC.presence_of_element_located((by, value))
+    )
+
+    shadow_root = driver.execute_script("return arguments[0].shadowRoot", host_el)
+    if shadow_root is None:
+        # Emulated ViewEncapsulation (Angular) — no hay shadowRoot real,
+        # el elemento es accesible normalmente desde el documento.
+        logging.debug(
+            f"pierce_shadow: host '{host_locator}' no tiene shadowRoot real "
+            "(Angular Emulated). Buscando en documento normal."
+        )
+        return WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, inner_css))
+        )
+
+    # shadowRoot real — buscar dentro
+    el = driver.execute_script(
+        "return arguments[0].querySelector(arguments[1])",
+        shadow_root, inner_css,
+    )
+    if el is None:
+        raise RuntimeError(
+            f"pierce_shadow: no se encontró '{inner_css}' dentro del shadowRoot de '{host_locator}'"
+        )
+    return el
+
+
+def ui_interact_shadow(
+    driver: WebDriver,
+    host_locator: str,
+    inner_css: str,
+    accion: str = "click",
+    *,
+    valor: Optional[str] = None,
+    nombre_elemento: str = "shadow_element",
+    usar_create_screenshot: bool = False,
+    screenshot_step: Optional[str] = None,
+    timeout: float = 10.0,
+) -> None:
+    """
+    Interactúa con un elemento dentro de Shadow DOM generando evidencia opcional.
+
+    Args:
+        driver:                 WebDriver activo.
+        host_locator:           Selector del Shadow host (XPath o CSS).
+        inner_css:              CSS selector del elemento dentro del shadowRoot.
+        accion:                 'click' | 'insertTxt' | 'clear'.
+        valor:                  Texto a insertar (solo para accion='insertTxt').
+        nombre_elemento:        Nombre para el reporte de evidencia.
+        usar_create_screenshot: True para tomar captura de pantalla.
+        screenshot_step:        Identificador del paso para la evidencia.
+        timeout:                Segundos de espera para localización del host.
+    """
+    el = pierce_shadow(driver, host_locator, inner_css, timeout=timeout)
+
+    if accion == "click":
+        try:
+            el.click()
+        except (ElementClickInterceptedException, ElementNotInteractableException):
+            driver.execute_script("arguments[0].click()", el)
+
+    elif accion == "insertTxt":
+        el.clear()
+        if valor is not None:
+            el.send_keys(str(valor))
+
+    elif accion == "clear":
+        el.clear()
+
+    else:
+        logging.warning(f"ui_interact_shadow: acción desconocida '{accion}'")
+
+    take_global_evidence(
+        driver,
+        screenshot_step or "01_shadow",
+        nombre_elemento,
+        usar_create_screenshot,
+        screenshot_step,
+    )

@@ -7,6 +7,6 @@ from __future__ import annotations
 
 import importlib
 
-puppeteer_script_converter = importlib.import_module("core.puppeteer_script_converter")
-video_recorder = importlib.import_module("core.video_recorder")
-step_by_step_converter = importlib.import_module("core.step_by_step_converter")
+puppeteer_script_converter = importlib.import_module("core.ui_automation.puppeteer_script_converter")
+video_recorder = importlib.import_module("core.ui_automation.video_recorder")
+step_by_step_converter = importlib.import_module("core.ui_automation.step_by_step_converter")

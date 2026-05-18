@@ -382,19 +382,25 @@ class EvidenceManager:
     def capture_failure(context, step):
         if not (step.status == "failed" and hasattr(context, 'driver') and context.driver and context.generate_evidence):
             return
-            
+
         try:
             if not hasattr(context, 'evidence_dir'):
                 context.evidence_dir = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 os.makedirs(os.path.join(DirectoryManager.get_base_dir(), 'outputs', 'evidences', context.evidence_dir), exist_ok=True)
-            
+
             evidence_dir = os.path.join(DirectoryManager.get_base_dir(), 'outputs', 'evidences', context.evidence_dir)
             step_name = BaseUtils.sanitize_filename(step.name)[:30]
             timestamp = datetime.now().strftime('%H%M%S')
-            
+
+            # Limpiar tooltips y overlays de Angular Material para no obstruir la captura de fallo
+            try:
+                bf.hide_material_tooltips(context.driver)
+            except Exception:
+                pass
+
             screenshot_name = f"FAIL_{timestamp}_{step_name}.png"
             screenshot_path = os.path.join(evidence_dir, screenshot_name)
-            
+
             try:
                 context.driver.save_screenshot(screenshot_path)
                 if not os.path.exists(screenshot_path) or os.path.getsize(screenshot_path) == 0:
@@ -404,13 +410,13 @@ class EvidenceManager:
                 screenshot_path = os.path.join(evidence_dir, screenshot_name)
                 context.driver.save_screenshot(screenshot_path)
                 logging.error(f"Captura guardada con nombre corto: {screenshot_path}")
-            
+
             logging.info(f"Captura de fallo guardada correctamente en: {screenshot_path}")
-            
+
             if not hasattr(context, 'failure_screenshots'):
                 context.failure_screenshots = {}
             context.failure_screenshots[step.name] = screenshot_name
-            
+
         except Exception as e:
             logging.error(f"Error crítico al guardar captura: {str(e)}")
 
@@ -452,6 +458,7 @@ class StatsManager:
 
 class ReportManager:
     """Generación de Reportes PDF"""
+    
     @staticmethod
     def generate_scenario_report(context, scenario, end_time, failure_screenshots=None):
         if not context.generate_evidence:
@@ -463,7 +470,7 @@ class ReportManager:
                 scenario.name,
                 context.start_time.strftime('%Y-%m-%d_%H-%M-%S'),
                 end_time.strftime('%Y-%m-%d_%H-%M-%S'),
-                screenshots=None
+                screenshots=failure_screenshots
             )
             logging.info(f"✓ Reporte PDF de escenario generado: {scenario.name}")
         except Exception as e:
@@ -473,10 +480,26 @@ class ReportManager:
     @staticmethod
     def generate_consolidated_report(context):
         evidence_env = os.getenv("GENERATE_EVIDENCE", "false").lower()
+        
+        # 1. Obtenemos el total de escenarios ejecutados usando tu StatsManager
+        total_scenarios = 0
+        if hasattr(context, '_runner') and hasattr(context._runner, 'summary'):
+            stats = context._runner.summary
+            total_scenarios = stats.get('scenarios_passed', 0) + \
+                              stats.get('scenarios_failed', 0) + \
+                              stats.get('scenarios_skipped', 0)
+
+        # 2. Evaluamos la condición
         if evidence_env == "true" and hasattr(context, 'all_feature_logs') and context.all_feature_logs:
-            logging.info("Generando reporte PDF consolidado...")
+            
+            # Lógica de decisión: ¿Fue 1 escenario o fueron varios?
+            if total_scenarios <= 1:
+                logging.info(f"Ejecución de un solo escenario ({total_scenarios}). Se omite la generación del reporte consolidado.")
+                return # Salimos temprano, ya tiene su reporte de escenario
+                
+            logging.info(f"Se ejecutaron {total_scenarios} escenarios. Generando reporte PDF consolidado...")
             try:
                 reporte_final = PDFFeatureReport.generate_consolidated_report(context.all_feature_logs)
-                logging.info(f"Reporte consolidado listo: {reporte_final}")
+                logging.info(f"✓ Reporte consolidado listo: {reporte_final}")
             except Exception as e:
                 logging.error(f"Fallo al generar reporte consolidado: {str(e)}")

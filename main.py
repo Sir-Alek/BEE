@@ -10,11 +10,11 @@ try:
     PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
     ScreenRecorder = video_recorder.ScreenRecorder
     PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
-except ImportError:
+    except ImportError:
     try:
-        from core.puppeteer_script_converter import PuppeteerToBehaveConverter
-        from core.video_recorder import ScreenRecorder
-        from core.step_by_step_converter import PuppeteerToStepByStepConverter
+        from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
+        from core.ui_automation.video_recorder import ScreenRecorder
+        from core.ui_automation.step_by_step_converter import PuppeteerToStepByStepConverter
     except ImportError:
         class PuppeteerToBehaveConverter:
             def __init__(self, *args, **kwargs):
@@ -773,7 +773,7 @@ class main:
 
                     # Ejecutar Puppeteer/Node recorder.js
                     if IS_FROZEN:
-                        from core.node_wrapper import node_wrapper
+                        from core.ui_automation.node_wrapper import node_wrapper
 
                         jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (solo la primera vez)"})
                         try:
@@ -790,9 +790,9 @@ class main:
                         )
                     else:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
-                        from core.recorder_focus import run_subprocess_with_automation_focus
+                        from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
-                        recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+                        recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "recorder.js")
 
                         result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, url],
@@ -832,7 +832,7 @@ class main:
                 finally:
                     if IS_FROZEN:
                         try:
-                            from core.node_wrapper import node_wrapper
+                            from core.ui_automation.node_wrapper import node_wrapper
 
                             node_wrapper.cleanup()
                         except Exception:
@@ -948,7 +948,7 @@ class main:
             # Ejecutar diferente según el modo
             if IS_FROZEN:
                 # En modo empaquetado, usar el wrapper ofuscado
-                from core.node_wrapper import node_wrapper
+                from core.ui_automation.node_wrapper import node_wrapper
                 result = node_wrapper.run_obfuscated_js(
                     "recorder.js",
                     [output_file, url],
@@ -956,9 +956,9 @@ class main:
                     focus_automation_browser=True,
                 )
             else:
-                from core.recorder_focus import run_subprocess_with_automation_focus
+                from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
-                recorder_js_path = os.path.join(self.base_dir, "core", "recorder.js")
+                recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "recorder.js")
                 result = run_subprocess_with_automation_focus(
                     ["node", recorder_js_path, output_file, url],
                     cwd=self.base_dir,
@@ -991,7 +991,7 @@ class main:
             # Limpiar recursos
             if IS_FROZEN:
                 # Importar y limpiar solo si está en modo empaquetado
-                from core.node_wrapper import node_wrapper
+                from core.ui_automation.node_wrapper import node_wrapper
                 node_wrapper.cleanup()
             else:
                 # En modo desarrollo, no hay recursos ofuscados que limpiar

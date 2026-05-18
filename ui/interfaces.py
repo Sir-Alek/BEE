@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional, Protocol, Sequence, TypedDict
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, TypedDict
 
 
 class ActionItem(TypedDict):
@@ -38,6 +38,37 @@ class IUI(Protocol):
 
     def pick_actions(self, actions: Sequence[ActionItem]) -> Sequence[str]:
         """Devuelve una lista de `original_line` seleccionadas (puede ser vacía)."""
+
+    def pick_conversion_mode(self) -> str:
+        """
+        Pregunta al usuario si desea convertir una sola grabación o agrupar varias.
+        Devuelve 'single' o 'grouped'. Nunca devuelve None.
+        """
+
+    def pick_scripts_multi(self, scripts: Sequence[str], project_name: str) -> Sequence[str]:
+        """
+        Selección múltiple de scripts para agrupación.
+        Devuelve lista de nombres seleccionados (mínimo 2). Lista vacía = cancelación.
+        """
+
+    def pick_feature_name(self, suggested: str) -> Optional[str]:
+        """
+        Pide al usuario un nombre para el Feature agrupado.
+        Devuelve el nombre sanitizado o None si cancela.
+        """
+
+    def grouped_feature_review(
+        self,
+        *,
+        feature_text: str,
+        script_names: Sequence[str],
+        background_count: int,
+    ) -> Dict[str, Any]:
+        """
+        Revisión del .feature agrupado antes de escribirlo.
+        Devuelve {"action": "accept", "feature_text": str}.
+        Lanza BDDUserCancelled si el usuario cierra la ventana.
+        """
 
     # ----- Mensajes -----
     def info(self, title: str, message: str) -> None:

@@ -436,6 +436,163 @@ let actionRecorder = null;
         return '/' + parts.join('/');
       }
 
+      // ── Self-Healing: Fingerprint semántico estable del elemento ──────────────
+      function getElementFingerprint(el) {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return {};
+        const STABLE_ATTRS = [
+          'data-testid', 'data-qa', 'data-cy', 'data-test', 'data-id',
+          'data-name', 'aria-label', 'aria-labelledby', 'aria-describedby',
+          'aria-placeholder', 'aria-controls'
+        ];
+        const data_attrs = {};
+        for (const attr of STABLE_ATTRS) {
+          const val = el.getAttribute(attr);
+          if (val) data_attrs[attr] = val;
+        }
+        // Filtrar clases generadas por Angular y frameworks (volátiles)
+        const all_classes = (el.className && typeof el.className === 'string')
+          ? el.className.trim().split(/\s+/)
+          : [];
+        const stable_classes = all_classes
+          .filter(c => c && !/^ng[A-Z-]|_ng[a-z]|^cdk-|^\d|mat-mdc-/.test(c))
+          .slice(0, 5);
+        return {
+          role:          el.getAttribute('role') || el.tagName.toLowerCase(),
+          aria_label:    el.getAttribute('aria-label') || '',
+          text_content:  ((el.innerText || el.textContent || '').trim()).slice(0, 80),
+          classes_stable: stable_classes,
+          data_attrs,
+          name_attr:    el.getAttribute('name')        || null,
+          type_attr:    el.getAttribute('type')        || null,
+          placeholder:  el.getAttribute('placeholder') || null,
+          value_attr:   el.getAttribute('value')       || null,
+        };
+      }
+
+      // ── Self-Healing: Cadena de ancestros semánticos ──────────────────────────
+      function getAncestorChain(el, maxDepth) {
+        maxDepth = maxDepth || 4;
+        const ancestors = [];
+        let current = el.parentElement;
+        let depth = 0;
+        while (current && current !== document.body && current !== document.documentElement && depth < maxDepth) {
+          const all_classes = (current.className && typeof current.className === 'string')
+            ? current.className.trim().split(/\s+/)
+            : [];
+          const stable_classes = all_classes
+            .filter(c => c && !/^ng[A-Z-]|_ng[a-z]|^cdk-|\d{4,}/.test(c))
+            .slice(0, 3);
+          ancestors.push({
+            tag:          current.tagName.toLowerCase(),
+            id:           current.id || null,
+            role:         current.getAttribute('role')       || null,
+            aria_label:   current.getAttribute('aria-label') || null,
+            data_testid:  current.getAttribute('data-testid') || null,
+            classes_stable: stable_classes,
+          });
+          // Salir si encontramos un landmark claro (no seguir subiendo)
+          if (current.id || current.getAttribute('role') || current.getAttribute('data-testid')) {
+            break;
+          }
+          current = current.parentElement;
+          depth++;
+        }
+        return ancestors;
+      }
+
+      // ── Self-Healing: Detección de Shadow DOM (Angular ShadowDom mode) ────────
+      function detectShadow(composedPath) {
+        composedPath = composedPath || [];
+        let shadowDepth = 0;
+        let hostSelector = null;
+        let hostXPath    = null;
+        let innerSelector = null;
+        for (let i = 0; i < composedPath.length; i++) {
+          const node = composedPath[i];
+          if (node && node.nodeType === 11) { // nodeType 11 = ShadowRoot
+            shadowDepth++;
+            if (!hostSelector) {
+              const host = node.host;
+              if (host) {
+                if (host.id) {
+                  hostSelector = '#' + CSS.escape(host.id);
+                } else if (host.getAttribute('data-testid')) {
+                  hostSelector = '[data-testid="' + host.getAttribute('data-testid') + '"]';
+                } else if (host.getAttribute('aria-label')) {
+                  hostSelector = host.tagName.toLowerCase() + '[aria-label="' + host.getAttribute('aria-label') + '"]';
+                } else {
+                  hostSelector = host.tagName.toLowerCase();
+                }
+                hostXPath = getXPathForElement(host);
+              }
+            }
+          }
+          // Capturar selector del elemento justo antes del primer ShadowRoot
+          if (shadowDepth > 0 && node && node.nodeType === Node.ELEMENT_NODE && !innerSelector) {
+            if (node.id) {
+              innerSelector = '#' + CSS.escape(node.id);
+            } else if (node.getAttribute('data-testid')) {
+              innerSelector = '[data-testid="' + node.getAttribute('data-testid') + '"]';
+            } else if (node.getAttribute('aria-label')) {
+              innerSelector = node.tagName.toLowerCase() + '[aria-label="' + node.getAttribute('aria-label') + '"]';
+            }
+          }
+        }
+        return {
+          is_shadow_child: shadowDepth > 0,
+          host_selector:   hostSelector,
+          host_xpath:      hostXPath,
+          inner_selector:  innerSelector,
+          depth:           shadowDepth,
+        };
+      }
+
+      // ── Self-Healing: DOM podado alrededor del elemento interactuado ──────────
+      function getPrunedDOM(el, maxAncestorDepth, maxBytes) {
+        maxAncestorDepth = maxAncestorDepth || 2;
+        maxBytes         = maxBytes         || 4096;
+        try {
+          // Subir N niveles para obtener el contenedor relevante
+          let root = el;
+          for (let i = 0; i < maxAncestorDepth; i++) {
+            const p = root.parentElement;
+            if (p && p !== document.body && p !== document.documentElement) {
+              root = p;
+            } else {
+              break;
+            }
+          }
+          const clone = root.cloneNode(true);
+          // Eliminar nodos que no aportan contexto semántico
+          ['script', 'style', 'svg', 'iframe', 'noscript', 'canvas', 'video', 'audio'].forEach(tag => {
+            clone.querySelectorAll(tag).forEach(function(n) { n.remove(); });
+          });
+          // Podar atributos generados (Angular, frameworks)
+          const PRUNE_ATTR_RE = /_ngcontent|_nghost|ng-version|__ngContext|ng-reflect|data-v-[0-9a-f]/;
+          clone.querySelectorAll('*').forEach(function(node) {
+            const toRemove = [];
+            Array.from(node.attributes).forEach(function(attr) {
+              if (PRUNE_ATTR_RE.test(attr.name)) {
+                toRemove.push(attr.name);
+              } else if (attr.name === 'class') {
+                const pruned = attr.value.trim().split(/\s+/)
+                  .filter(function(c) { return c && !/^ng[A-Z-]|_ng[a-z]|^cdk-/.test(c); })
+                  .slice(0, 3);
+                node.setAttribute('class', pruned.join(' '));
+              }
+            });
+            toRemove.forEach(function(a) { node.removeAttribute(a); });
+          });
+          let html = clone.outerHTML || '';
+          if (html.length > maxBytes) {
+            html = html.slice(0, maxBytes) + '…[truncated]';
+          }
+          return html;
+        } catch (_e) {
+          return '';
+        }
+      }
+
       let highlightOverlay = null;
       function ensureHighlightOverlay() {
         if (!highlightOverlay) {
@@ -584,33 +741,43 @@ let actionRecorder = null;
         return fallbackSelector;
       }
 
-      function metaForAction(el, selector, kind) {
-        const xp = getXPathForElement(el);
-        const tag = el && el.tagName ? el.tagName.toLowerCase() : '';
-        const id = el && el.id ? el.id : '';
-        return { kind, selector, xpath: xp, tag, id };
+      function metaForAction(el, selector, kind, composedPath) {
+        const xp          = getXPathForElement(el);
+        const tag         = el && el.tagName ? el.tagName.toLowerCase() : '';
+        const id          = el && el.id ? el.id : '';
+        const fingerprint = getElementFingerprint(el);
+        const ancestors   = getAncestorChain(el, 4);
+        const shadow      = detectShadow(composedPath || []);
+        const pruned_dom  = getPrunedDOM(el, 2, 4096);
+        return { kind, selector, xpath: xp, tag, id, fingerprint, ancestors, shadow, pruned_dom };
       }
 
       document.addEventListener('click', (e) => {
         const el = e.target;
         const selector = getSelector(el);
         if (selector) {
+          // composedPath() debe capturarse sincrónicamente durante el evento
+          const path = e.composedPath ? e.composedPath() : [];
           highlightElement(el);
           setTimeout(() => highlightOverlay && (highlightOverlay.style.display = 'none'), 300);
           const line = `await page.click('${selector}');`;
-          window.logAction({ line, meta: metaForAction(el, selector, 'click') });
+          window.logAction({ line, meta: metaForAction(el, selector, 'click', path) });
         }
       });
 
       // Optimización extrema para input events
       let inputTimer = null;
       let lastInputElement = null;
+      let lastInputComposedPath = [];
       let inputActionCount = 0;
       
       document.addEventListener('input', (e) => {
         const el = e.target;
+        // composedPath() capturado sincrónicamente en el evento
+        const path = e.composedPath ? e.composedPath() : [];
         if (el.tagName === 'INPUT' && el.type === 'text') {
           lastInputElement = el;
+          lastInputComposedPath = path;
           inputActionCount++;
           
           if (inputTimer) {
@@ -621,11 +788,12 @@ let actionRecorder = null;
           const delay = inputActionCount > 100 ? 500 : 200;
           
           inputTimer = setTimeout(() => {
-            const el = lastInputElement;
-            const selector = getSelector(el);
-            const val = (el.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const inputEl  = lastInputElement;
+            const inputPath = lastInputComposedPath;
+            const selector = getSelector(inputEl);
+            const val = (inputEl.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             const line = `await page.type('${selector}', '${val}');`;
-            window.logAction({ line, meta: metaForAction(el, selector, 'type') });
+            window.logAction({ line, meta: metaForAction(inputEl, selector, 'type', inputPath) });
             inputTimer = null;
           }, delay);
         }
@@ -633,16 +801,17 @@ let actionRecorder = null;
 
       document.addEventListener('change', (e) => {
         const el = e.target;
+        const path = e.composedPath ? e.composedPath() : [];
         const selector = getSelector(el);
         if (el.tagName === 'SELECT') {
           const line = `await page.select('${selector}', '${el.value}');`;
-          window.logAction({ line, meta: metaForAction(el, selector, 'select') });
+          window.logAction({ line, meta: metaForAction(el, selector, 'select', path) });
         } else if (el.type === 'checkbox') {
           const line = `await page.click('${selector}'); // checkbox ${el.checked ? 'checked' : 'unchecked'}`;
-          window.logAction({ line, meta: metaForAction(el, selector, 'checkbox') });
+          window.logAction({ line, meta: metaForAction(el, selector, 'checkbox', path) });
         } else if (el.type === 'radio') {
           const line = `await page.click('${selector}'); // radio selected`;
-          window.logAction({ line, meta: metaForAction(el, selector, 'radio') });
+          window.logAction({ line, meta: metaForAction(el, selector, 'radio', path) });
         }
       });
     });

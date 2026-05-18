@@ -1,6 +1,6 @@
 LICENCIA DE AUTOR RESTRINGIDA (LAR) v1.0  
 
-Copyright (c) 2025 Alejandro Ramírez  
+Copyright (c) 2026 Alejandro Ramírez  
 
 Queda prohibido:  
 - Cualquier tipo de modificación y/o alteración a cualquier parte del código fuente, sin autorización escrita del autor. 

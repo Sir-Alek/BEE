@@ -10,10 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from core.gherkin_converter import UltimateGherkinConverter
-from core.integrations_config_loader import jira_settings, load_config_parser, value_edge_settings
-from core.jira_extractor import JiraExtractor
-from core.value_edge_extractor import ValueEdgeExtractor
+from core.req_intelligence.gherkin_converter import UltimateGherkinConverter
+from core.req_intelligence.integrations_config_loader import jira_settings, load_config_parser, value_edge_settings
+from core.req_intelligence.jira_extractor import JiraExtractor
+from core.req_intelligence.value_edge_extractor import ValueEdgeExtractor
 
 
 def _empty_jira_inline_message() -> str:

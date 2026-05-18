@@ -20,6 +20,16 @@ def debug_build():
                 print(f"  {item} ({size} bytes)")
             else:
                 print(f"  {item}/ (directorio)")
+                # Listar subcarpetas relevantes (ui_automation, req_intelligence)
+                if item in ("ui_automation", "req_intelligence"):
+                    try:
+                        for sub in sorted(os.listdir(item_path))[:40]:
+                            sub_path = os.path.join(item_path, sub)
+                            sub_size = os.path.getsize(sub_path) if os.path.isfile(sub_path) else 0
+                            indicator = "✅" if sub.endswith((".pyd", ".so")) else ("⚠" if sub.endswith(".py") else " ")
+                            print(f"    {indicator} {sub} ({sub_size} bytes)")
+                    except OSError:
+                        pass
     else:
         print("❌ No existe la carpeta core/")
         return False

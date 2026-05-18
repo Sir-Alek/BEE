@@ -660,7 +660,7 @@ if __name__ == "__main__":
             option_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//option[contains(text(), '{option}')]")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', option_element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', option_element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}
+            GetEvidence.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}', self.test_dir, self.wd)
             time.sleep(1)
 '''
             

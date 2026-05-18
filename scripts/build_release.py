@@ -23,8 +23,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 CORE = os.path.join(ROOT, "core")
-OBFUSCATED_JS = os.path.join(CORE, "recorder.obfuscated.js")
-SOURCE_RECORDER = os.path.join(CORE, "recorder.js")
+CORE_UI = os.path.join(CORE, "ui_automation")          # recorder.js vive aquí
+OBFUSCATED_JS = os.path.join(CORE_UI, "recorder.obfuscated.js")
+SOURCE_RECORDER = os.path.join(CORE_UI, "recorder.js")
 
 # Mismos módulos que setup_cython.py; al empaquetar se pueden borrar los .py del dist si existe .pyd
 from core._cython_build_manifest import CYTHON_REL_PATHS
@@ -41,7 +42,7 @@ def build_cython() -> None:
 
 def obfuscate_recorder() -> None:
     if not os.path.isfile(SOURCE_RECORDER):
-        print("⚠ No existe core/recorder.js; se omite ofuscación.")
+        print("⚠ No existe core/ui_automation/recorder.js; se omite ofuscación.")
         return
     # javascript-obfuscator vía npx (sin package.json obligatorio)
     npx = shutil.which("npx")

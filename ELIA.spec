@@ -31,13 +31,31 @@ for _cyd in _cython_globs:
     cython_binaries.append((_rel, _bundle_dest))
 
 # Recorder: en release usar solo el ofuscado (el plano queda en el repo para desarrollo, no en el exe).
-_obf = os.path.join('core', 'recorder.obfuscated.js')
+# recorder.js ahora vive en core/ui_automation/ → se bundlea en core/ui_automation/ dentro del exe.
+_obf = os.path.join('core', 'ui_automation', 'recorder.obfuscated.js')
 if os.path.isfile(_obf):
-    js_obf = [(_obf, 'core')]
+    js_obf = [(_obf, 'core/ui_automation')]
 else:
     # Sin build de ofuscación: incluir recorder.js como respaldo para que el exe no quede sin motor.
-    _plain = os.path.join('core', 'recorder.js')
-    js_obf = [(_plain, 'core')] if os.path.isfile(_plain) else []
+    _plain = os.path.join('core', 'ui_automation', 'recorder.js')
+    js_obf = [(_plain, 'core/ui_automation')] if os.path.isfile(_plain) else []
+
+
+def _datas_if_exists(*entries):
+    """
+    Incluye cada (src, dst) en datas solo si la ruta src existe en el repo.
+    Si falta, emite un aviso y la omite para no abortar el build.
+    Esto permite compilar sin el build del frontend (frontend/dist) u otros
+    artefactos opcionales que se generan en pasos separados del pipeline.
+    """
+    result = []
+    for src, dst in entries:
+        full = os.path.join(_spec_root, src.replace("/", os.sep))
+        if os.path.exists(full):
+            result.append((src, dst))
+        else:
+            print(f"[ELIA.spec] AVISO: omitiendo datas faltante → {src}")
+    return result
 
 # Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
 _cython_excludes = []
@@ -53,15 +71,36 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
         web_hidden.append(pkg)
 
 integrations_hidden = [
+    # core raíz
+    "core.elia_paths",
+    "core.elia_license",
+    "core.elia_memory",
+    # core/ui_automation/ — importados en tiempo de ejecución dentro de funciones
+    "core.ui_automation",
+    "core.ui_automation.puppeteer_script_converter",
+    "core.ui_automation.step_by_step_converter",
+    "core.ui_automation.flow_analyzer",
+    "core.ui_automation.locator_healer",
+    "core.ui_automation.node_wrapper",
+    "core.ui_automation.recorder_focus",
+    "core.ui_automation.video_recorder",
+    # core/req_intelligence/ — importados en tiempo de ejecución dentro de funciones
+    "core.req_intelligence",
+    "core.req_intelligence.jira_extractor",
+    "core.req_intelligence.value_edge_extractor",
+    "core.req_intelligence.gherkin_converter",
+    "core.req_intelligence.integrations_config_loader",
+    "core.req_intelligence.connectors_profiles_store",
+    "core.req_intelligence.integrations_service",
+    # aliases retrocompatibles registrados en core/__init__.py
     "core.jira_extractor",
     "core.value_edge_extractor",
     "core.gherkin_converter",
     "core.integrations_config_loader",
     "core.connectors_profiles_store",
     "core.integrations_service",
-    "core.elia_paths",
-    "core.elia_license",
-    "core.elia_memory",
+    "core.flow_analyzer",
+    "core.locator_healer",
 ]
 
 crypto_hidden = []
@@ -81,13 +120,13 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=llama_binaries + cython_binaries,
-    datas=[
-        ('core/node', 'core/node'),
-        ('behave', 'behave'),
-        ('frontend/dist', 'frontend/dist'),
-        ('resources', 'resources'),
-        ('step_by_step', 'step_by_step')
-    ] + llama_datas + js_obf,
+    datas=_datas_if_exists(
+        ('core/node',       'core/node'),
+        ('behave',          'behave'),
+        ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
+        ('resources',       'resources'),
+        ('step_by_step',    'step_by_step'),
+    ) + llama_datas + js_obf,
     hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},

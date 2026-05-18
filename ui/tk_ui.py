@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Optional, Sequence
 
 import tkinter as tk
@@ -14,10 +15,12 @@ from tkinter import (
     Button,
     Canvas,
     Checkbutton,
+    Entry,
     Frame,
     Label,
     Listbox,
     Scrollbar,
+    StringVar,
     Text,
     Toplevel,
     messagebox,
@@ -118,6 +121,216 @@ class TkUI(IUI):
             prompt=f"Selecciona un script ({project_name}):",
             items=scripts,
         )
+
+    def pick_conversion_mode(self) -> str:
+        result: dict = {"mode": "single"}
+
+        win = Toplevel(self.master)
+        win.title("Modo de conversión")
+        win.geometry("480x220")
+        win.resizable(False, False)
+        win.transient(self.master)
+        win.grab_set()
+        self._center_window(win)
+
+        Label(
+            win,
+            text="¿Cómo deseas convertir las grabaciones?",
+            font=("Arial", 12, "bold"),
+        ).pack(pady=(22, 8))
+
+        btn_frame = Frame(win)
+        btn_frame.pack(pady=10)
+
+        def on_single() -> None:
+            result["mode"] = "single"
+            win.destroy()
+
+        def on_grouped() -> None:
+            result["mode"] = "grouped"
+            win.destroy()
+
+        Button(btn_frame, text="Una grabación", command=on_single, width=20, height=2).pack(
+            side=LEFT, padx=14
+        )
+        Button(btn_frame, text="Agrupar grabaciones", command=on_grouped, width=22, height=2).pack(
+            side=LEFT, padx=14
+        )
+
+        Label(
+            win,
+            text="Agrupando puedes combinar varios flujos en un mismo Feature\ncon múltiples Scenarios y Background compartido.",
+            font=("Arial", 9),
+            foreground="gray",
+            justify="center",
+        ).pack(pady=(8, 0))
+
+        self.master.wait_window(win)
+        return result["mode"]
+
+    def pick_scripts_multi(self, scripts: Sequence[str], project_name: str) -> Sequence[str]:
+        selected_scripts: list[str] = []
+
+        win = Toplevel(self.master)
+        win.title(f"Seleccionar grabaciones para agrupar — {project_name}")
+        win.geometry("620x520")
+        win.transient(self.master)
+        win.grab_set()
+        self._center_window(win)
+
+        top = Frame(win, padx=12, pady=8)
+        top.pack(fill="x")
+        Label(top, text="Selecciona las grabaciones a incluir en el Feature:", font=("Arial", 11)).pack(
+            anchor="w"
+        )
+        Label(top, text="(selecciona al menos 2)", font=("Arial", 9), foreground="gray").pack(
+            anchor="w"
+        )
+
+        main_frame = Frame(win, padx=12)
+        main_frame.pack(expand=True, fill="both")
+
+        canvas = Canvas(main_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True, pady=5)
+        scrollbar.pack(side="right", fill="y")
+
+        check_vars: list[tuple[BooleanVar, str]] = []
+        for script in sorted(scripts):
+            row = Frame(scrollable_frame)
+            row.pack(fill="x", pady=3, padx=8)
+            var = BooleanVar(value=False)
+            check_vars.append((var, script))
+            Checkbutton(row, variable=var).pack(side=LEFT, padx=4)
+            Label(row, text=script, font=("Consolas", 10), anchor="w").pack(side=LEFT)
+
+        def on_select_all() -> None:
+            for v, _ in check_vars:
+                v.set(True)
+
+        def on_continue() -> None:
+            nonlocal selected_scripts
+            chosen = [s for v, s in check_vars if v.get()]
+            if len(chosen) < 2:
+                messagebox.showwarning(
+                    "Selección insuficiente",
+                    "Selecciona al menos 2 grabaciones para agrupar.",
+                    parent=win,
+                )
+                return
+            selected_scripts = chosen
+            win.destroy()
+
+        btn_frame = Frame(win, pady=10)
+        btn_frame.pack()
+        Button(btn_frame, text="Seleccionar todas", command=on_select_all, width=16).pack(
+            side=LEFT, padx=8
+        )
+        Button(btn_frame, text="Continuar", command=on_continue, width=12).pack(side=LEFT, padx=8)
+        Button(btn_frame, text="Cancelar", command=win.destroy, width=12).pack(side=LEFT, padx=8)
+
+        self.master.wait_window(win)
+        return selected_scripts
+
+    def pick_feature_name(self, suggested: str) -> Optional[str]:
+        result: dict = {"name": None}
+
+        win = Toplevel(self.master)
+        win.title("Nombre del Feature agrupado")
+        win.geometry("460x195")
+        win.resizable(False, False)
+        win.transient(self.master)
+        win.grab_set()
+        self._center_window(win)
+
+        frame = Frame(win, padx=22, pady=18)
+        frame.pack(fill=BOTH, expand=True)
+
+        Label(frame, text="Nombre del Feature agrupado:", font=("Arial", 11)).pack(anchor="w")
+        Label(
+            frame,
+            text="Será el nombre del archivo .feature y del steps generado.",
+            font=("Arial", 9),
+            foreground="gray",
+        ).pack(anchor="w", pady=(2, 10))
+
+        name_var = StringVar(value=suggested)
+        entry = Entry(frame, textvariable=name_var, font=("Arial", 12), width=42)
+        entry.pack(fill="x", pady=(0, 16))
+        entry.select_range(0, "end")
+        entry.focus_set()
+
+        def on_confirm() -> None:
+            val = name_var.get().strip()
+            if not val:
+                messagebox.showwarning("Nombre requerido", "El nombre no puede estar vacío.", parent=win)
+                return
+            result["name"] = re.sub(r"[^a-zA-Z0-9_\-]", "_", val).strip("_") or "feature_agrupado"
+            win.destroy()
+
+        btn_frame = Frame(frame)
+        btn_frame.pack()
+        Button(btn_frame, text="Confirmar", command=on_confirm, width=12).pack(side=LEFT, padx=10)
+        Button(btn_frame, text="Cancelar", command=win.destroy, width=12).pack(side=LEFT, padx=10)
+        entry.bind("<Return>", lambda _: on_confirm())
+
+        self.master.wait_window(win)
+        return result["name"]
+
+    def grouped_feature_review(
+        self,
+        *,
+        feature_text: str,
+        script_names: Sequence[str],
+        background_count: int,
+    ) -> dict:
+        result: dict = {}
+
+        win = Toplevel(self.master)
+        win.title("Vista previa — Feature agrupado")
+        win.geometry("920x680")
+        win.transient(self.master)
+        win.grab_set()
+        self._center_window(win)
+
+        info_parts = [f"Grabaciones: {', '.join(script_names)}"]
+        if background_count > 0:
+            info_parts.append(f"Background: {background_count} paso(s) compartido(s)")
+        Label(win, text="  |  ".join(info_parts), font=("Arial", 10), foreground="gray").pack(
+            anchor="w", padx=12, pady=(12, 2)
+        )
+        Label(win, text="Revisa y edita el Feature agrupado antes de generarlo:", font=("Arial", 11)).pack(
+            anchor="w", padx=12, pady=(0, 4)
+        )
+
+        body = Text(win, height=24, wrap="word", font=("Consolas", 10))
+        body.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+        body.insert("1.0", feature_text)
+
+        def on_accept() -> None:
+            result["action"] = "accept"
+            result["feature_text"] = body.get("1.0", "end").strip()
+            win.destroy()
+
+        def on_cancel() -> None:
+            win.destroy()
+
+        bf = Frame(win)
+        bf.pack(pady=(0, 14))
+        Button(bf, text="Aceptar y generar", command=on_accept, width=18).pack(side=LEFT, padx=10)
+        Button(bf, text="Cancelar", command=on_cancel, width=14).pack(side=LEFT, padx=10)
+
+        self.master.wait_window(win)
+        if not result:
+            raise BDDUserCancelled()
+        return result
 
     def pick_actions(self, actions: Sequence[ActionItem]) -> Sequence[str]:
         if not actions:

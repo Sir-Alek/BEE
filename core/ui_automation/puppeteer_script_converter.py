@@ -3,8 +3,11 @@ import shutil
 import re
 import time
 import json
+import logging
 from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from ui.interfaces import BDDUserCancelled, IUI
 
@@ -53,16 +56,17 @@ class PuppeteerToBehaveConverter:
         return None   
 
     def convert_script(self):
-        """Convierte el script grabado (JS) a estructura Behave"""
+        """Convierte el script grabado (JS) a estructura Behave (modo simple o agrupado)."""
         if not os.path.exists(self.projects_dir):
             os.makedirs(self.projects_dir, exist_ok=True)
-        
-        projects = [d for d in os.listdir(self.projects_dir) 
-                   if os.path.isdir(os.path.join(self.projects_dir, d))]
-        
+
+        projects = [d for d in os.listdir(self.projects_dir)
+                    if os.path.isdir(os.path.join(self.projects_dir, d))]
+
         if not projects:
             self.ui.info("No hay proyectos", "No se encontraron proyectos existentes.")
             return
+
         project_name = self.ui.pick_project(sorted(projects))
         if not project_name:
             return
@@ -76,20 +80,36 @@ class PuppeteerToBehaveConverter:
 
         js_files = [f for f in os.listdir(scripts_dir) if f.endswith(".js")]
         if not js_files:
-            self.ui.error("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts' del proyecto.")
+            self.ui.error("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts'.")
             return
 
+        # ── Modo de conversión ──────────────────────────────────────────
+        mode = self.ui.pick_conversion_mode()
+
+        if mode == "grouped":
+            selected_files = self.ui.pick_scripts_multi(sorted(js_files), project_name)
+            if not selected_files:
+                return
+            suggested_name = re.sub(r"[^a-zA-Z0-9_]", "_", project_name).strip("_") or "feature_agrupado"
+            feature_name = self.ui.pick_feature_name(suggested_name)
+            if not feature_name:
+                return
+            full_paths = [os.path.join(scripts_dir, f) for f in selected_files]
+            self._process_grouped_conversion(full_paths, project_path, feature_name)
+            return
+
+        # ── Modo simple (flujo original intacto) ────────────────────────
         selected_file = self.ui.pick_script(sorted(js_files), project_name)
         if not selected_file:
             return
 
-        js_file = os.path.join(project_path, "scripts", selected_file)
+        js_file = os.path.join(scripts_dir, selected_file)
 
         try:
             with open(js_file, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            if content is None or content == "":
+            if not content:
                 content = "// Archivo vacío"
 
             actions = self._extract_all_actions(content)
@@ -351,6 +371,441 @@ class PuppeteerToBehaveConverter:
                         except:
                             pass
         
+    # ================================================================== #
+    # CONVERSIÓN AGRUPADA (multi-script → 1 Feature con N Scenarios)     #
+    # ================================================================== #
+
+    def _process_grouped_conversion(
+        self,
+        js_files: List[str],
+        project_path: str,
+        feature_name: str,
+    ) -> None:
+        """
+        Punto de entrada para la conversión agrupada.
+        Genera un único .feature con Background + N Scenarios, un steps file
+        unificado y un Page Object independiente por cada grabación.
+        """
+        try:
+            from core.ui_automation.flow_analyzer import FlowAnalyzer
+            from ui.interfaces import BDDUserCancelled
+
+            self._copy_support_files(project_path)
+
+            # ── 1. Cargar scripts ──────────────────────────────────────
+            scripts_data: List[Dict[str, Any]] = []
+            for js_file in js_files:
+                try:
+                    with open(js_file, "r", encoding="utf-8") as fh:
+                        content = fh.read() or "// empty"
+                except Exception:
+                    content = "// empty"
+                base_name = os.path.splitext(os.path.basename(js_file))[0]
+                self._recording_meta = self._load_recording_meta(js_file)
+                scripts_data.append({
+                    "js_file": js_file,
+                    "base_name": base_name,
+                    "class_name": base_name.capitalize() + "Page",
+                    "content": content,
+                    "meta": self._recording_meta,
+                    "actions": FlowAnalyzer.extract_actions(content),
+                })
+
+            # ── 2. Prefijo común → Background ─────────────────────────
+            common_prefix = FlowAnalyzer.detect_common_prefix(
+                [d["actions"] for d in scripts_data]
+            )
+            background_steps = FlowAnalyzer.extract_background_steps(common_prefix)
+            for d in scripts_data:
+                d["unique_actions"] = d["actions"][len(common_prefix):]
+
+            # ── 3. Generar texto del Feature ──────────────────────────
+            feature_content = self._generate_grouped_feature(
+                scripts_data, feature_name, background_steps
+            )
+
+            # ── 4. Revisión interactiva ───────────────────────────────
+            try:
+                review = self.ui.grouped_feature_review(
+                    feature_text=feature_content,
+                    script_names=[d["base_name"] for d in scripts_data],
+                    background_count=len(background_steps),
+                )
+                if review.get("action") != "accept":
+                    return
+                feature_content = review.get("feature_text") or feature_content
+            except BDDUserCancelled:
+                return
+
+            # ── 5. Crear directorios ──────────────────────────────────
+            dirs = {
+                "features": os.path.join(project_path, "features"),
+                "steps":    os.path.join(project_path, "features", "steps"),
+                "pages":    os.path.join(project_path, "pages"),
+                "data":     os.path.join(project_path, "resources", "data"),
+            }
+            for p in dirs.values():
+                os.makedirs(p, exist_ok=True)
+
+            # ── 6. Escribir .feature ──────────────────────────────────
+            feature_path = os.path.join(dirs["features"], f"{feature_name}.feature")
+            with open(feature_path, "w", encoding="utf-8") as fh:
+                fh.write(feature_content)
+
+            # ── 7. Escribir steps unificado ───────────────────────────
+            steps_content = self._generate_grouped_steps(
+                feature_name, scripts_data, background_steps, common_prefix
+            )
+            steps_path = os.path.join(dirs["steps"], f"{feature_name}_steps.py")
+            with open(steps_path, "w", encoding="utf-8") as fh:
+                fh.write(steps_content)
+
+            # ── 8. Page Objects individuales ──────────────────────────
+            created_pages: List[str] = []
+            for d in scripts_data:
+                self._recording_meta = d["meta"]
+                page_content = self._generate_page_object(d["class_name"], d["content"])
+                page_path = os.path.join(dirs["pages"], f"{d['base_name']}_page.py")
+                with open(page_path, "w", encoding="utf-8") as fh:
+                    fh.write(page_content)
+                created_pages.append(f"{d['base_name']}_page.py")
+            self._recording_meta = None
+
+            # ── 9. JSON combinado ─────────────────────────────────────
+            json_content = self._generate_grouped_json(scripts_data)
+            json_path = os.path.join(dirs["data"], f"{feature_name}.json")
+            with open(json_path, "w", encoding="utf-8") as fh:
+                fh.write(json_content)
+
+            # ── 10. Mensaje de éxito ──────────────────────────────────
+            bg_msg = (
+                f"\n  • Background: {len(background_steps)} paso(s) compartido(s)"
+                if background_steps else ""
+            )
+            pages_msg = "\n".join(f"  • {p}" for p in created_pages)
+            self.ui.info(
+                "Éxito",
+                f"Feature agrupado generado en:\n{os.path.basename(project_path)}\n\n"
+                f"  • {feature_name}.feature  ({len(scripts_data)} scenarios){bg_msg}\n"
+                f"  • {feature_name}_steps.py\n"
+                f"{pages_msg}\n"
+                f"  • {feature_name}.json",
+            )
+
+        except Exception as exc:
+            logger.error("Error en conversión agrupada: %s", exc, exc_info=True)
+            self.ui.error("Error", f"Error al generar el feature agrupado:\n{str(exc)}")
+
+    def _generate_grouped_feature(
+        self,
+        scripts_data: List[Dict[str, Any]],
+        feature_name: str,
+        background_steps: List[Tuple[str, str]],
+    ) -> str:
+        """
+        Genera el texto Gherkin del Feature con Background (si aplica) y un
+        Scenario por cada grabación.  Guarda los textos de When/And/Then en
+        cada dict de scripts_data para que _generate_grouped_steps los reutilice.
+        """
+        title = feature_name.replace("_", " ").title()
+        lines: List[str] = [f"Feature: {title}\n\n"]
+
+        if background_steps:
+            lines.append("  Background:\n")
+            for i, (_, text) in enumerate(background_steps):
+                kw = "Given" if i == 0 else "And"
+                lines.append(f"    {kw} {text}\n")
+            lines.append("\n")
+
+        used_when: Dict[str, str] = {}
+
+        for data in scripts_data:
+            scenario_title = data["base_name"].replace("_", " ").title()
+            lines.append(f"  Scenario: {scenario_title}\n")
+
+            unique = data["unique_actions"]
+            if unique:
+                ctx = self._bdd_parse_raw_actions(unique)
+                when_body, and_body, then_body = self._bdd_business_when_and_text(ctx)
+            else:
+                when_body = (
+                    f"el usuario completa el flujo de "
+                    f"{data['base_name'].replace('_', ' ')}"
+                )
+                and_body = None
+                then_body = "el sistema muestra el resultado esperado sin errores"
+
+            # Garantizar unicidad del texto When entre scenarios
+            key = when_body.lower()[:60]
+            if key in used_when:
+                when_body = f"{when_body} — flujo {data['base_name'].replace('_', ' ')}"
+            used_when[key] = data["base_name"]
+
+            data["_when_text"] = when_body
+            data["_and_text"] = and_body
+            data["_then_text"] = then_body
+
+            lines.append(f"    When {when_body}\n")
+            if and_body:
+                lines.append(f"    And {and_body}\n")
+            lines.append(f"    Then {then_body}\n")
+            lines.append("\n")
+
+        return "".join(lines)
+
+    def _generate_grouped_steps(
+        self,
+        feature_name: str,
+        scripts_data: List[Dict[str, Any]],
+        background_steps: List[Tuple[str, str]],
+        common_prefix: List[Tuple[str, str, Optional[str]]],
+    ) -> str:
+        """Genera el archivo _steps.py unificado para el Feature agrupado."""
+        page_imports = "\n".join(
+            f"from pages.{d['base_name']}_page import {d['class_name']}"
+            for d in scripts_data
+        )
+        header = (
+            f"from behave import *\n"
+            f"{page_imports}\n"
+            f"from utils.button_functions import ui_interact, ui_navigate\n"
+            f"from environment import *\n"
+        )
+
+        bg_code = self._generate_background_step_defs(background_steps, common_prefix)
+        scenario_code = self._generate_all_scenario_step_defs(scripts_data)
+
+        return header + "\n" + bg_code + "\n" + scenario_code
+
+    def _generate_background_step_defs(
+        self,
+        background_steps: List[Tuple[str, str]],
+        common_prefix: List[Tuple[str, str, Optional[str]]],
+    ) -> str:
+        """Genera las definiciones de step para el bloque Background."""
+        if not background_steps:
+            return ""
+
+        lines: List[str] = [
+            "# ── Background ──────────────────────────────────────────────────────\n\n"
+        ]
+
+        non_goto = [(k, v, e) for k, v, e in common_prefix if k != "goto"]
+
+        # Paso de navegación (siempre presente si hay goto)
+        if any(k == "goto" for k, _, _ in common_prefix):
+            lines.append(
+                "@given('el usuario ingresa al sitio \"{url}\"')\n"
+                "def step_background_navigate(context, url):\n"
+                "    ui_navigate(\n"
+                "        driver=context.driver,\n"
+                "        url=url,\n"
+                "        nombre_pagina='inicio',\n"
+                "        usar_create_screenshot=context.generate_evidence,\n"
+                "        screenshot_step='01_given'\n"
+                "    )\n\n"
+            )
+
+        # Paso de acceso compartido (login u otras acciones comunes)
+        if len(background_steps) > 1 and non_goto:
+            _, bg_text = background_steps[1]
+            action_lines: List[str] = []
+            step_idx = 2
+            for kind, selector, extra in non_goto:
+                xpath = self._selector_to_xpath(selector)
+                xpath_esc = self._escape_xpath_for_python_string(xpath)
+                name = self._generate_element_name(selector)
+                sid = f"{step_idx:02d}_and"
+                if kind == "fill":
+                    val_repr = json.dumps(extra or "")
+                    action_lines.append(
+                        f"    ui_interact(driver=context.driver, "
+                        f"xPath_elemento=\"{xpath_esc}\", "
+                        f"accion=\"insertTxt\", valor={val_repr}, "
+                        f"nombre_elemento=\"{name}\", "
+                        f"usar_create_screenshot=context.generate_evidence, "
+                        f"screenshot_step=\"{sid}\")"
+                    )
+                elif kind == "click":
+                    action_lines.append(
+                        f"    ui_interact(driver=context.driver, "
+                        f"xPath_elemento=\"{xpath_esc}\", "
+                        f"accion=\"click\", "
+                        f"nombre_elemento=\"{name}\", "
+                        f"usar_create_screenshot=context.generate_evidence, "
+                        f"screenshot_step=\"{sid}\")"
+                    )
+                step_idx += 1
+
+            body = "\n".join(action_lines) if action_lines else "    pass"
+            esc_bg = bg_text.replace("\\", "\\\\").replace("'", "\\'")
+            lines.append(
+                f"@step('{esc_bg}')\n"
+                f"def step_background_access(context):\n"
+                f"{body}\n\n"
+            )
+
+        return "".join(lines)
+
+    def _generate_all_scenario_step_defs(
+        self, scripts_data: List[Dict[str, Any]]
+    ) -> str:
+        """Genera las definiciones de step When/And/Then para cada Scenario."""
+        parts: List[str] = []
+        generated_then: set = set()
+        step_counter = 0
+
+        for data in scripts_data:
+            base_name = data["base_name"]
+            class_name = data["class_name"]
+            when_text: str = data.get("_when_text", f"el usuario ejecuta el flujo de {base_name}")
+            and_text: Optional[str] = data.get("_and_text")
+            then_text: str = data.get("_then_text", "el sistema muestra el resultado esperado sin errores")
+            unique: List[Tuple[str, str, Optional[str]]] = data.get("unique_actions", [])
+
+            step_counter += 1
+            step_id_when = f"{step_counter:02d}_when"
+
+            # Cuerpo del When: instanciar page + ejecutar acciones únicas
+            body_lines: List[str] = [f"    context.page = {class_name}(context.driver)"]
+            for kind, selector, extra in unique:
+                if kind == "goto":
+                    continue
+                elem_name = self._generate_element_name(selector)
+                if kind == "click":
+                    meth = f"click_{elem_name}"
+                    body_lines.append(
+                        f"    context.page.{meth}("
+                        f"tomar_evidencia=context.generate_evidence, step='{step_id_when}')"
+                    )
+                elif kind == "fill" and extra is not None:
+                    meth = f"enter_{elem_name}"
+                    ev = json.dumps(extra)
+                    body_lines.append(
+                        f"    context.page.{meth}("
+                        f"{ev}, tomar_evidencia=context.generate_evidence, step='{step_id_when}')"
+                    )
+                elif kind == "select" and extra is not None:
+                    meth = f"select_{elem_name}"
+                    ev = json.dumps(extra)
+                    body_lines.append(
+                        f"    context.page.{meth}("
+                        f"{ev}, tomar_evidencia=context.generate_evidence, step='{step_id_when}')"
+                    )
+
+            when_body = "\n".join(body_lines)
+            esc_when = when_text.replace("\\", "\\\\").replace("'", "\\'")
+            # Sufijo con base_name garantiza unicidad del nombre de función
+            when_fn = f"{self._create_step_method_name('when', when_text)}_{re.sub(r'[^a-z0-9]', '_', base_name.lower())}"
+
+            parts.append(
+                f"\n# ── Scenario: {base_name} ──\n"
+                f"@when('{esc_when}')\n"
+                f"def {when_fn}(context):\n"
+                f"{when_body}\n"
+            )
+
+            # And step (si existe)
+            if and_text:
+                step_counter += 1
+                step_id_and = f"{step_counter:02d}_and"
+                esc_and = and_text.replace("\\", "\\\\").replace("'", "\\'")
+                and_fn = f"{self._create_step_method_name('when', and_text)}_{re.sub(r'[^a-z0-9]', '_', base_name.lower())}"
+                parts.append(
+                    f"\n@step('{esc_and}')\n"
+                    f"def {and_fn}(context):\n"
+                    f"    context.page = {class_name}(context.driver)\n"
+                    f"    # TODO: acciones adicionales del flujo {base_name}\n"
+                    f"    pass\n"
+                )
+
+            # Then step (deduplicado entre scenarios con igual texto)
+            if then_text not in generated_then:
+                generated_then.add(then_text)
+                step_counter += 1
+                esc_then = then_text.replace("\\", "\\\\").replace("'", "\\'")
+                then_fn = self._create_step_method_name("then", then_text)
+                parts.append(
+                    f"\n@then('{esc_then}')\n"
+                    f"def {then_fn}(context):\n"
+                    f"    assert True\n"
+                )
+
+        return "\n".join(parts)
+
+    def _bdd_parse_raw_actions(
+        self, raw_actions: List[Tuple[str, str, Optional[str]]]
+    ) -> Dict[str, Any]:
+        """
+        Convierte las ActionTuple de FlowAnalyzer al dict de contexto que
+        espera _bdd_business_when_and_text.
+        """
+        start_url: Optional[str] = None
+        click_tokens: List[str] = []
+        fills: List[str] = []
+        selects: List[str] = []
+
+        for kind, value, extra in raw_actions:
+            if kind == "goto":
+                start_url = value
+            elif kind == "click":
+                click_tokens.append(self._generate_element_name(value))
+            elif kind == "fill" and extra is not None:
+                fills.append(extra)
+            elif kind == "select" and extra is not None:
+                selects.append(extra)
+
+        blob = " ".join(click_tokens).lower()
+        return {
+            "start_url": start_url,
+            "click_tokens": click_tokens,
+            "fills": fills,
+            "selects": selects,
+            "blob": blob,
+            "n_clicks": len(click_tokens),
+        }
+
+    def _generate_grouped_json(self, scripts_data: List[Dict[str, Any]]) -> str:
+        """Genera un JSON combinado con metadatos de todos los scripts del grupo."""
+        combined: Dict[str, Any] = {
+            "scenarios": [],
+            "urls": [],
+            "elements": [],
+            "inputs": [],
+        }
+        urls_seen: set = set()
+        elements_seen: set = set()
+
+        for data in scripts_data:
+            content = data["content"]
+            urls = re.findall(r'page\.goto\(["\']([^"\']+)["\']\)', content)
+            clicks = re.findall(r'page\.click\(["\']([^"\']+)["\']\)', content)
+            fills = re.findall(
+                r'page\.(?:type|fill)\(["\']([^"\']+)["\'],\s*["\']([^"\']*)["\']',
+                content,
+            )
+
+            combined["scenarios"].append({
+                "name": data["base_name"],
+                "urls": urls,
+                "total_actions": len(data["actions"]),
+                "unique_actions": len(data["unique_actions"]),
+            })
+            for u in urls:
+                urls_seen.add(u)
+            for el in clicks:
+                elements_seen.add(el)
+            for sel, val in fills:
+                combined["inputs"].append({
+                    "selector": sel,
+                    "value": val,
+                    "scenario": data["base_name"],
+                })
+
+        combined["urls"] = list(urls_seen)
+        combined["elements"] = list(elements_seen)
+        return json.dumps(combined, indent=4, ensure_ascii=False)
+
     def _copy_support_files(self, project_path):
         """Copia toda la estructura de soporte al proyecto destino"""
         try:
@@ -369,11 +824,15 @@ class PuppeteerToBehaveConverter:
             if os.path.exists(src_resources):
                 shutil.copytree(src_resources, dst_resources, dirs_exist_ok=True)
             
-            # 4. Copiar utils completa
+            # 4. Copiar utils completa — excluir artefactos de desarrollo
             src_utils = os.path.join(self.base_dir, "resources", "behave", "utils")
             dst_utils = os.path.join(project_path, "utils")
+            _EXCLUDE_FROM_UTILS = {"button_functions_mod.py"}
             if os.path.exists(src_utils):
-                shutil.copytree(src_utils, dst_utils, dirs_exist_ok=True)
+                shutil.copytree(
+                    src_utils, dst_utils, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(*_EXCLUDE_FROM_UTILS),
+                )
                 
         except Exception as e:
             self.ui.warning("Advertencia", 
@@ -667,37 +1126,82 @@ class PuppeteerToBehaveConverter:
             return None
 
     def _preferred_selector_for_locator(self, selector: str) -> str:
-        """Si hay metadatos de grabación y IA activa, puede preferir CSS o xpath."""
-        if not self.use_ai or not self._recording_meta:
+        """
+        Devuelve el locator más estable para un selector grabado.
+
+        Orden de resolución:
+          1. locator_healer (híbrido algorítmico + Gemma 4) — si hay metadatos enriquecidos.
+          2. suggest_preferred_locator legacy (CSS vs XPath simple) — fallback si el meta
+             no tiene fingerprint (grabaciones antiguas).
+          3. Selector original.
+        """
+        if not self._recording_meta:
             return selector
         actions = self._recording_meta.get("actions") if isinstance(self._recording_meta, dict) else None
         if not isinstance(actions, list):
             return selector
+
         for rec in actions:
             if not isinstance(rec, dict):
                 continue
             if rec.get("selector") != selector:
                 continue
+
+            # ── Camino 1: metadatos enriquecidos con fingerprint (recorder nuevo) ──
+            if rec.get("fingerprint"):
+                try:
+                    from core.ui_automation.locator_healer import heal_locator
+                    result = heal_locator(rec, use_ai=self.use_ai)
+                    primary = result.get("primary") or selector
+                    if primary and primary != selector:
+                        logger.debug(
+                            f"locator_healer: '{selector}' → '{primary}' "
+                            f"[{result.get('strategy')}  score={result.get('stability_score')}]"
+                        )
+                    return primary
+                except Exception as e:
+                    logger.debug(f"locator_healer error para '{selector}': {e}")
+
+            # ── Camino 2: fallback legacy (grabaciones sin fingerprint) ──
             xp = (rec.get("xpath") or "").strip()
             if not xp:
                 return selector
-            try:
-                from core import gemma_inference
-
-                if not gemma_inference.is_ai_runtime_configured():
-                    return selector
-                pref = gemma_inference.suggest_preferred_locator(
-                    selector=selector,
-                    xpath=xp,
-                    tag=str(rec.get("tag") or ""),
-                    element_id=str(rec.get("id") or ""),
-                )
-                if pref:
-                    return pref
-            except Exception:
-                pass
+            if self.use_ai:
+                try:
+                    from core import gemma_inference
+                    if gemma_inference.is_ai_runtime_configured():
+                        pref = gemma_inference.suggest_preferred_locator(
+                            selector=selector,
+                            xpath=xp,
+                            tag=str(rec.get("tag") or ""),
+                            element_id=str(rec.get("id") or ""),
+                        )
+                        if pref:
+                            return pref
+                except Exception:
+                    pass
             return selector
         return selector
+
+    def _shadow_info_for_selector(self, selector: str) -> Optional[Dict[str, Any]]:
+        """
+        Devuelve la info de Shadow DOM del action_record correspondiente al selector,
+        o None si no hay metadatos o el elemento no está en shadow DOM.
+        """
+        if not self._recording_meta:
+            return None
+        actions = self._recording_meta.get("actions") if isinstance(self._recording_meta, dict) else None
+        if not isinstance(actions, list):
+            return None
+        for rec in actions:
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("selector") != selector:
+                continue
+            shadow = rec.get("shadow") or {}
+            if shadow.get("is_shadow_child"):
+                return shadow
+        return None
 
     def _group_similar_actions(self, actions):
         """Agrupa acciones similares para crear steps más lógicos"""
@@ -1315,10 +1819,8 @@ def {method_name}(context):
         return ''.join(feature_lines)        
 
     def _generate_page_object(self, class_name, script_content):
-        """Genera un page object"""
-        # Modelo nuevo: usar button_functions (no ElementUtils)
-        imports = """from utils.button_functions import *
-        """
+        """Genera un Page Object usando button_functions como capa de interacción."""
+        imports = "from utils.button_functions import *\n"
 
         class_template = f"""
 class {class_name}:
@@ -1330,56 +1832,7 @@ class {class_name}:
 
     # Methods
 {self._generate_methods(script_content)}
-
-    # para dar click en botones de permisos, por texto
-    # def click_tab(self):
-
-    #     # ===== utilidades =====
-    #     SP_BUTTON_PATTERNS = [
-    #         r".*Permitir mientras visitas el sitio.*",
-    #         r".*Permitir.*",
-    #     ]
-    #     EN_BUTTON_PATTERNS = [
-    #         r".*Allow while visiting this site.*",
-    #         r".*Allow.*",
-    #     ]
-       
-    #     print("si entro")
-    #     # 1. Buscar ventanas abiertas con título que contenga "Chrome"
-    #     wins = Desktop(backend="uia").windows()
-    #     chrome_windows = [w for w in wins if "Chrome" in (w.window_text() or "")]
-
-    #     if not chrome_windows:
-    #         raise RuntimeError("No encontré una ventana de Chrome abierta")
-
-    #     # 2. Conectar a la primera ventana encontrada
-    #     app = Application(backend="uia").connect(handle=chrome_windows[0].handle)
-    #     win = app.window(handle=chrome_windows[0].handle)
-
-    #     # 3. Traer al frente y enviar teclas
-    #     win.set_focus()
-    #     time.sleep(1)
-
-    #     t0 = time.time()
-    #     patterns = [re.compile(p, re.IGNORECASE) for p in (SP_BUTTON_PATTERNS + EN_BUTTON_PATTERNS)]
-    #     while time.time() - t0 < 5:
-    #         try:
-    #             # Busca botones expuestos por UIA
-    #             for btn in win.descendants(control_type="Button"):
-    #                 name = (btn.window_text() or "").strip()
-    #                 if not name and isinstance(btn.element_info, UIAElementInfo):
-    #                     name = (btn.element_info.name or "").strip()
-    #                 if not name:
-    #                     continue
-    #                 if any(rx.match(name) for rx in patterns):
-                       
-    #                     ButtonWrapper(btn.element_info).click_input()
-    #                     return True
-    #         except Exception:
-    #             pass
-    #         time.sleep(0.2)
-
-    """
+"""
         return imports + class_template
     
     def _generate_element_name(self, selector):
@@ -1565,24 +2018,35 @@ class {class_name}:
             xpath = self._selector_to_xpath(use_sel)
             
             # Determinar tipo de elemento
-            if any(f"page.type('{selector}'" in line or 
+            lines_content = script_content.split('\n')
+            if any(f"page.type('{selector}'" in line or
                 f"page.fill('{selector}'" in line or
                 f'page.type("{selector}"' in line or
-                f'page.fill("{selector}"' in line 
-                for line in script_content.split('\n')):
+                f'page.fill("{selector}"' in line
+                for line in lines_content):
                 locator_type = "txt"
-            elif any(f"page.select('{selector}'" in line or 
+            elif any(f"page.select('{selector}'" in line or
                     f'page.select("{selector}"' in line or
                     f"select_option('{selector}'" in line or
                     f'select_option("{selector}"' in line
-                    for line in script_content.split('\n')):
+                    for line in lines_content):
                 locator_type = "ddl"
             else:
                 locator_type = "btn"
-            
-            xpath_escaped = self._escape_xpath_for_python_string(xpath)
-            locator_lines.append(f'        self.{locator_type}_{name} = "{xpath_escaped}"')
-        
+
+            # Shadow DOM: generar par host+inner en lugar del locator normal
+            shadow = self._shadow_info_for_selector(selector)
+            if shadow:
+                host_sel   = shadow.get("host_selector") or ""
+                inner_sel  = shadow.get("inner_selector") or use_sel
+                host_xpath = shadow.get("host_xpath")    or ""
+                locator_lines.append(f'        # Shadow DOM — host: {host_sel}')
+                locator_lines.append(f'        self.shadow_host_{name} = "{self._escape_xpath_for_python_string(host_xpath or host_sel)}"')
+                locator_lines.append(f'        self.shadow_inner_{name} = "{self._escape_xpath_for_python_string(inner_sel)}"')
+            else:
+                xpath_escaped = self._escape_xpath_for_python_string(xpath)
+                locator_lines.append(f'        self.{locator_type}_{name} = "{xpath_escaped}"')
+
         return "\n".join(locator_lines)    
 
     def _generate_methods(self, script_content):
@@ -1606,16 +2070,33 @@ class {class_name}:
         for selector in click_selectors:
             name = self._generate_element_name(selector)
             method_key = f"click_{name}"
-            
+
             if method_key not in generated_methods:
-                if selector in fill_selectors:
-                    locator_type = "txt"
-                elif selector in select_selectors:
-                    locator_type = "ddl"
+                shadow = self._shadow_info_for_selector(selector)
+                if shadow:
+                    inner_sel = shadow.get("inner_selector") or selector
+                    method_lines.append(f"""
+    def {method_key}(self, tomar_evidencia=False, step=None):
+        \"\"\"Click en elemento dentro de Shadow DOM — host: {shadow.get('host_selector')}\"\"\"
+        ui_interact_shadow(
+            driver=self.driver,
+            host_locator=self.shadow_host_{name},
+            inner_css="{inner_sel}",
+            accion="click",
+            nombre_elemento="{method_key}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step,
+        )
+                    """)
                 else:
-                    locator_type = "btn"
-                
-                method_lines.append(f"""
+                    if selector in fill_selectors:
+                        locator_type = "txt"
+                    elif selector in select_selectors:
+                        locator_type = "ddl"
+                    else:
+                        locator_type = "btn"
+
+                    method_lines.append(f"""
     def {method_key}(self, tomar_evidencia=False, step=None):
         \"\"\"Hace click en el elemento {selector}\"\"\"
         ui_interact(
@@ -1626,16 +2107,34 @@ class {class_name}:
             usar_create_screenshot=tomar_evidencia,
             screenshot_step=step
         )
-                """)
+                    """)
                 generated_methods.add(method_key)
         
         # Generar métodos para fills/types
         for selector in fill_selectors:
             name = self._generate_element_name(selector)
             method_key = f"enter_{name}"
-            
+
             if method_key not in generated_methods:
-                method_lines.append(f"""
+                shadow = self._shadow_info_for_selector(selector)
+                if shadow:
+                    inner_sel = shadow.get("inner_selector") or selector
+                    method_lines.append(f"""
+    def {method_key}(self, text, tomar_evidencia=False, step=None):
+        \"\"\"Escribe texto en input dentro de Shadow DOM — host: {shadow.get('host_selector')}\"\"\"
+        ui_interact_shadow(
+            driver=self.driver,
+            host_locator=self.shadow_host_{name},
+            inner_css="{inner_sel}",
+            accion="insertTxt",
+            valor=str(text),
+            nombre_elemento="{method_key}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step,
+        )
+                    """)
+                else:
+                    method_lines.append(f"""
     def {method_key}(self, text, tomar_evidencia=False, step=None):
         \"\"\"Escribe texto en el campo {selector}\"\"\"
         ui_interact(
@@ -1647,7 +2146,7 @@ class {class_name}:
             usar_create_screenshot=tomar_evidencia,
             screenshot_step=step
         )
-                """)
+                    """)
                 generated_methods.add(method_key)
         
         # Generar métodos para selects (nativos <select>)
