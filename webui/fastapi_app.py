@@ -82,15 +82,23 @@ def _repo_root() -> str:
     Devuelve la raíz del proyecto / directorio del bundle.
 
     En modo frozen (PyInstaller):
-      - --onefile: sys._MEIPASS es el directorio de extracción temporal.
-      - --onedir:  sys._MEIPASS no existe; los datas están junto al ejecutable.
+      - sys._MEIPASS apunta al directorio con los datas tanto en --onedir como --onefile.
+      - Fallback: directorio del ejecutable (os.path.dirname(sys.executable)).
     En desarrollo: sube un nivel desde webui/ hasta la raíz del repo.
     """
     if getattr(sys, "frozen", False):
+        # Intentar varias opciones en orden de prioridad
         meipass = getattr(sys, "_MEIPASS", None)
-        if meipass:
-            return meipass                          # --onefile
-        return os.path.dirname(sys.executable)      # --onedir
+        for candidate in filter(None, [meipass, os.path.dirname(sys.executable)]):
+            # Verificar que el candidato contiene datas reales del bundle
+            if os.path.isdir(os.path.join(candidate, "resources")):
+                return candidate
+            if os.path.isdir(os.path.join(candidate, "frontend")):
+                return candidate
+        # Último recurso: primer candidato disponible aunque no tenga datas confirmadas
+        if meipass and os.path.isdir(meipass):
+            return meipass
+        return os.path.dirname(sys.executable)
     # Desarrollo: webui/fastapi_app.py -> webui/ -> repo root
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -633,10 +641,13 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     @app.get("/")
     def spa_root() -> Any:
         if not os.path.exists(frontend_dist):
-            return HTMLResponse(
-                "<h3>Frontend not built.</h3>"
-                "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
+            frozen = getattr(sys, "frozen", False)
+            hint = (
+                f"<p><small>Bundle path checked: <code>{frontend_dist}</code></small></p>"
+                if frozen
+                else "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
             )
+            return HTMLResponse(f"<h3>Frontend not built.</h3>{hint}")
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
     @app.get("/logo.png")
@@ -652,8 +663,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Not found")
         if not os.path.exists(frontend_dist):
             return HTMLResponse(
-                "<h3>Frontend not built.</h3>"
-                "<p>Run: <code>cd frontend && npm install && npm run build</code></p>"
+                f"<h3>Frontend not built.</h3>"
+                f"<p><small>{frontend_dist}</small></p>"
             )
 
         target = os.path.join(frontend_dist, path)

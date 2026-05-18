@@ -1034,8 +1034,13 @@ if __name__ == "__main__":
           """)    
     def _run_web_ui() -> None:
         """
-        Run the web UI (FastAPI + Uvicorn) without requiring Tkinter.
-        Default mode unless --tk is provided.
+        Arranca FastAPI + Uvicorn en un hilo daemon y gestiona el ciclo de vida
+        desde el hilo principal:
+          - Si Tkinter está disponible: muestra una ventana de control mínima en
+            la barra de tareas. El usuario la cierra para terminar el proceso.
+          - Si no: espera a que el servidor se detenga y luego fuerza os._exit(0).
+        En ambos casos, cuando el servidor para (señal del browser o botón cerrar),
+        el proceso se termina limpiamente con os._exit(0).
         """
         import json
         import urllib.error
@@ -1043,7 +1048,6 @@ if __name__ == "__main__":
 
         create_app_fn = create_fastapi_app
         if create_app_fn is None:
-            # Try a lazy import path (PyInstaller sometimes misses conditional imports).
             from webui.fastapi_app import create_app as create_app_fn  # type: ignore
 
         from webui.job_manager import JobManager
@@ -1055,7 +1059,6 @@ if __name__ == "__main__":
 
         host = "127.0.0.1"
         port = 5173
-        # Find a free port (best-effort)
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.bind((host, 0))
@@ -1073,25 +1076,7 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-        def _poll_exit_and_shutdown(srv: "uvicorn.Server") -> None:
-            """
-            Frontend calls POST /api/app/exit when the home tab closes (sendBeacon).
-            Nothing else was reading /api/app/should-exit, so the app process stayed running.
-            """
-            exit_url = f"http://{host}:{port}/api/app/should-exit"
-            while not srv.should_exit:
-                time.sleep(0.35)
-                try:
-                    with urllib.request.urlopen(exit_url, timeout=1.0) as resp:
-                        payload = json.loads(resp.read().decode("utf-8"))
-                    if payload.get("exit") is True:
-                        srv.should_exit = True
-                        return
-                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
-                    continue
-
-        # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY (or may be None),
-        # which can crash Uvicorn's default logging formatter. Provide a safe log_config.
+        # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY.
         cfg = uvicorn.Config(
             app,
             host=host,
@@ -1101,20 +1086,85 @@ if __name__ == "__main__":
             access_log=False,
         )
         server = uvicorn.Server(cfg)
-        poll_thread = threading.Thread(target=_poll_exit_and_shutdown, args=(server,), daemon=True)
+
+        def _poll_exit_and_shutdown() -> None:
+            """Detecta POST /api/app/exit enviado por el frontend al cerrar la pestaña."""
+            exit_url = f"http://{host}:{port}/api/app/should-exit"
+            while not server.should_exit:
+                time.sleep(0.35)
+                try:
+                    with urllib.request.urlopen(exit_url, timeout=1.0) as resp:
+                        payload = json.loads(resp.read().decode("utf-8"))
+                    if payload.get("exit") is True:
+                        server.should_exit = True
+                        return
+                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
+                    continue
+
+        def _shutdown(after_s: float = 0.6) -> None:
+            """Para el servidor y termina el proceso."""
+            server.should_exit = True
+            time.sleep(after_s)
+            os._exit(0)
+
+        # Uvicorn en hilo daemon — el hilo principal sigue libre para Tk o join()
+        server_thread = threading.Thread(target=server.run, daemon=True)
+        server_thread.start()
+
+        poll_thread = threading.Thread(target=_poll_exit_and_shutdown, daemon=True)
         poll_thread.start()
-        try:
-            server.run()
-        except Exception:
-            # Fallback: uvicorn.run (sin hilo de salida; preferir arreglar Config si ves esto en logs).
-            uvicorn.run(
-                app,
-                host=host,
-                port=port,
-                log_level="info",
-                log_config=None,
-                access_log=False,
+
+        if TK_AVAILABLE:
+            # ── Ventana de control mínima ─────────────────────────────────────────────
+            # Permanece en la barra de tareas y da al usuario un botón para cerrar ELIA.
+            # Posicionada en la esquina inferior derecha para no molestar.
+            ctrl = tk.Tk()
+            ctrl.title("ELIA")
+            ctrl.resizable(False, False)
+            ctrl.attributes("-topmost", False)
+
+            # Posicionar en esquina inferior derecha
+            ctrl.update_idletasks()
+            sw = ctrl.winfo_screenwidth()
+            sh = ctrl.winfo_screenheight()
+            ctrl.geometry(f"260x62+{sw - 274}+{sh - 100}")
+
+            tk.Label(ctrl, text="ELIA está en ejecución  ●", font=("Arial", 10)).pack(pady=(8, 4))
+            tk.Button(
+                ctrl,
+                text="✕  Cerrar ELIA",
+                command=lambda: threading.Thread(target=_shutdown, daemon=True).start(),
+                width=20,
+                relief="flat",
+                bg="#d9534f",
+                fg="white",
+                activebackground="#c9302c",
+                activeforeground="white",
+            ).pack(pady=(0, 6))
+
+            ctrl.protocol(
+                "WM_DELETE_WINDOW",
+                lambda: threading.Thread(target=_shutdown, daemon=True).start(),
             )
+
+            # Cuando el servidor para (señal del browser), cerrar también la ventana
+            def _watch_server() -> None:
+                server_thread.join()
+                try:
+                    ctrl.event_generate("<<ELIAServerStopped>>", when="tail")
+                except Exception:
+                    pass
+
+            ctrl.bind("<<ELIAServerStopped>>", lambda _: ctrl.quit())
+            threading.Thread(target=_watch_server, daemon=True).start()
+
+            ctrl.mainloop()
+            # mainloop salió (ventana cerrada por el usuario o por señal del server)
+            _shutdown(after_s=0.3)
+        else:
+            # Sin Tkinter: esperar a que el servidor se detenga y forzar la salida
+            server_thread.join()
+            os._exit(0)
 
     if USE_WEB:
         # Default path: run web UI.
