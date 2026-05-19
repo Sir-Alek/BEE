@@ -3,6 +3,9 @@ Licencia offline (demo + activación por clave + kill switch local).
 
 Sin servidor externo: estado en disco local, HMAC con secreto embebido (cambiar en builds de release).
 
+Seguridad local: no se confía en ``activated`` ni en ``expires_at`` del JSON; en cada arranque
+se revalida ``saved_activation_key`` contra la huella de la máquina y se recalcula la caducidad.
+
 Duraciones de clave (generate_license_key.py):
   15D  — 15 días (extensión demo)
   30D  — 1 mes
@@ -264,15 +267,45 @@ def _clear_licensed_modules() -> None:
         pass
 
 
+def _normalize_stored_key(key: str) -> str:
+    return (key or "").strip().replace(" ", "")
+
+
+def _licensed_modules_dict(parsed: ParsedLicenseKey) -> Dict[str, bool]:
+    return {
+        "mobile_recording": parsed.mobile,
+        "legacy_recording": parsed.legacy,
+    }
+
+
+def _resolve_license_from_state(
+    state: Dict[str, Any], machine_fp: str
+) -> Optional[Tuple[ParsedLicenseKey, float, Optional[float]]]:
+    """
+    Revalida la licencia en cada consulta (zero trust sobre el JSON).
+
+    Requiere saved_activation_key con HMAC válido para esta máquina.
+    La caducidad se recalcula desde activated_ts + duración de la clave, no desde
+    expires_at editado a mano en disco.
+    """
+    saved_key = state.get("saved_activation_key")
+    if not saved_key:
+        return None
+    parsed = parse_activation_key(_normalize_stored_key(str(saved_key)), machine_fp)
+    if parsed is None:
+        return None
+    activated_ts = float(state.get("activated_ts") or 0.0)
+    if activated_ts <= 0:
+        activated_ts = time.time()
+    sec = DURATION_SECONDS.get(parsed.duration)
+    exp_ts = (activated_ts + sec) if sec is not None else None
+    return parsed, activated_ts, exp_ts
+
+
 def is_time_limited_license_active() -> bool:
-    """True si hay licencia activada y no ha caducado (permanente cuenta como activa)."""
-    state = _load_state()
-    if not state.get("activated"):
-        return False
-    exp = state.get("expires_at")
-    if exp is None:
-        return True
-    return time.time() <= float(exp)
+    """True si hay licencia activada, clave válida y no caducada."""
+    st = get_license_status()
+    return st.ok and st.reason == "activated"
 
 
 def get_active_license_modules() -> Optional[Dict[str, bool]]:
@@ -280,32 +313,29 @@ def get_active_license_modules() -> Optional[Dict[str, bool]]:
     Módulos concedidos por la licencia activa (mobile/legacy).
     None si no hay licencia válida.
     """
-    if not is_time_limited_license_active():
+    st = get_license_status()
+    if not st.ok or st.reason != "activated":
         return None
-    raw = _load_state().get("licensed_modules")
-    if not isinstance(raw, dict):
-        return {"mobile_recording": False, "legacy_recording": False}
-    return {
-        "mobile_recording": bool(raw.get("mobile_recording")),
-        "legacy_recording": bool(raw.get("legacy_recording")),
-    }
+    if st.licensed_modules is not None:
+        return dict(st.licensed_modules)
+    return {"mobile_recording": False, "legacy_recording": False}
 
 
 def activate_with_key(key: str) -> bool:
-    parsed = parse_activation_key(key)
+    fp = get_machine_fingerprint()
+    parsed = parse_activation_key(key, fp)
     if parsed is None:
         return False
     state = _ensure_first_run_recorded()
     now = time.time()
+    key_norm = _normalize_stored_key(key)
+    state["saved_activation_key"] = key_norm
     state["activated"] = True
     state["activated_ts"] = now
     state["duration_code"] = parsed.duration
     sec = DURATION_SECONDS.get(parsed.duration)
     state["expires_at"] = (now + sec) if sec is not None else None
-    state["licensed_modules"] = {
-        "mobile_recording": parsed.mobile,
-        "legacy_recording": parsed.legacy,
-    }
+    state["licensed_modules"] = _licensed_modules_dict(parsed)
     _save_state(state)
     _sync_licensed_modules(parsed.mobile, parsed.legacy)
     return True
@@ -364,16 +394,17 @@ def get_license_status() -> LicenseStatus:
 
     fp = get_machine_fingerprint()
     state = _ensure_first_run_recorded()
-    activated = bool(state.get("activated"))
-    duration_code = state.get("duration_code")
-    licensed_modules = state.get("licensed_modules") if isinstance(state.get("licensed_modules"), dict) else None
-    expires_at = state.get("expires_at")
-    exp_ts = float(expires_at) if expires_at is not None else None
+    resolved = _resolve_license_from_state(state, fp)
 
-    if activated:
+    if resolved is not None:
+        parsed, _activated_ts, exp_ts = resolved
+        duration_code = parsed.duration
+        licensed_modules = _licensed_modules_dict(parsed)
+        _sync_licensed_modules(parsed.mobile, parsed.legacy)
+
         if exp_ts is not None and time.time() > exp_ts:
             _clear_licensed_modules()
-            left_label = DURATION_LABELS.get(str(duration_code or ""), "limitada")
+            left_label = DURATION_LABELS.get(duration_code, "limitada")
             return LicenseStatus(
                 ok=False,
                 reason="license_expired",
@@ -382,17 +413,16 @@ def get_license_status() -> LicenseStatus:
                 machine_fingerprint=fp,
                 message=f"La licencia ({left_label}) ha caducado. Solicita una nueva clave.",
                 expires_at=exp_ts,
-                duration_code=str(duration_code) if duration_code else None,
+                duration_code=duration_code,
                 licensed_modules=licensed_modules,
             )
 
-        dur_label = DURATION_LABELS.get(str(duration_code or DURATION_PERM), "activada")
+        dur_label = DURATION_LABELS.get(duration_code, "activada")
         mod_parts = []
-        if licensed_modules:
-            if licensed_modules.get("mobile_recording"):
-                mod_parts.append("móvil")
-            if licensed_modules.get("legacy_recording"):
-                mod_parts.append("legacy")
+        if licensed_modules.get("mobile_recording"):
+            mod_parts.append("móvil")
+        if licensed_modules.get("legacy_recording"):
+            mod_parts.append("legacy")
         mod_txt = f" Módulos: {', '.join(mod_parts)}." if mod_parts else ""
         if exp_ts is not None:
             days_left = max(0.0, (exp_ts - time.time()) / 86400.0)
@@ -407,9 +437,12 @@ def get_license_status() -> LicenseStatus:
             machine_fingerprint=fp,
             message=msg,
             expires_at=exp_ts,
-            duration_code=str(duration_code) if duration_code else DURATION_PERM,
+            duration_code=duration_code,
             licensed_modules=licensed_modules,
         )
+
+    if bool(state.get("activated")) and not state.get("saved_activation_key"):
+        _clear_licensed_modules()
 
     first_ts = float(state.get("first_run_ts", time.time()))
     elapsed = time.time() - first_ts

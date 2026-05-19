@@ -73,6 +73,9 @@ const ELIA_UI_BC = "elia-ui";
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
 const ELIA_WEB_UI_BUILD = "elia-ui-20260505-c";
 
+/** Avisos de validación en la pantalla principal: se ocultan solos o con ✕ */
+const HOME_ERROR_DISMISS_MS = 8_000;
+
 type LicenseState = {
   can_run_jobs: boolean;
   message: string;
@@ -426,7 +429,7 @@ export default function App() {
     setErrorText(null);
     setHomeHint(null);
     if (license && !license.can_run_jobs) {
-      setErrorText("Periodo de demostración finalizado. Introduce la clave de activación abajo.");
+      setErrorText("Periodo de demostración finalizado. Activa una licencia en Configuración (⚙).");
       return;
     }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
@@ -612,6 +615,16 @@ export default function App() {
     const t = window.setTimeout(() => setHomeHint(null), 5 * 60 * 1000);
     return () => window.clearTimeout(t);
   }, [homeHint]);
+
+  useEffect(() => {
+    if (!errorText) return;
+    const t = window.setTimeout(() => setErrorText(null), HOME_ERROR_DISMISS_MS);
+    return () => window.clearTimeout(t);
+  }, [errorText]);
+
+  useEffect(() => {
+    setErrorText(null);
+  }, [homeTab]);
 
   useEffect(() => {
     if (isHomeSurface || !jobId || !job) return;
@@ -972,7 +985,7 @@ export default function App() {
             >
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · Jira y Value Edge</div>
               <div style={{ color: c.muted, fontSize: 13, marginBottom: 12 }}>
-                Los datos se guardan en el navegador y, si el backend tiene <code>cryptography</code>, también cifrados
+                Los datos se guardan en el navegador y, también cifrados
                 en disco (misma máquina). Usa solo en red local (<code>127.0.0.1</code>).
               </div>
 
@@ -1370,6 +1383,7 @@ export default function App() {
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
         {errorText && (
           <div
+            role="alert"
             style={{
               background: c.errorBg,
               border: `1px solid ${c.errorBorder}`,
@@ -1378,8 +1392,31 @@ export default function App() {
               marginBottom: 16,
             }}
           >
-            <b style={{ color: c.errorTitle }}>Error</b>
-            <div style={{ color: c.errorBody, marginTop: 6, whiteSpace: "pre-wrap" }}>{errorText}</div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ color: c.errorTitle }}>Error</b>
+                <div style={{ color: c.errorBody, marginTop: 6, whiteSpace: "pre-wrap" }}>{errorText}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorText(null)}
+                aria-label="Cerrar mensaje de error"
+                title="Cerrar"
+                style={{
+                  flexShrink: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: c.errorTitle,
+                  fontSize: 18,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "2px 6px",
+                  borderRadius: 6,
+                }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 

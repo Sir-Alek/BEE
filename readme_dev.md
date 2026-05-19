@@ -59,7 +59,8 @@ python -m PyInstaller --noconfirm ELIA.spec
 ## Licencia offline (`core/elia_license.py`)
 
 - **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\ELIA\` en Windows).
-- **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar.
+- **Activación con clave:** Configuración (⚙) en la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar.
+- El estado en `%LOCALAPPDATA%\\ELIA\\license_state.json` guarda la clave (`saved_activation_key`) y se **revalida con HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
 - **Generar clave para una huella** (`scripts/generate_license_key.py`; el secreto `_LICENSE_SEED` debe coincidir con el build):
   - `python scripts/generate_license_key.py --machine <huella32hex>` — permanente, sin módulos extra
   - `--duration 15d` — 15 días (extensión demo); `30d` — 1 mes; `365d` — 1 año; `perm` — permanente
