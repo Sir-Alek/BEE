@@ -7,10 +7,6 @@
 dist/
 build/
 
-# Logos empresariales
-Logo_BanCoppel.png
-logo-servicios-financieros.jpg
-
 #cache
 *.pyc
 *__pycache__
@@ -22,7 +18,7 @@ node_modules/
 resources/models/**/*.gguf
 
 # Build release: JS ofuscado y extensiones Cython locales (no obligatorio en git)
-core/recorder.obfuscated.js
+core/ui_automation/recorder.obfuscated.js
 core/recorder.test.js
 core/*.pyd
 core/*.c

@@ -11,47 +11,20 @@ import sys
 import threading
 import time
 import webbrowser
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Set
 
 
-def _maximize_browser_windows_later(delay: float = 2.0) -> None:
+def _focus_new_browser_window_later(old_pids: Set[int], *, delay_sec: float = 1.2) -> None:
     """
-    Windows-only: espera `delay` segundos y maximiza todas las ventanas de
-    Chrome/Edge/Chromium visibles. Se ejecuta en un hilo daemon para no bloquear.
-    Cuando Chrome ya tiene una instancia abierta, --start-maximized no afecta la
-    nueva ventana que se abre; este mecanismo lo compensa.
+    Trae al frente la ventana del navegador recién abierta (sin maximizar todas
+    las ventanas Chrome/Edge del usuario, que provocaba parpadeos y minimizado).
     """
-    if sys.platform != "win32":
-        return
+    try:
+        from core.ui_automation.recorder_focus import spawn_focus_thread_for_automation_browser
 
-    def _run() -> None:
-        time.sleep(delay)
-        try:
-            import ctypes
-
-            user32 = ctypes.windll.user32
-            SW_MAXIMIZE = 3
-            BROWSER_KEYWORDS = ("Chrome", "Edge", "Chromium")
-
-            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
-
-            def _cb(hwnd: int, _: int) -> bool:
-                if not user32.IsWindowVisible(hwnd):
-                    return True
-                length = user32.GetWindowTextLengthW(hwnd)
-                if length <= 0:
-                    return True
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                if any(kw in buf.value for kw in BROWSER_KEYWORDS):
-                    user32.ShowWindow(hwnd, SW_MAXIMIZE)
-                return True
-
-            user32.EnumWindows(WNDENUMPROC(_cb), 0)
-        except Exception:
-            pass
-
-    threading.Thread(target=_run, daemon=True).start()
+        spawn_focus_thread_for_automation_browser(old_pids, delay_sec=delay_sec)
+    except Exception:
+        pass
 
 
 def _candidate_executables() -> List[str]:
@@ -100,6 +73,13 @@ def _candidate_executables() -> List[str]:
 
 
 def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
+    try:
+        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
+
+        old_pids = chrome_like_pids_snapshot()
+    except Exception:
+        old_pids = set()
+
     for exe in executables:
         if not os.path.isfile(exe):
             continue
@@ -110,7 +90,7 @@ def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
-            _maximize_browser_windows_later()
+            _focus_new_browser_window_later(old_pids)
             return True
         except Exception:
             continue
@@ -130,13 +110,24 @@ def open_url_in_new_browser_window(url: str) -> None:
             webbrowser.open(url)
         except Exception:
             pass
-    _maximize_browser_windows_later()
+    try:
+        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
+
+        _focus_new_browser_window_later(chrome_like_pids_snapshot())
+    except Exception:
+        pass
 
 
 def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> bool:
     """Open multiple URLs as tabs in one Chromium instance (order preserved)."""
     if not urls:
         return False
+    try:
+        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
+
+        old_pids = chrome_like_pids_snapshot()
+    except Exception:
+        old_pids = set()
     argv = list(urls)
     for exe in executables:
         if not os.path.isfile(exe):
@@ -148,7 +139,7 @@ def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> 
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
-            _maximize_browser_windows_later()
+            _focus_new_browser_window_later(old_pids)
             return True
         except Exception:
             continue

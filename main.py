@@ -1029,7 +1029,7 @@ if __name__ == "__main__":
 ███████╗███████╗██║██║  ██║
 ╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
 
-   ELIA - Evolving Learning & Intelligent Automation v0.2.3
+   ELIA - Evolving Learning & Intelligent Automation v0.2.4
    </Sir_Alek>
           """)    
     def _run_web_ui() -> None:
@@ -1064,13 +1064,6 @@ if __name__ == "__main__":
             pass
 
         url = f"http://{host}:{port}/"
-        try:
-            if open_url_in_new_browser_window is not None:
-                open_url_in_new_browser_window(url)
-            else:
-                webbrowser.open_new(url)
-        except Exception:
-            pass
 
         # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY.
         cfg = uvicorn.Config(
@@ -1082,6 +1075,32 @@ if __name__ == "__main__":
             access_log=False,
         )
         server = uvicorn.Server(cfg)
+
+        def _run_server() -> None:
+            server.run()
+
+        def _wait_until_server_ready(target_url: str, timeout_sec: float = 20.0) -> bool:
+            deadline = time.time() + timeout_sec
+            while time.time() < deadline:
+                try:
+                    with urllib.request.urlopen(target_url, timeout=0.8) as resp:
+                        if 200 <= int(getattr(resp, "status", 200) or 200) < 500:
+                            return True
+                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
+                    time.sleep(0.12)
+            return False
+
+        server_thread = threading.Thread(target=_run_server, daemon=True)
+        server_thread.start()
+        _wait_until_server_ready(url)
+
+        try:
+            if open_url_in_new_browser_window is not None:
+                open_url_in_new_browser_window(url)
+            else:
+                webbrowser.open_new(url)
+        except Exception:
+            pass
 
         def _poll_exit_and_shutdown() -> None:
             """Detecta POST /api/app/exit enviado por el frontend al cerrar la pestaña."""
@@ -1100,17 +1119,8 @@ if __name__ == "__main__":
         poll_thread = threading.Thread(target=_poll_exit_and_shutdown, daemon=True)
         poll_thread.start()
 
-        try:
-            server.run()
-        except Exception:
-            uvicorn.run(
-                app,
-                host=host,
-                port=port,
-                log_level="info",
-                log_config=None,
-                access_log=False,
-            )
+        while server_thread.is_alive() and not server.should_exit:
+            server_thread.join(timeout=0.35)
 
         # Garantiza la terminación completa del proceso (incluye hilos no-daemon).
         os._exit(0)
