@@ -42,9 +42,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#MySourceDir}\ELIA.exe"; DestDir: "{app}"; Flags: ignoreversion
+; PyInstaller 6+ coloca dependencias en _internal\ (core\, frontend\, resources\, etc.).
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Proteger la carpeta core configurando permisos durante la instalación
-Source: "{#MySourceDir}\core\*"; DestDir: "{app}\core"; Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -78,7 +77,7 @@ begin
     // Solo intentar configurar permisos si se está instalando para todos los usuarios
     if IsAdminInstallMode then
     begin
-      SetFolderPermissions(ExpandConstant('{app}\core'));
+      SetFolderPermissions(ExpandConstant('{app}\_internal\core'));
     end;
   end;
 end;
