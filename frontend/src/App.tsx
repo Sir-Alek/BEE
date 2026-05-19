@@ -1327,8 +1327,8 @@ export default function App() {
                   >
                     <div
                       style={{
-                        background: c.cardBg, border: `1px solid ${c.border}`,
-                        borderRadius: 16, padding: "28px 32px", maxWidth: 380, textAlign: "center",
+                      background: c.surface, border: `1px solid ${c.border}`,
+                      borderRadius: 16, padding: "28px 32px", maxWidth: 380, textAlign: "center",
                         boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
                       }}
                       onClick={(e) => e.stopPropagation()}
@@ -1673,7 +1673,7 @@ export default function App() {
                         style={{
                           display: "flex", alignItems: "center", gap: 8,
                           padding: "5px 8px", borderRadius: 8,
-                          background: c.cardBg, border: `1px solid ${c.border}`,
+                          background: c.surface, border: `1px solid ${c.border}`,
                           marginBottom: 4, fontSize: 13,
                         }}
                       >
@@ -1732,8 +1732,8 @@ export default function App() {
                 {linkRecordings && availableScenarios.length > 0 && (
                   <div
                     style={{
-                      background: c.cardBg, border: `1px solid ${c.border}`,
-                      borderRadius: 10, padding: 12, marginBottom: 10,
+                    background: c.surface, border: `1px solid ${c.border}`,
+                    borderRadius: 10, padding: 12, marginBottom: 10,
                     }}
                   >
                     <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginBottom: 8 }}>
@@ -1866,7 +1866,7 @@ export default function App() {
 
             {(activePrompt.type === "pick_project" || activePrompt.type === "pick_script") && (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {activePrompt.options.map((opt) => (
+                {(activePrompt.options as { value: string; label: string }[]).map((opt) => (
                   <button
                     key={opt.value}
                     onClick={async () => {
@@ -2000,20 +2000,23 @@ export default function App() {
               </div>
             )}
 
-            {activePrompt.type === "bdd_preview" && activePrompt.payload && (
+            {activePrompt.type === "bdd_preview" && (() => {
+              const ap = activePrompt as Extract<ActivePrompt, { type: "bdd_preview" }>;
+              if (!ap.payload) return null;
+              return (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ fontSize: 13, color: c.muted }}>
-                  Intento {activePrompt.payload.attempt} de {activePrompt.payload.max_attempts}.{" "}
-                  {activePrompt.payload.can_manual
+                  Intento {ap.payload.attempt} de {ap.payload.max_attempts}.{" "}
+                  {ap.payload.can_manual
                     ? "Puedes editar el escenario a mano o usar la versión heurística."
                     : "Revisa el texto; puedes aceptarlo o pedir otra versión con IA."}
                 </div>
-                {activePrompt.payload.script_excerpt?.trim() ? (
+                {ap.payload.script_excerpt?.trim() ? (
                   <div>
                     <div style={{ fontSize: 12, color: c.muted, marginBottom: 6 }}>Extracto del script (referencia)</div>
                     <textarea
                       readOnly
-                      value={activePrompt.payload.script_excerpt}
+                      value={ap.payload.script_excerpt}
                       style={{
                         width: "100%",
                         minHeight: 120,
@@ -2033,7 +2036,7 @@ export default function App() {
                   <textarea
                     value={bddPreviewText}
                     onChange={(e) => setBddPreviewText(e.target.value)}
-                    readOnly={!activePrompt.payload.can_manual}
+                    readOnly={!ap.payload.can_manual}
                     style={{
                       width: "100%",
                       minHeight: 220,
@@ -2042,7 +2045,7 @@ export default function App() {
                       border: `1px solid ${c.inputBorder}`,
                       fontFamily: "ui-monospace, monospace",
                       fontSize: 13,
-                      background: activePrompt.payload.can_manual ? c.inputBg : c.codeBg,
+                      background: ap.payload.can_manual ? c.inputBg : c.codeBg,
                       color: c.text,
                     }}
                   />
@@ -2052,11 +2055,11 @@ export default function App() {
                     type="button"
                     onClick={async () => {
                       if (!jobId) return;
-                      const orig = String(activePrompt.payload?.feature_text ?? "");
+                      const orig = String(ap.payload?.feature_text ?? "");
                       const edited = bddPreviewText.trim() !== orig.trim();
                       await sendPromptResponse({
                         jobId,
-                        promptId: activePrompt.prompt_id,
+                        promptId: ap.prompt_id,
                         answer: {
                           action: "accept",
                           feature_text: bddPreviewText,
@@ -2073,16 +2076,16 @@ export default function App() {
                       cursor: "pointer",
                     }}
                   >
-                    {activePrompt.payload.can_manual ? "Aceptar escenario" : "Aceptar"}
+                    {ap.payload.can_manual ? "Aceptar escenario" : "Aceptar"}
                   </button>
-                  {!activePrompt.payload.can_manual ? (
+                  {!ap.payload.can_manual ? (
                     <button
                       type="button"
                       onClick={async () => {
                         if (!jobId) return;
                         await sendPromptResponse({
                           jobId,
-                          promptId: activePrompt.prompt_id,
+                          promptId: ap.prompt_id,
                           answer: { action: "reject" },
                         });
                       }}
@@ -2104,7 +2107,7 @@ export default function App() {
                         if (!jobId) return;
                         await sendPromptResponse({
                           jobId,
-                          promptId: activePrompt.prompt_id,
+                          promptId: ap.prompt_id,
                           answer: { action: "use_heuristic" },
                         });
                       }}
@@ -2124,7 +2127,7 @@ export default function App() {
                     type="button"
                     onClick={async () => {
                       if (!jobId) return;
-                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
+                      await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: null });
                     }}
                     style={{
                       padding: "10px 14px",
@@ -2139,28 +2142,31 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
-            {activePrompt.type === "message_ack" && (
+            {activePrompt.type === "message_ack" && (() => {
+              const ap = activePrompt as Extract<ActivePrompt, { type: "message_ack" }>;
+              return (
               <div>
                 <div
                   style={{
                     background:
-                      activePrompt.severity === "error"
+                      ap.severity === "error"
                         ? c.msgErrBg
-                        : activePrompt.severity === "warning"
+                        : ap.severity === "warning"
                           ? c.msgWarnBg
                           : c.msgInfoBg,
                     border:
-                      activePrompt.severity === "error"
+                      ap.severity === "error"
                         ? `1px solid ${c.msgErrBorder}`
-                        : activePrompt.severity === "warning"
+                        : ap.severity === "warning"
                           ? `1px solid ${c.msgWarnBorder}`
                           : `1px solid ${c.msgInfoBorder}`,
                     color:
-                      activePrompt.severity === "error"
+                      ap.severity === "error"
                         ? c.msgErrText
-                        : activePrompt.severity === "warning"
+                        : ap.severity === "warning"
                           ? c.msgWarnText
                           : c.msgInfoText,
                     padding: 12,
@@ -2172,7 +2178,7 @@ export default function App() {
                     overflow: "auto",
                   }}
                 >
-                  {activePrompt.message}
+                  {ap.message}
                 </div>
                 <div
                   style={{
@@ -2190,7 +2196,7 @@ export default function App() {
                     type="button"
                     onClick={async () => {
                       if (!jobId) return;
-                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
+                      await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: true });
                     }}
                     style={{
                       padding: "10px 14px",
@@ -2207,7 +2213,7 @@ export default function App() {
                     type="button"
                     onClick={async () => {
                       if (!jobId) return;
-                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
+                      await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: true });
                     }}
                     style={{
                       padding: "10px 14px",
@@ -2222,7 +2228,8 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {activePrompt.type === "input_text" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

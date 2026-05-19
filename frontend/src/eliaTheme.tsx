@@ -206,6 +206,7 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       document.documentElement.setAttribute("data-elia-theme", v ? "dark" : "light");
+      document.body.style.background = v ? "#0b1220" : "#f9fafb";
     } catch {
       // ignore
     }
@@ -221,6 +222,7 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       document.documentElement.setAttribute("data-elia-theme", dark ? "dark" : "light");
+      document.body.style.background = dark ? "#0b1220" : "#f9fafb";
     } catch {
       // ignore
     }
@@ -240,6 +242,7 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
           }
           try {
             document.documentElement.setAttribute("data-elia-theme", ev.data.dark ? "dark" : "light");
+            document.body.style.background = ev.data.dark ? "#0b1220" : "#f9fafb";
           } catch {
             // ignore
           }

@@ -73,11 +73,12 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
         web_hidden.append(pkg)
 
 integrations_hidden = [
-    # core raíz
+    # core raíz — módulos Cython compilados directamente en core/
     "core.elia_paths",
     "core.elia_license",
     "core.elia_memory",
-    # core/ui_automation/ — importados en tiempo de ejecución dentro de funciones
+    "core.modules_config",
+    # core/ui_automation/ — módulos Cython compilados
     "core.ui_automation",
     "core.ui_automation.puppeteer_script_converter",
     "core.ui_automation.step_by_step_converter",
@@ -86,7 +87,9 @@ integrations_hidden = [
     "core.ui_automation.node_wrapper",
     "core.ui_automation.recorder_focus",
     "core.ui_automation.video_recorder",
-    # core/req_intelligence/ — importados en tiempo de ejecución dentro de funciones
+    "core.ui_automation.mobile_recorder",
+    "core.ui_automation.legacy_recorder",
+    # core/req_intelligence/ — módulos Cython compilados
     "core.req_intelligence",
     "core.req_intelligence.jira_extractor",
     "core.req_intelligence.value_edge_extractor",
@@ -94,15 +97,13 @@ integrations_hidden = [
     "core.req_intelligence.integrations_config_loader",
     "core.req_intelligence.connectors_profiles_store",
     "core.req_intelligence.integrations_service",
-    # aliases retrocompatibles registrados en core/__init__.py
-    "core.jira_extractor",
-    "core.value_edge_extractor",
-    "core.gherkin_converter",
-    "core.integrations_config_loader",
-    "core.connectors_profiles_store",
-    "core.integrations_service",
-    "core.flow_analyzer",
-    "core.locator_healer",
+    "core.req_intelligence.doc_ingestion",
+    "core.req_intelligence.bdd_doc_converter",
+    "core.req_intelligence.feature_scanner",
+    # NOTA: los alias retrocompatibles (core.jira_extractor, core.flow_analyzer, etc.)
+    # son proxies lazy registrados en sys.modules por core/__init__.py en tiempo de
+    # ejecución. NO son archivos .pyd reales; PyInstaller no puede encontrarlos
+    # estáticamente, por lo que NO deben listarse aquí.
 ]
 
 crypto_hidden = []
