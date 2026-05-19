@@ -8,6 +8,7 @@ import {
   getModulesStatus,
   getScenarios,
   getRecordings,
+  type LicenseStatusResponse,
   putEliaConnectors,
   sendPromptResponse,
   startConvertJob,
@@ -72,6 +73,97 @@ const ELIA_UI_BC = "elia-ui";
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
 const ELIA_WEB_UI_BUILD = "elia-ui-20260505-c";
 
+type LicenseState = {
+  can_run_jobs: boolean;
+  message: string;
+  demo_days_left: number | null;
+  activated: boolean;
+  machine_fingerprint: string;
+  reason?: string;
+  expires_at?: number | null;
+  duration_code?: string | null;
+};
+
+function licenseFromApi(l: LicenseStatusResponse): LicenseState {
+  return {
+    can_run_jobs: l.can_run_jobs,
+    message: l.message,
+    demo_days_left: l.demo_days_left,
+    activated: l.activated,
+    machine_fingerprint: l.machine_fingerprint,
+    reason: l.reason,
+    expires_at: l.expires_at ?? null,
+    duration_code: l.duration_code ?? null,
+  };
+}
+
+function formatLicenseExpiryDate(expiresAtSec: number): string {
+  return new Date(expiresAtSec * 1000).toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/** Texto breve para la tarjeta Licencia en Configuración. */
+function formatLicenseStatusLabel(license: LicenseState): string {
+  if (license.reason === "skip") {
+    return "Desarrollo (licencia omitida).";
+  }
+  if (license.reason === "killed") {
+    return "Inactiva — instalación deshabilitada.";
+  }
+  if (!license.can_run_jobs) {
+    if (license.reason === "demo_expired" || license.reason === "license_expired") {
+      return "Inactiva — periodo o licencia caducados.";
+    }
+    return license.message;
+  }
+  if (license.activated) {
+    if (license.expires_at == null) {
+      return "Licencia permanente.";
+    }
+    const days = Math.max(0, (license.expires_at * 1000 - Date.now()) / 86400000);
+    return `Licencia temporal: expira el ${formatLicenseExpiryDate(license.expires_at)} (≈ ${Math.ceil(days)} día(s)).`;
+  }
+  if (license.demo_days_left != null) {
+    return `Modo demostración: quedan aprox. ${license.demo_days_left.toFixed(1)} día(s).`;
+  }
+  return license.message;
+}
+
+/** Banner en pantalla principal solo si requiere atención del usuario. */
+function licenseNeedsBanner(license: LicenseState): boolean {
+  if (!license.can_run_jobs) {
+    return true;
+  }
+  if (!license.activated && license.demo_days_left != null && license.demo_days_left <= 3) {
+    return true;
+  }
+  if (license.expires_at != null) {
+    const daysLeft = (license.expires_at * 1000 - Date.now()) / 86400000;
+    if (daysLeft <= 7) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function licenseBannerText(license: LicenseState): string {
+  if (!license.can_run_jobs) {
+    return license.message;
+  }
+  if (!license.activated && license.demo_days_left != null && license.demo_days_left <= 3) {
+    const d = Math.max(1, Math.ceil(license.demo_days_left));
+    return `Tu periodo de demostración termina en ${d} día(s). Activa una licencia para seguir usando ELIA.`;
+  }
+  if (license.expires_at != null) {
+    const days = Math.max(0, Math.ceil((license.expires_at * 1000 - Date.now()) / 86400000));
+    return `Tu licencia expira el ${formatLicenseExpiryDate(license.expires_at)} (${days} día(s) restantes).`;
+  }
+  return license.message;
+}
+
 function goHomeInThisTab(): void {
   window.location.assign(`${window.location.origin}/`);
 }
@@ -128,15 +220,9 @@ export default function App() {
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
   const [useAi, setUseAi] = useState(false);
   const [aiStatusLine, setAiStatusLine] = useState<string | null>(null);
-  const [license, setLicense] = useState<{
-    can_run_jobs: boolean;
-    message: string;
-    demo_days_left: number | null;
-    activated: boolean;
-    machine_fingerprint: string;
-  } | null>(null);
+  const [license, setLicense] = useState<LicenseState | null>(null);
   const [activationKey, setActivationKey] = useState("");
-  const [activationMsg, setActivationMsg] = useState<string | null>(null);
+  const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [connectorProfiles, setConnectorProfiles] = useState<EliaConnectorProfile[]>([]);
@@ -252,28 +338,24 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
+  const refreshLicense = useCallback(async () => {
+    try {
+      const l = await getLicenseStatus();
+      setLicense(licenseFromApi(l));
+    } catch {
+      setLicense(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isHomeSurface) return;
-    let alive = true;
-    void (async () => {
-      try {
-        const l = await getLicenseStatus();
-        if (!alive) return;
-        setLicense({
-          can_run_jobs: l.can_run_jobs,
-          message: l.message,
-          demo_days_left: l.demo_days_left,
-          activated: l.activated,
-          machine_fingerprint: l.machine_fingerprint,
-        });
-      } catch {
-        if (alive) setLicense(null);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [isHomeSurface]);
+    void refreshLicense();
+  }, [isHomeSurface, refreshLicense]);
+
+  useEffect(() => {
+    if (!settingsOpen || !isHomeSurface) return;
+    void refreshLicense();
+  }, [settingsOpen, isHomeSurface, refreshLicense]);
 
   // Cargar estado de módulos (Building Blocks)
   useEffect(() => {
@@ -802,6 +884,90 @@ export default function App() {
                 borderRadius: 12,
                 padding: 14,
                 marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>Licencia</div>
+              {license ? (
+                <>
+                  <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
+                    <span style={{ fontWeight: 600 }}>Estado actual: </span>
+                    {formatLicenseStatusLabel(license)}
+                  </div>
+                  {!license.activated && (
+                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, wordBreak: "break-all" }}>
+                      Huella de máquina (soporte): <code>{license.machine_fingerprint}</code>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                    <input
+                      type="text"
+                      value={activationKey}
+                      onChange={(e) => setActivationKey(e.target.value)}
+                      placeholder="Introduce tu código de activación"
+                      style={{
+                        flex: "1 1 220px",
+                        minWidth: 200,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                        fontSize: 14,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!activationKey.trim()}
+                      onClick={() => {
+                        setLicenseActivateMsg(null);
+                        void (async () => {
+                          try {
+                            const r = await activateLicense(activationKey.trim());
+                            if (r.ok) {
+                              await refreshLicense();
+                              setActivationKey("");
+                              setLicenseActivateMsg("Licencia activada correctamente.");
+                              const m = await getModulesStatus();
+                              setModules(m);
+                            } else {
+                              setLicenseActivateMsg(r.message || "Clave no válida para esta máquina.");
+                            }
+                          } catch (e: unknown) {
+                            setLicenseActivateMsg(String((e as Error)?.message ?? e));
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: c.primary,
+                        color: c.primaryFg,
+                        fontWeight: 700,
+                        fontSize: 14,
+                        cursor: activationKey.trim() ? "pointer" : "not-allowed",
+                        opacity: activationKey.trim() ? 1 : 0.55,
+                      }}
+                    >
+                      Activar
+                    </button>
+                  </div>
+                  {licenseActivateMsg && (
+                    <div style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: c.muted }}>No se pudo consultar el estado de la licencia.</div>
+              )}
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
               }}
             >
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · Jira y Value Edge</div>
@@ -1293,83 +1459,45 @@ export default function App() {
               </div>
             )}
 
-            {license && (
+            {license && licenseNeedsBanner(license) && (
               <div
+                role="alert"
                 style={{
-                  background: license.can_run_jobs ? c.licOkBg : c.licWarnBg,
-                  border: `1px solid ${license.can_run_jobs ? c.licOkBorder : c.licWarnBorder}`,
+                  background: license.can_run_jobs ? c.hintBg : c.licWarnBg,
+                  border: `1px solid ${license.can_run_jobs ? c.hintBorder : c.licWarnBorder}`,
                   color: c.text,
-                  padding: 12,
+                  padding: "10px 14px",
                   borderRadius: 10,
                   marginBottom: 14,
                   fontSize: 14,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Licencia</div>
-                <div style={{ marginBottom: 8 }}>{license.message}</div>
-                {!license.activated && (
-                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 8, wordBreak: "break-all" }}>
-                    Huella (soporte): <code>{license.machine_fingerprint}</code>
-                  </div>
-                )}
-                {!license.can_run_jobs && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="password"
-                      value={activationKey}
-                      onChange={(e) => setActivationKey(e.target.value)}
-                      placeholder="Clave de activación"
-                      style={{
-                        flex: "1 1 240px",
-                        minWidth: 200,
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.inputBorder}`,
-                        background: c.inputBg,
-                        color: c.text,
-                        fontSize: 14,
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActivationMsg(null);
-                        void (async () => {
-                          try {
-                            const r = await activateLicense(activationKey);
-                            if (r.ok) {
-                              const l = await getLicenseStatus();
-                              setLicense({
-                                can_run_jobs: l.can_run_jobs,
-                                message: l.message,
-                                demo_days_left: l.demo_days_left,
-                                activated: l.activated,
-                                machine_fingerprint: l.machine_fingerprint,
-                              });
-                              setActivationKey("");
-                              setActivationMsg("Activación correcta.");
-                            } else {
-                              setActivationMsg(r.message || "Clave no válida.");
-                            }
-                          } catch (e: any) {
-                            setActivationMsg(String(e?.message ?? e));
-                          }
-                        })();
-                      }}
-                      style={{
-                        padding: "8px 14px",
-                        borderRadius: 8,
-                        background: c.primary,
-                        color: c.primaryFg,
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Activar
-                    </button>
-                  </div>
-                )}
-                {activationMsg && <div style={{ marginTop: 8, fontSize: 13 }}>{activationMsg}</div>}
+                <span>{licenseBannerText(license)}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLicenseActivateMsg(null);
+                    setSettingsOpen(true);
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${c.btnGhostBorder}`,
+                    background: c.btnGhostBg,
+                    color: c.text,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Configuración →
+                </button>
               </div>
             )}
 

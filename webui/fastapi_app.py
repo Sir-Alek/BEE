@@ -198,6 +198,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "machine_fingerprint": st.machine_fingerprint,
             "message": st.message,
             "can_run_jobs": elia_license.can_run_jobs(),
+            "expires_at": st.expires_at,
+            "duration_code": st.duration_code,
         }
 
     @app.get("/api/modules/status")
@@ -218,6 +220,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 "message": "Licencia activada.",
                 "reason": st.reason,
                 "activated": st.activated,
+                "can_run_jobs": elia_license.can_run_jobs(),
+                "demo_days_left": st.demo_days_left,
+                "expires_at": st.expires_at,
+                "duration_code": st.duration_code,
             }
         return {"ok": False, "message": "Clave no válida para esta máquina."}
 

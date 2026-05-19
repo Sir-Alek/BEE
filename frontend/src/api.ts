@@ -144,6 +144,8 @@ export type LicenseStatusResponse = {
   machine_fingerprint: string;
   message: string;
   can_run_jobs: boolean;
+  expires_at?: number | null;
+  duration_code?: string | null;
 };
 
 export async function getLicenseStatus(): Promise<LicenseStatusResponse> {
