@@ -59,14 +59,14 @@ fpdf2==2.7.4
 python-multipart>=0.0.20
 python-docx>=1.1.2
 # openpyxl: fallback para Excel si calamine falla; python-calamine ya lo cubre en la mayoría de casos
-# openpyxl>=3.1.0
+openpyxl>=3.1.0
 
 # --- Grabación Móvil (Building Block: mobile_recording — opcional) ---
-# Appium-Python-Client>=4.5.0   # descomenta si adquieres la licencia mobile_recording
+Appium-Python-Client>=4.5.0   # descomenta si adquieres la licencia mobile_recording
 
 # --- Grabación Legacy (Building Block: legacy_recording — opcional) ---
-# pynput>=1.8.0                 # descomenta para captura de mouse/teclado en legacy recording
-# pywinauto>=0.6.8              # descomenta para metadata de controles UI en Windows
+pynput>=1.8.0                 # descomenta para captura de mouse/teclado en legacy recording
+pywinauto>=0.6.8              # descomenta para metadata de controles UI en Windows
 
 # --- Informes PDF / gráficos (PDFFeatureReport, gen_reporTest, etc.) ---
 matplotlib==3.10.3
