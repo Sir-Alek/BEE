@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
 from core.ui_automation.step_by_step_converter import PuppeteerToStepByStepConverter
+from ui.interfaces import BDDUserCancelled
 from webui.job_manager import JobManager, Prompt
 from webui.webui_adapter import WebUIAdapter
 
@@ -64,6 +65,8 @@ class ConvertRequest(BaseModel):
         # Building Blocks: nuevos módulos
         "mobile_recorder",
         "legacy_recorder",
+        "mobile_to_behave",
+        "legacy_to_behave",
         "doc_to_bdd",
     ]
     url: Optional[str] = None
@@ -82,6 +85,8 @@ class ConvertRequest(BaseModel):
     doc_files: Optional[List[str]] = None
     link_recording: Optional[str] = None
     link_scenario: Optional[str] = None
+    link_scenario_by_doc: Optional[Dict[str, str]] = None
+    link_recording_by_doc: Optional[Dict[str, str]] = None
 
 
 class PromptResponseRequest(BaseModel):
@@ -281,8 +286,59 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     return
 
                 if req.mode == "puppeteer_to_behave":
-                    converter = PuppeteerToBehaveConverter(base_dir, adapter, use_ai=req.use_ai)
+                    converter = PuppeteerToBehaveConverter(
+                        base_dir,
+                        adapter,
+                        use_ai=req.use_ai,
+                        link_scenario=req.link_scenario,
+                    )
                     converter.convert_script()
+                    jm.mark_done(job_id)
+                    return
+
+                if req.mode == "mobile_to_behave":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("mobile_recording"):
+                        jm.mark_error(
+                            job_id,
+                            message="Módulo no habilitado",
+                            details="La grabación y conversión móvil requiere licencia mobile_recording.",
+                        )
+                        return
+                    from core.ui_automation.recording_to_behave_converter import (
+                        RecordingToBehaveConverter,
+                    )
+
+                    RecordingToBehaveConverter(
+                        base_dir,
+                        adapter,
+                        platform="mobile",
+                        use_ai=req.use_ai,
+                        link_scenario=req.link_scenario,
+                    ).convert_script()
+                    jm.mark_done(job_id)
+                    return
+
+                if req.mode == "legacy_to_behave":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("legacy_recording"):
+                        jm.mark_error(
+                            job_id,
+                            message="Módulo no habilitado",
+                            details="La grabación y conversión legacy requiere licencia legacy_recording.",
+                        )
+                        return
+                    from core.ui_automation.recording_to_behave_converter import (
+                        RecordingToBehaveConverter,
+                    )
+
+                    RecordingToBehaveConverter(
+                        base_dir,
+                        adapter,
+                        platform="legacy",
+                        use_ai=req.use_ai,
+                        link_scenario=req.link_scenario,
+                    ).convert_script()
                     jm.mark_done(job_id)
                     return
 
@@ -698,19 +754,38 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                             chunks.extend(ingester.ingest(fpath))
 
                     if not chunks:
-                        jm.mark_error(job_id, message="Sin contenido", details="Los documentos no produjeron chunks procesables.")
+                        jm.mark_error(
+                            job_id,
+                            message="Sin contenido",
+                            details=(
+                                "Los documentos no produjeron filas procesables. "
+                                "En Excel, revisa que la matriz tenga columnas de caso/pasos/resultado "
+                                "(aunque esté en la 2ª hoja o más abajo); la 1ª hoja puede ser portada o índice."
+                            ),
+                        )
                         return
 
                     jm.update_progress(job_id, {"stage": f"Convirtiendo {len(chunks)} bloques a BDD…"})
 
+                    from core.elia_paths import behave_projects_dir
+
                     output_dir = str(doc_features_dir())
-                    converter = BDDDocConverter(use_ai=req.use_ai)
-                    result = converter.convert_chunks(chunks, output_dir)
+                    converter = BDDDocConverter(use_ai=req.use_ai, ui=adapter)
+                    result = converter.convert_chunks(
+                        chunks,
+                        output_dir,
+                        link_scenario=req.link_scenario,
+                        link_scenario_by_doc=req.link_scenario_by_doc,
+                        link_recording=req.link_recording,
+                        link_recording_by_doc=req.link_recording_by_doc,
+                        projects_dir=str(behave_projects_dir()),
+                    )
 
                     summary = (
                         f"Conversión completada.\n\n"
                         f"Features creados: {result.features_created}\n"
                         f"Escenarios generados: {result.scenarios_generated}\n"
+                        f"Escenarios vinculados (merge): {result.scenarios_linked}\n"
                         f"Con errores (revisión manual): {result.errors_logged}\n\n"
                         f"Archivos en:\n{output_dir}"
                     )
@@ -725,11 +800,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         "output_dir": output_dir,
                         "link_recording": req.link_recording,
                         "link_scenario": req.link_scenario,
+                        "scenarios_linked": result.scenarios_linked,
                     })
                     jm.mark_done(job_id)
                     return
 
                 jm.mark_error(job_id, message="Unknown mode", details=str(req.mode))
+            except BDDUserCancelled:
+                jm.cancel_job(job_id)
             except Exception as e:
                 jm.mark_error(job_id, message="Job failed", details=f"{e}\n{traceback.format_exc()}")
 
@@ -835,6 +913,26 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 pass
 
         return {"scenarios": results}
+
+    @app.get("/api/req/recordings")
+    def get_recordings(project: Optional[str] = None, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.elia_paths import behave_projects_dir
+        from core.req_intelligence.recording_scanner import scan_all_recordings
+
+        proj_root = str(behave_projects_dir())
+        refs = scan_all_recordings(proj_root, project_filter=project)
+        return {
+            "recordings": [
+                {
+                    "project": r.project,
+                    "file_name": r.file_name,
+                    "file_path": r.file_path,
+                    "platform": r.platform,
+                    "label": r.label,
+                }
+                for r in refs
+            ]
+        }
 
     # -----------------------
     # SPA static serving

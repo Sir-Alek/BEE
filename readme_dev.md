@@ -11,6 +11,7 @@ python -m pip install -U pip setuptools wheel
 pip install -r requirements.txt
 ```
 
+- **Excel → BDD** requiere `pandas`, `python-calamine` y `openpyxl` (incluidos en `requirements.txt`). Si ves `pandas no está instalado`, reinstala dependencias: `pip install -r requirements.txt`.
 - Activar después: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
 - Ejecutar la app: `python main.py`
 
@@ -41,7 +42,7 @@ La salida queda en `frontend/dist/` (la sirve FastAPI en modo web).
 
 Desde la raíz del repo (con el venv activado y herramientas de compilación instaladas según tu SO):
 
-```text
+```
 python scripts/build_release.py --cython
 ```
 
@@ -59,8 +60,13 @@ python -m PyInstaller --noconfirm ELIA.spec
 
 - **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\ELIA\` en Windows).
 - **Activación con clave:** pantalla de inicio de la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar.
-- **Generar clave para una huella:** si el repo incluye `scripts/generate_license_key.py`, úsalo con la huella mostrada en la UI (el secreto `_LICENSE_SEED` en `elia_license.py` debe coincidir con el build que distribuyes).
-- **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones (no usar en entregas).
+- **Generar clave para una huella** (`scripts/generate_license_key.py`; el secreto `_LICENSE_SEED` debe coincidir con el build):
+  - `python scripts/generate_license_key.py --machine <huella32hex>` — permanente, sin módulos extra
+  - `--duration 15d` — 15 días (extensión demo); `30d` — 1 mes; `365d` — 1 año; `perm` — permanente
+  - `--mobile` / `--legacy` — incluir grabación móvil o legacy en la licencia
+  - Ejemplo: `python scripts/generate_license_key.py --machine <huella> --duration 30d --mobile --legacy`
+- **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones y **habilita todos los módulos** (móvil, legacy, doc_to_bdd). No usar en entregas.
+- Tras cambiar `elia_license.py` o `modules_config.py`, recompila Cython (`python setup_cython.py build_ext --inplace`) para que el `.pyd` no quede desactualizado.
 
 ## Kill switch (desactivación local, sin red)
 

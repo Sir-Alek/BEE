@@ -126,3 +126,11 @@ export type ScenarioRef = {
   line: string;
 };
 
+export type RecordingRef = {
+  project: string;
+  file_name: string;
+  file_path: string;
+  platform: string;
+  label: string;
+};
+

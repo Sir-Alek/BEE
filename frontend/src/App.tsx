@@ -7,13 +7,21 @@ import {
   getLicenseStatus,
   getModulesStatus,
   getScenarios,
+  getRecordings,
   putEliaConnectors,
   sendPromptResponse,
   startConvertJob,
   testEliaConnector,
   uploadDocs,
 } from "./api";
-import type { ActivePrompt, EliaConnectorProfile, LoadedDoc, ModulesStatus, ScenarioRef } from "./types";
+import type {
+  ActivePrompt,
+  EliaConnectorProfile,
+  LoadedDoc,
+  ModulesStatus,
+  RecordingRef,
+  ScenarioRef,
+} from "./types";
 import { ELIA_CONNECTORS_LS_KEY, emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "./connectorDefaults";
 import { themeQuerySuffix, useEliaTheme } from "./eliaTheme";
 
@@ -40,12 +48,23 @@ function formatJobMode(mode: string | null): string {
   if (mode === "elia_gherkin_batch") return "ELIA · Procesamiento por lotes (Gherkin)";
   if (mode === "mobile_recorder") return "Grabar interacciones (Móvil)";
   if (mode === "legacy_recorder") return "Grabar interacciones (Legacy)";
+  if (mode === "mobile_to_behave") return "Convertir a Behave (Móvil)";
+  if (mode === "legacy_to_behave") return "Convertir a Behave (Legacy)";
   if (mode === "doc_to_bdd") return "ELIA · Procesar y Convertir a BDD";
   return mode;
 }
 
 function openJobUrlInNewTabPrepared(): Window | null {
   return window.open("about:blank", "_blank");
+}
+
+/** feature_file + scenario_name para API link_scenario (mismo separador que backend). */
+function encodeScenarioLink(s: ScenarioRef): string {
+  return `${s.feature_file}\x1f${s.scenario_name}`;
+}
+
+function encodeRecordingLink(r: RecordingRef): string {
+  return `${r.project}\x1e${r.file_name}`;
 }
 
 const ELIA_UI_BC = "elia-ui";
@@ -144,6 +163,10 @@ export default function App() {
   const [linkRecordings, setLinkRecordings] = useState(false);
   const [availableScenarios, setAvailableScenarios] = useState<ScenarioRef[]>([]);
   const [linkMapping, setLinkMapping] = useState<Record<string, string>>({});
+  const [recordingMapping, setRecordingMapping] = useState<Record<string, string>>({});
+  const [availableRecordings, setAvailableRecordings] = useState<RecordingRef[]>([]);
+  const [autoLinkToScenario, setAutoLinkToScenario] = useState(false);
+  const [autoLinkScenarioRef, setAutoLinkScenarioRef] = useState("");
 
   const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
 
@@ -212,13 +235,13 @@ export default function App() {
         const hasModel = m?.exists && (m.size_bytes ?? 0) > 0;
         const hasLib = s.llama_cpp_python_available === true;
         if (hasModel && hasLib) {
-          setAiStatusLine("IA local: modelo Gemma + llama-cpp-python listos.");
+          setAiStatusLine("IA lista para usar.");
         } else if (hasModel && !hasLib) {
           setAiStatusLine(
-            "Modelo Gemma presente; falta el paquete llama-cpp-python (pip install). Modo heurístico hasta entonces.",
+            "Modelo de IA presente; falta el paquete llama-cpp-python (pip install). Modo heurístico hasta entonces.",
           );
         } else {
-          setAiStatusLine("Modelo Gemma no encontrado en resources/models/gemma/ — conversión en modo heurístico.");
+          setAiStatusLine("Modelo de IA no encontrado en resources/models/ — conversión en modo heurístico.");
         }
       } catch {
         if (alive) setAiStatusLine(null);
@@ -310,6 +333,8 @@ export default function App() {
       | "puppeteer_to_step_by_step"
       | "mobile_recorder"
       | "legacy_recorder"
+      | "mobile_to_behave"
+      | "legacy_to_behave"
       | "doc_to_bdd"
       // ELIA
       | "elia_jira_smoke"
@@ -371,14 +396,39 @@ export default function App() {
         ]);
         const prof = connectorProfiles.find((x) => x.id === reqConnectorProfileId);
 
-        // Linkage: find selected link entry for doc_to_bdd
-        const linkedScenario = mode === "doc_to_bdd" ? Object.values(linkMapping)[0] : undefined;
-        const linkedRecording = mode === "doc_to_bdd" ? Object.keys(linkMapping)[0] : undefined;
+        const linkScenarioByDoc =
+          mode === "doc_to_bdd"
+            ? Object.fromEntries(Object.entries(linkMapping).filter(([, v]) => v))
+            : undefined;
+        let linkedScenario: string | undefined;
+        if (mode === "doc_to_bdd") {
+          linkedScenario = Object.values(linkScenarioByDoc ?? {})[0];
+        } else if (
+          (mode === "puppeteer_to_behave" ||
+            mode === "mobile_to_behave" ||
+            mode === "legacy_to_behave") &&
+          autoLinkToScenario &&
+          autoLinkScenarioRef
+        ) {
+          linkedScenario = autoLinkScenarioRef;
+        }
+        const linkRecordingByDoc =
+          mode === "doc_to_bdd" && linkRecordings
+            ? Object.fromEntries(
+                Object.entries(recordingMapping).filter(([, v]) => v),
+              )
+            : undefined;
 
         const res = await startConvertJob({
           mode,
           url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
-          use_ai: (mode === "puppeteer_to_behave" || mode === "doc_to_bdd") ? useAi : false,
+          use_ai:
+            mode === "puppeteer_to_behave" ||
+            mode === "mobile_to_behave" ||
+            mode === "legacy_to_behave" ||
+            mode === "doc_to_bdd"
+              ? useAi
+              : false,
           ...(eliaModes.has(mode)
             ? {
                 elia_use_inline_connectors: true,
@@ -390,9 +440,14 @@ export default function App() {
           ...(mode === "legacy_recorder" ? { platform: "legacy", window_name: windowName.trim(), exe_path: exePath.trim() } : {}),
           ...(mode === "doc_to_bdd" ? {
             doc_files: loadedDocs.map((d) => d.path),
-            link_recording: linkedRecording,
-            link_scenario: linkedScenario,
+            ...(linkScenarioByDoc && Object.keys(linkScenarioByDoc).length
+              ? { link_scenario_by_doc: linkScenarioByDoc }
+              : {}),
+            ...(linkRecordingByDoc && Object.keys(linkRecordingByDoc).length
+              ? { link_recording_by_doc: linkRecordingByDoc }
+              : {}),
           } : {}),
+          ...(linkedScenario != null ? { link_scenario: linkedScenario } : {}),
         });
         const base = `${window.location.origin}${window.location.pathname}`;
         const jobUrl = `${base}?job_id=${encodeURIComponent(res.job_id)}&mode=${encodeURIComponent(mode)}${themeQuerySuffix()}`;
@@ -417,13 +472,17 @@ export default function App() {
 
   useEffect(() => {
     if (activePrompt?.type === "input_text") {
-      setTextValue("");
+      const ap = activePrompt as { payload?: { suggested?: string } };
+      setTextValue(ap.payload?.suggested ?? "");
     }
   }, [activePrompt?.prompt_id, activePrompt?.type]);
 
   useEffect(() => {
     const ap = activePrompt as { type?: string; payload?: { feature_text?: string } } | null;
-    if (ap?.type === "bdd_preview" && ap.payload?.feature_text != null) {
+    if (
+      (ap?.type === "bdd_preview" || ap?.type === "grouped_feature_review") &&
+      ap.payload?.feature_text != null
+    ) {
       setBddPreviewText(String(ap.payload.feature_text));
     }
   }, [activePrompt?.prompt_id, activePrompt]);
@@ -1470,14 +1529,83 @@ export default function App() {
                     style={{ marginTop: 3 }}
                   />
                   <span>
-                    <b>Activar IA</b> (Gemma + llama.cpp) en «Convertir a Behave»: agrupación BDD y preferencia de localizadores si
-                    hay archivo <code>_elia_meta.json</code> junto al .js grabado. Si no hay modelo o binario, se usa el modo
-                    heurístico.
+                    <b>Activar IA</b> en «Convertir a Behave»: genera el escenario BDD con revisión
+                    (aceptar, rechazar o editar). En web, se usa para localizadores. Sin modelo,
+                    se usa modo heurístico.
                     {aiStatusLine && (
                       <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>
                     )}
                   </span>
                 </label>
+
+                {(platform === "web" || platform === "mobile" || platform === "legacy") && (
+                  <div style={{ marginBottom: 12 }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        color: c.text,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={autoLinkToScenario}
+                        onChange={async (e) => {
+                          const checked = e.target.checked;
+                          setAutoLinkToScenario(checked);
+                          if (checked) {
+                            try {
+                              const data = await getScenarios();
+                              setAvailableScenarios(data.scenarios);
+                            } catch {
+                              setAvailableScenarios([]);
+                            }
+                          } else {
+                            setAutoLinkScenarioRef("");
+                          }
+                        }}
+                        style={{ marginTop: 2 }}
+                      />
+                      <span>
+                        <b>Vincular conversión a escenario BDD existente</b>
+                        <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                          Fusiona los pasos generados en un Scenario ya presente en el proyecto
+                        </span>
+                      </span>
+                    </label>
+                    {autoLinkToScenario && (
+                      <select
+                        value={autoLinkScenarioRef}
+                        onChange={(e) => setAutoLinkScenarioRef(e.target.value)}
+                        style={{
+                          marginTop: 8,
+                          width: "100%",
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${c.inputBorder}`,
+                          background: c.inputBg,
+                          color: c.text,
+                          fontSize: 13,
+                        }}
+                      >
+                        <option value="">Selecciona escenario…</option>
+                        {availableScenarios.map((s, i) => (
+                          <option key={i} value={encodeScenarioLink(s)}>
+                            {s.scenario_name} ({s.feature_file.split(/[\\/]/).pop()})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {autoLinkToScenario && availableScenarios.length === 0 && (
+                      <div style={{ fontSize: 12, color: c.muted, marginTop: 6 }}>
+                        No hay escenarios .feature en el proyecto. Genera o importa features primero.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
@@ -1497,8 +1625,16 @@ export default function App() {
                     Grabar Interacciones
                   </button>
                   <button
-                    disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("puppeteer_to_behave")}
+                    disabled={
+                      (license ? !license.can_run_jobs : false) ||
+                      (platform === "mobile" && !modules?.mobile_recording) ||
+                      (platform === "legacy" && !modules?.legacy_recording)
+                    }
+                    onClick={() => {
+                      if (platform === "web") startJob("puppeteer_to_behave");
+                      else if (platform === "mobile") startJob("mobile_to_behave");
+                      else startJob("legacy_to_behave");
+                    }}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
                       background: c.btnGhostBg, color: c.text,
@@ -1509,6 +1645,7 @@ export default function App() {
                   >
                     Convertir a Behave
                   </button>
+                  {platform === "web" && (
                   <button
                     disabled={license ? !license.can_run_jobs : false}
                     onClick={() => startJob("puppeteer_to_step_by_step")}
@@ -1522,6 +1659,7 @@ export default function App() {
                   >
                     Convertir a step by step
                   </button>
+                  )}
                 </div>
               </>
             )}
@@ -1537,67 +1675,9 @@ export default function App() {
               >
                 <div style={{ fontWeight: 800, color: c.text, marginBottom: 6 }}>Inteligencia de Requerimientos</div>
 
-                {/* Sección superior: perfil de conectores + integraciones externas */}
-                <div style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>
-                  Conecta con sistemas externos o carga documentos locales para convertir a BDD.
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Perfil activo</label>
-                  <select
-                    value={reqConnectorProfileId}
-                    onChange={(e) => setReqConnectorProfileId(e.target.value)}
-                    style={{
-                      flex: "1 1 200px", minWidth: 180, padding: "8px 12px",
-                      borderRadius: 10, border: `1px solid ${c.inputBorder}`,
-                      background: c.inputBg, color: c.text, fontSize: 14,
-                    }}
-                  >
-                    {connectorProfiles.length === 0 ? (
-                      <option value="">Sin perfiles — usa Configuración (⚙)</option>
-                    ) : (
-                      connectorProfiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))
-                    )}
-                  </select>
-                  <button
-                    disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_jira_smoke")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Conectar a Jira</button>
-                  <button
-                    disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_value_edge_smoke")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Extraer de ValueEdge</button>
-                  <button
-                    disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_gherkin_batch")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Lote .json → .feature</button>
-                </div>
-
-                {/* Separador */}
-                <div style={{ borderTop: `1px solid ${c.border}`, margin: "12px 0" }} />
-
-                {/* Zona central: Drag & Drop de documentos */}
+                {/* Carga de documentos locales */}
                 <div style={{ fontWeight: 600, color: c.text, fontSize: 13, marginBottom: 8 }}>
-                  Ingesta de Documentos (Word / Excel → BDD)
+                  Carga de Documentos (Word / Excel → BDD)
                 </div>
 
                 {/* Área Drag & Drop */}
@@ -1711,11 +1791,18 @@ export default function App() {
                       setLinkRecordings(checked);
                       if (checked) {
                         try {
-                          const data = await getScenarios();
-                          setAvailableScenarios(data.scenarios);
+                          const [scData, recData] = await Promise.all([
+                            getScenarios(),
+                            getRecordings(),
+                          ]);
+                          setAvailableScenarios(scData.scenarios);
+                          setAvailableRecordings(recData.recordings);
                         } catch {
                           setAvailableScenarios([]);
+                          setAvailableRecordings([]);
                         }
+                      } else {
+                        setRecordingMapping({});
                       }
                     }}
                     style={{ marginTop: 2 }}
@@ -1737,7 +1824,7 @@ export default function App() {
                     }}
                   >
                     <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginBottom: 8 }}>
-                      Emparejar documento con scenario existente:
+                      Por documento: escenario destino y grabación (.json / .js)
                     </div>
                     {loadedDocs.map((doc) => (
                       <div key={doc.path} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
@@ -1756,8 +1843,26 @@ export default function App() {
                         >
                           <option value="">Sin vincular</option>
                           {availableScenarios.map((s, i) => (
-                            <option key={i} value={s.scenario_name}>
+                            <option key={i} value={encodeScenarioLink(s)}>
                               {s.scenario_name} ({s.feature_file.split(/[\\/]/).pop()})
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={recordingMapping[doc.path] ?? ""}
+                          onChange={(e) =>
+                            setRecordingMapping((prev) => ({ ...prev, [doc.path]: e.target.value }))
+                          }
+                          style={{
+                            flex: 1, padding: "5px 8px", borderRadius: 8, marginTop: 6,
+                            border: `1px solid ${c.inputBorder}`, background: c.inputBg,
+                            color: c.text, fontSize: 12,
+                          }}
+                        >
+                          <option value="">Grabación — opcional</option>
+                          {availableRecordings.map((r, i) => (
+                            <option key={i} value={encodeRecordingLink(r)}>
+                              {r.label} · {r.project}
                             </option>
                           ))}
                         </select>
@@ -1770,6 +1875,35 @@ export default function App() {
                     No se encontraron escenarios en el proyecto. Convierte grabaciones primero.
                   </div>
                 )}
+
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    marginBottom: 12,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: c.text,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={useAi}
+                    onChange={(e) => setUseAi(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <b>Activar IA</b> (Gemma): revisión del BDD generado (aceptar, rechazar para
+                    regenerar o editar manualmente). Las correcciones se guardan para mejorar
+                    conversiones futuras.
+                    {aiStatusLine && (
+                      <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>
+                        {aiStatusLine}
+                      </span>
+                    )}
+                  </span>
+                </label>
 
                 {/* Botón de acción principal */}
                 <div style={{ marginTop: 4 }}>
@@ -1785,6 +1919,64 @@ export default function App() {
                   >
                     Procesar y Convertir a BDD
                   </button>
+                </div>
+
+                {/* Separador */}
+                <div style={{ borderTop: `1px solid ${c.border}`, margin: "16px 0 12px" }} />
+
+                {/* Integraciones externas */}
+                <div style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>
+                  Conecta con sistemas externos o carga documentos locales para convertir a BDD.
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Perfil activo</label>
+                  <select
+                    value={reqConnectorProfileId}
+                    onChange={(e) => setReqConnectorProfileId(e.target.value)}
+                    style={{
+                      flex: "1 1 200px", minWidth: 180, padding: "8px 12px",
+                      borderRadius: 10, border: `1px solid ${c.inputBorder}`,
+                      background: c.inputBg, color: c.text, fontSize: 14,
+                    }}
+                  >
+                    {connectorProfiles.length === 0 ? (
+                      <option value="">Sin perfiles — usa Configuración (⚙)</option>
+                    ) : (
+                      connectorProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))
+                    )}
+                  </select>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_jira_smoke")}
+                    style={{
+                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
+                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >Conectar a Jira</button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_value_edge_smoke")}
+                    style={{
+                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
+                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >Extraer de ValueEdge</button>
+                  <button
+                    disabled={license ? !license.can_run_jobs : false}
+                    onClick={() => startJob("elia_gherkin_batch")}
+                    style={{
+                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
+                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
+                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                    }}
+                  >Lote .json → .feature</button>
                 </div>
               </div>
             )}
@@ -1864,6 +2056,32 @@ export default function App() {
               <div style={{ color: c.text, marginBottom: 14 }}>{activePrompt.message}</div>
             )}
 
+            {activePrompt.type === "pick_conversion_mode" && activePrompt.options && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(activePrompt.options as { value: string; label: string }[]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={async () => {
+                      if (!jobId) return;
+                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: opt.value });
+                    }}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {(activePrompt.type === "pick_project" || activePrompt.type === "pick_script") && (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {(activePrompt.options as { value: string; label: string }[]).map((opt) => (
@@ -1885,6 +2103,29 @@ export default function App() {
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {activePrompt.type === "pick_scripts_multi" && activePrompt.actions && (
+              <div>
+                <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
+                  Marca al menos 2 grabaciones y pulsa Continuar.
+                </div>
+                <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, padding: 12, maxHeight: 320, overflow: "auto" }}>
+                  <ActionsCheckboxList
+                    c={c}
+                    actions={activePrompt.actions}
+                    minSelected={2}
+                    onSubmit={async (selectedLines) => {
+                      if (!jobId) return;
+                      await sendPromptResponse({
+                        jobId,
+                        promptId: activePrompt.prompt_id,
+                        answer: selectedLines,
+                      });
+                    }}
+                  />
+                </div>
               </div>
             )}
 
@@ -2145,6 +2386,83 @@ export default function App() {
               );
             })()}
 
+            {activePrompt.type === "grouped_feature_review" && (() => {
+              const ap = activePrompt as {
+                prompt_id: string;
+                payload?: {
+                  feature_text?: string;
+                  script_names?: string[];
+                  background_count?: number;
+                };
+              };
+              if (!ap.payload) return null;
+              const names = ap.payload.script_names ?? [];
+              const bg = ap.payload.background_count ?? 0;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ fontSize: 13, color: c.muted }}>
+                    Grabaciones: {names.join(", ") || "—"}
+                    {bg > 0 ? ` · Background: ${bg} paso(s)` : ""}
+                  </div>
+                  <textarea
+                    value={bddPreviewText}
+                    onChange={(e) => setBddPreviewText(e.target.value)}
+                    style={{
+                      width: "100%",
+                      minHeight: 280,
+                      padding: 10,
+                      borderRadius: 10,
+                      border: `1px solid ${c.inputBorder}`,
+                      fontFamily: "ui-monospace, monospace",
+                      fontSize: 13,
+                      background: c.inputBg,
+                      color: c.text,
+                    }}
+                  />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({
+                          jobId,
+                          promptId: ap.prompt_id,
+                          answer: { action: "accept", feature_text: bddPreviewText },
+                        });
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: c.primary,
+                        color: c.primaryFg,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Aceptar y generar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: null });
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: c.btnGhostBg,
+                        color: c.muted,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {activePrompt.type === "message_ack" && (() => {
               const ap = activePrompt as Extract<ActivePrompt, { type: "message_ack" }>;
               return (
@@ -2396,6 +2714,7 @@ export default function App() {
 function ActionsCheckboxList(props: {
   c: import("./eliaTheme").EliaPalette;
   actions: { type: string; description: string; original_line: string }[];
+  minSelected?: number;
   onSubmit: (selectedLines: string[]) => void | Promise<void>;
 }) {
   const { c } = props;
@@ -2458,6 +2777,7 @@ function ActionsCheckboxList(props: {
           Excluir todas
         </button>
         <button
+          disabled={props.minSelected != null && selectedLines.length < props.minSelected}
           onClick={async () => {
             await props.onSubmit(selectedLines);
           }}
@@ -2467,7 +2787,11 @@ function ActionsCheckboxList(props: {
             background: c.primary,
             color: c.primaryFg,
             border: "none",
-            cursor: "pointer",
+            cursor:
+              props.minSelected != null && selectedLines.length < props.minSelected
+                ? "not-allowed"
+                : "pointer",
+            opacity: props.minSelected != null && selectedLines.length < props.minSelected ? 0.5 : 1,
           }}
         >
           Continuar

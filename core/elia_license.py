@@ -3,8 +3,16 @@ Licencia offline (demo + activación por clave + kill switch local).
 
 Sin servidor externo: estado en disco local, HMAC con secreto embebido (cambiar en builds de release).
 
+Duraciones de clave (generate_license_key.py):
+  15D  — 15 días (extensión demo)
+  30D  — 1 mes
+  365D — 1 año
+  PERM — permanente
+
+Módulos opcionales en la clave: grabación móvil (M) y legacy (L).
+
 Variables de entorno (desarrollo / soporte):
-  ELIA_SKIP_LICENSE=1  — omite comprobación (no usar en entregas a cliente).
+  ELIA_SKIP_LICENSE=1  — omite comprobación y habilita todos los módulos (no usar en entregas).
 """
 
 from __future__ import annotations
@@ -14,18 +22,44 @@ import hmac
 import json
 import os
 import platform
+import re
 import sys
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-# Demo: días desde el primer arranque
+# Demo: días desde el primer arranque (sin clave)
 DEMO_DAYS = 15
+
+# Duraciones emitidas por el generador de claves
+DURATION_15D = "15D"
+DURATION_30D = "30D"
+DURATION_365D = "365D"
+DURATION_PERM = "PERM"
+
+DURATION_SECONDS: Dict[str, Optional[int]] = {
+    DURATION_15D: 15 * 86400,
+    DURATION_30D: 30 * 86400,
+    DURATION_365D: 365 * 86400,
+    DURATION_PERM: None,
+}
+
+DURATION_LABELS: Dict[str, str] = {
+    DURATION_15D: "15 días",
+    DURATION_30D: "1 mes",
+    DURATION_365D: "1 año",
+    DURATION_PERM: "permanente",
+}
 
 # Secreto para derivar claves de activación (sustituir / rotar en pipeline de release).
 _LICENSE_SEED = b"ELIA-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
+
+_KEY_PREFIX_RE = re.compile(
+    r"^ELIA-(?P<dur>15D|30D|365D|PERM)-(?P<mods>[0ML]+)-(?P<sig>[0-9a-f]{64})$",
+    re.IGNORECASE,
+)
 
 
 def _secret_key() -> bytes:
@@ -38,6 +72,124 @@ def get_machine_fingerprint() -> str:
         "utf-8", errors="replace"
     )
     return hashlib.sha256(raw).hexdigest()[:32]
+
+
+def _mods_token(mobile: bool, legacy: bool) -> str:
+    token = ""
+    if mobile:
+        token += "M"
+    if legacy:
+        token += "L"
+    return token or "0"
+
+
+def _parse_mods_token(token: str) -> Tuple[bool, bool]:
+    t = (token or "0").upper()
+    return ("M" in t, "L" in t)
+
+
+def _license_message(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
+    """Mensaje firmado para HMAC. Claves legacy permanentes usaban |FULL sin módulos."""
+    if duration == "FULL":
+        return machine_fp.encode("ascii") + b"|FULL"
+    flags = _mods_token(mobile, legacy)
+    return f"{machine_fp}|{duration}|{flags}".encode("ascii")
+
+
+def _expected_activation_key(
+    machine_fp: str,
+    duration: str,
+    mobile: bool = False,
+    legacy: bool = False,
+) -> str:
+    return hmac.new(
+        _secret_key(),
+        _license_message(machine_fp, duration, mobile, legacy),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def build_activation_key(
+    machine_fp: str,
+    duration: str = DURATION_PERM,
+    *,
+    mobile: bool = False,
+    legacy: bool = False,
+) -> str:
+    """
+    Genera clave con prefijo legible: ELIA-{dur}-{mods}-{hmac64}.
+    Usado por scripts/generate_license_key.py.
+    """
+    dur = duration.upper()
+    if dur not in DURATION_SECONDS:
+        raise ValueError(f"Duración no válida: {duration}")
+    fp = machine_fp.strip().lower()
+    if len(fp) != 32:
+        raise ValueError("La huella debe tener 32 caracteres hex.")
+    sig = _expected_activation_key(fp, dur, mobile, legacy)
+    mods = _mods_token(mobile, legacy)
+    return f"ELIA-{dur}-{mods}-{sig}"
+
+
+@dataclass
+class ParsedLicenseKey:
+    duration: str
+    mobile: bool
+    legacy: bool
+
+
+def _sig_matches(provided: str, expected: str) -> bool:
+    provided = provided.lower()
+    expected = expected.lower()
+    if provided == expected:
+        return True
+    return len(provided) >= 32 and expected.startswith(provided[:32])
+
+
+def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey]:
+    """Comprueba la firma HMAC; devuelve metadatos si coincide."""
+    raw = (key or "").strip().replace(" ", "")
+
+    m = _KEY_PREFIX_RE.match(raw)
+    if m:
+        dur = m.group("dur").upper()
+        mobile, legacy = _parse_mods_token(m.group("mods"))
+        sig = m.group("sig")
+        expected = _expected_activation_key(machine_fp, dur, mobile, legacy)
+        if _sig_matches(sig, expected):
+            return ParsedLicenseKey(duration=dur, mobile=mobile, legacy=legacy)
+        return None
+
+    hex_only = raw.replace("-", "")
+    if len(hex_only) < 32:
+        return None
+
+    # Legacy: clave permanente sin prefijo (solo HMAC de |FULL)
+    expected_full = _expected_activation_key(machine_fp, "FULL", False, False)
+    if _sig_matches(hex_only, expected_full):
+        return ParsedLicenseKey(duration=DURATION_PERM, mobile=False, legacy=False)
+
+    # Solo hex (64): probar variantes de duración y módulos
+    if len(hex_only) == 64:
+        for dur in DURATION_SECONDS:
+            for mobile in (False, True):
+                for legacy in (False, True):
+                    expected = _expected_activation_key(machine_fp, dur, mobile, legacy)
+                    if hex_only.lower() == expected.lower():
+                        return ParsedLicenseKey(
+                            duration=dur, mobile=mobile, legacy=legacy
+                        )
+    return None
+
+
+def verify_activation_key(key: str, machine_fp: Optional[str] = None) -> bool:
+    fp = machine_fp or get_machine_fingerprint()
+    return _match_key_signature(key, fp) is not None
+
+
+def parse_activation_key(key: str, machine_fp: Optional[str] = None) -> Optional[ParsedLicenseKey]:
+    fp = machine_fp or get_machine_fingerprint()
+    return _match_key_signature(key, fp)
 
 
 def _state_dir() -> Path:
@@ -94,36 +246,68 @@ def _ensure_first_run_recorded() -> Dict[str, Any]:
     return state
 
 
-def _expected_activation_key(machine_fp: str) -> str:
-    """Clave de activación completa esperada para esta máquina (hex 64 chars)."""
-    return hmac.new(
-        _secret_key(),
-        machine_fp.encode("ascii") + b"|FULL",
-        hashlib.sha256,
-    ).hexdigest()
+def _sync_licensed_modules(mobile: bool, legacy: bool) -> None:
+    try:
+        from core.modules_config import apply_licensed_modules
+
+        apply_licensed_modules(mobile=mobile, legacy=legacy)
+    except Exception:
+        pass
 
 
-def verify_activation_key(key: str, machine_fp: Optional[str] = None) -> bool:
-    key = (key or "").strip().replace(" ", "").replace("-", "")
-    if len(key) < 32:
+def _clear_licensed_modules() -> None:
+    try:
+        from core.modules_config import apply_licensed_modules
+
+        apply_licensed_modules(mobile=False, legacy=False)
+    except Exception:
+        pass
+
+
+def is_time_limited_license_active() -> bool:
+    """True si hay licencia activada y no ha caducado (permanente cuenta como activa)."""
+    state = _load_state()
+    if not state.get("activated"):
         return False
-    fp = machine_fp or get_machine_fingerprint()
-    expected = _expected_activation_key(fp)
-    # Aceptar clave completa o primeros 32 hex (comodidad)
-    if key.lower() == expected.lower():
+    exp = state.get("expires_at")
+    if exp is None:
         return True
-    if len(key) >= 32 and expected.lower().startswith(key.lower()[:32]):
-        return True
-    return False
+    return time.time() <= float(exp)
+
+
+def get_active_license_modules() -> Optional[Dict[str, bool]]:
+    """
+    Módulos concedidos por la licencia activa (mobile/legacy).
+    None si no hay licencia válida.
+    """
+    if not is_time_limited_license_active():
+        return None
+    raw = _load_state().get("licensed_modules")
+    if not isinstance(raw, dict):
+        return {"mobile_recording": False, "legacy_recording": False}
+    return {
+        "mobile_recording": bool(raw.get("mobile_recording")),
+        "legacy_recording": bool(raw.get("legacy_recording")),
+    }
 
 
 def activate_with_key(key: str) -> bool:
-    if not verify_activation_key(key):
+    parsed = parse_activation_key(key)
+    if parsed is None:
         return False
     state = _ensure_first_run_recorded()
+    now = time.time()
     state["activated"] = True
-    state["activated_ts"] = time.time()
+    state["activated_ts"] = now
+    state["duration_code"] = parsed.duration
+    sec = DURATION_SECONDS.get(parsed.duration)
+    state["expires_at"] = (now + sec) if sec is not None else None
+    state["licensed_modules"] = {
+        "mobile_recording": parsed.mobile,
+        "legacy_recording": parsed.legacy,
+    }
     _save_state(state)
+    _sync_licensed_modules(parsed.mobile, parsed.legacy)
     return True
 
 
@@ -145,18 +329,15 @@ class LicenseStatus:
     activated: bool
     machine_fingerprint: str
     message: str
+    expires_at: Optional[float] = None
+    duration_code: Optional[str] = None
+    licensed_modules: Optional[Dict[str, bool]] = None
 
 
 def can_run_jobs() -> bool:
-    """False si demo caducada sin activar o kill switch."""
+    """False si demo caducada sin activar, licencia temporal caducada o kill switch."""
     st = get_license_status()
-    if not st.ok:
-        return False
-    if st.reason == "demo" and not st.activated:
-        return True
-    if st.reason == "activated" or st.reason == "skip":
-        return True
-    return False
+    return st.ok and st.reason not in ("demo_expired", "license_expired", "killed")
 
 
 def get_license_status() -> LicenseStatus:
@@ -168,6 +349,7 @@ def get_license_status() -> LicenseStatus:
             activated=True,
             machine_fingerprint=get_machine_fingerprint(),
             message="Licencia omitida (ELIA_SKIP_LICENSE).",
+            licensed_modules={"mobile_recording": True, "legacy_recording": True},
         )
 
     if kill_switch_active():
@@ -183,15 +365,50 @@ def get_license_status() -> LicenseStatus:
     fp = get_machine_fingerprint()
     state = _ensure_first_run_recorded()
     activated = bool(state.get("activated"))
+    duration_code = state.get("duration_code")
+    licensed_modules = state.get("licensed_modules") if isinstance(state.get("licensed_modules"), dict) else None
+    expires_at = state.get("expires_at")
+    exp_ts = float(expires_at) if expires_at is not None else None
 
     if activated:
+        if exp_ts is not None and time.time() > exp_ts:
+            _clear_licensed_modules()
+            left_label = DURATION_LABELS.get(str(duration_code or ""), "limitada")
+            return LicenseStatus(
+                ok=False,
+                reason="license_expired",
+                demo_days_left=0.0,
+                activated=True,
+                machine_fingerprint=fp,
+                message=f"La licencia ({left_label}) ha caducado. Solicita una nueva clave.",
+                expires_at=exp_ts,
+                duration_code=str(duration_code) if duration_code else None,
+                licensed_modules=licensed_modules,
+            )
+
+        dur_label = DURATION_LABELS.get(str(duration_code or DURATION_PERM), "activada")
+        mod_parts = []
+        if licensed_modules:
+            if licensed_modules.get("mobile_recording"):
+                mod_parts.append("móvil")
+            if licensed_modules.get("legacy_recording"):
+                mod_parts.append("legacy")
+        mod_txt = f" Módulos: {', '.join(mod_parts)}." if mod_parts else ""
+        if exp_ts is not None:
+            days_left = max(0.0, (exp_ts - time.time()) / 86400.0)
+            msg = f"Licencia ({dur_label}): quedan aprox. {days_left:.1f} día(s).{mod_txt}"
+        else:
+            msg = f"Licencia {dur_label}.{mod_txt}"
         return LicenseStatus(
             ok=True,
             reason="activated",
             demo_days_left=None,
             activated=True,
             machine_fingerprint=fp,
-            message="Licencia activada.",
+            message=msg,
+            expires_at=exp_ts,
+            duration_code=str(duration_code) if duration_code else DURATION_PERM,
+            licensed_modules=licensed_modules,
         )
 
     first_ts = float(state.get("first_run_ts", time.time()))

@@ -94,6 +94,103 @@ class WebUIAdapter(IUI):
         # Contrato: lista de original_line (strings)
         return list(answer)
 
+    def pick_conversion_mode(self) -> str:
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="pick_conversion_mode",
+            title="Modo de conversión",
+            message="¿Cómo deseas convertir las grabaciones?",
+            options=[
+                {"value": "single", "label": "Una grabación"},
+                {"value": "grouped", "label": "Agrupar grabaciones"},
+            ],
+        )
+        try:
+            answer = self._safe_wait(prompt)
+        except JobCancelledError:
+            return "single"
+        if answer is None:
+            return "single"
+        mode = str(answer).strip().lower()
+        return mode if mode in ("single", "grouped") else "single"
+
+    def pick_scripts_multi(self, scripts: Sequence[str], project_name: str) -> Sequence[str]:
+        if not scripts:
+            return []
+
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="pick_scripts_multi",
+            title="Seleccionar grabaciones para agrupar",
+            message=f"Selecciona al menos 2 grabaciones ({project_name}):",
+            actions=[
+                {"type": "Grabación", "description": s, "original_line": s}
+                for s in scripts
+            ],
+        )
+        try:
+            answer = self._safe_wait(prompt)
+        except JobCancelledError:
+            return []
+
+        if not answer:
+            return []
+        chosen = list(answer)
+        return chosen if len(chosen) >= 2 else []
+
+    def pick_feature_name(self, suggested: str) -> Optional[str]:
+        import re
+
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="input_text",
+            title="Nombre del Feature agrupado",
+            message="Nombre del archivo .feature y del steps generado:",
+            payload={"suggested": suggested, "purpose": "feature_name"},
+        )
+        try:
+            answer = self._safe_wait(prompt)
+        except JobCancelledError:
+            return None
+
+        if answer is None:
+            return None
+        val = str(answer).strip()
+        if not val:
+            return None
+        return re.sub(r"[^a-zA-Z0-9_\-]", "_", val).strip("_") or "feature_agrupado"
+
+    def grouped_feature_review(
+        self,
+        *,
+        feature_text: str,
+        script_names: Sequence[str],
+        background_count: int,
+    ) -> Dict[str, Any]:
+        prompt_id = self._new_prompt_id()
+        prompt = Prompt(
+            prompt_id=prompt_id,
+            type="grouped_feature_review",
+            title="Vista previa — Feature agrupado",
+            message="Revisa y edita el Feature agrupado antes de generarlo:",
+            payload={
+                "feature_text": feature_text,
+                "script_names": list(script_names),
+                "background_count": background_count,
+            },
+        )
+        try:
+            answer = self._safe_wait(prompt)
+        except JobCancelledError:
+            raise BDDUserCancelled()
+
+        if answer is None or not isinstance(answer, dict):
+            raise BDDUserCancelled()
+        return answer
+
     def info(self, title: str, message: str) -> None:
         # Paridad con Tk: messagebox bloqueante hasta Aceptar.
         prompt_id = self._new_prompt_id()

@@ -21,15 +21,74 @@ def _trim_script_for_preview(script_content: str, max_chars: int = 10000) -> str
 
 class PuppeteerToBehaveConverter:
     
-    def __init__(self, base_dir, ui: IUI, use_ai: bool = False):
+    def __init__(self, base_dir, ui: IUI, use_ai: bool = False, link_scenario: Optional[str] = None):
         self.base_dir = base_dir
         from core.elia_paths import behave_projects_dir
+        from core.ui_automation.recording_linkage import decode_scenario_link
 
         self.projects_dir = str(behave_projects_dir())
         self.selected_actions = []
         self.ui = ui
         self.use_ai = use_ai
         self._recording_meta: Optional[Dict[str, Any]] = None
+        self._link_scenario = decode_scenario_link(link_scenario)
+
+    def _try_link_generated_feature(
+        self,
+        feature_content: str,
+        *,
+        grouped: bool = False,
+    ) -> bool:
+        """Fusiona Gherkin generado en escenario existente (append)."""
+        if not self._link_scenario:
+            return False
+        from core.ui_automation.recording_linkage import (
+            apply_grouped_link_to_scenario,
+            apply_link_to_existing_scenario,
+        )
+
+        ff, sn = self._link_scenario
+        if grouped:
+            return apply_grouped_link_to_scenario(feature_content, ff, sn, mode="append")
+        return apply_link_to_existing_scenario(
+            feature_content, ff, sn, mode="append", prefer_named_scenario=True
+        )
+
+    def _persist_generated_steps(
+        self,
+        project_path: str,
+        base_name: str,
+        class_name: str,
+        script_content: str,
+        feature_for_steps: str,
+        file_paths: Dict[str, str],
+    ) -> Optional[str]:
+        """Escribe steps nuevos o los fusiona en el step file del escenario vinculado."""
+        steps_content = self._generate_adaptive_steps(
+            base_name,
+            class_name,
+            script_content,
+            feature_for_steps,
+        )
+        if self._link_scenario:
+            from core.ui_automation.linked_steps_regenerator import regenerate_linked_steps
+
+            ff, sn = self._link_scenario
+            page_line = f"from pages.{base_name}_page import {class_name}"
+            path = regenerate_linked_steps(
+                project_path=project_path,
+                feature_file=ff,
+                scenario_name=sn,
+                steps_module_content=steps_content,
+                page_import_line=page_line,
+            )
+            file_paths.pop("steps", None)
+            return path
+        steps_path = file_paths.get("steps")
+        if steps_path:
+            with open(steps_path, "w", encoding="utf-8") as f:
+                f.write(steps_content)
+        return steps_path
 
     def _create_project_structure(self):
         """Crea la estructura de directorios necesaria para Behave"""
@@ -319,22 +378,31 @@ class PuppeteerToBehaveConverter:
                     except BDDUserCancelled:
                         self.ui.info("Conversión cancelada", "Se canceló la generación del escenario BDD.")
                         return
-                    with open(file_paths['feature'], "w", encoding="utf-8") as f:
-                        f.write(feature_content)
-                    feature_content_for_steps = feature_content
+                    linked = self._try_link_generated_feature(feature_content, grouped=False)
+                    if linked:
+                        file_paths.pop("feature", None)
+                        try:
+                            with open(self._link_scenario[0], "r", encoding="utf-8") as lf:
+                                feature_content_for_steps = lf.read()
+                        except OSError:
+                            feature_content_for_steps = feature_content
+                    else:
+                        with open(file_paths['feature'], "w", encoding="utf-8") as f:
+                            f.write(feature_content)
+                        feature_content_for_steps = feature_content
                 else:
                     feature_content_for_steps = existing_content
 
-            # Generar steps file
-            if 'steps' in file_paths:
-                steps_content = self._generate_adaptive_steps(
-                    base_name, 
-                    class_name, 
-                    content, 
+            linked_steps_path: Optional[str] = None
+            if "steps" in file_paths or self._link_scenario:
+                linked_steps_path = self._persist_generated_steps(
+                    project_path,
+                    base_name,
+                    class_name,
+                    content,
                     feature_content_for_steps,
+                    file_paths,
                 )
-                with open(file_paths['steps'], "w", encoding="utf-8") as f:
-                    f.write(steps_content)
 
             # Generar page object
             if 'page' in file_paths:
@@ -355,7 +423,14 @@ class PuppeteerToBehaveConverter:
             success_msg += "- Archivos de soporte completos (environment, utils, resources)\n"
             success_msg += "- Archivos generados:\n"
             success_msg += "\n".join([f"  • {os.path.basename(file_paths[name])}" for name in created_files])
-            
+            if self._link_scenario and "feature" not in file_paths:
+                success_msg += (
+                    f"\n\nPasos añadidos al escenario «{self._link_scenario[1]}» "
+                    f"en {os.path.basename(self._link_scenario[0])}."
+                )
+                if linked_steps_path:
+                    success_msg += f"\n  • Steps actualizados: {os.path.basename(linked_steps_path)}"
+
             self.ui.info("Éxito", success_msg)
 
         except Exception as e:
@@ -447,18 +522,34 @@ class PuppeteerToBehaveConverter:
             for p in dirs.values():
                 os.makedirs(p, exist_ok=True)
 
-            # ── 6. Escribir .feature ──────────────────────────────────
+            # ── 6. Escribir .feature (o vincular a escenario existente) ─
+            linked = self._try_link_generated_feature(feature_content, grouped=True)
             feature_path = os.path.join(dirs["features"], f"{feature_name}.feature")
-            with open(feature_path, "w", encoding="utf-8") as fh:
-                fh.write(feature_content)
+            if not linked:
+                with open(feature_path, "w", encoding="utf-8") as fh:
+                    fh.write(feature_content)
 
             # ── 7. Escribir steps unificado ───────────────────────────
             steps_content = self._generate_grouped_steps(
                 feature_name, scripts_data, background_steps, common_prefix
             )
-            steps_path = os.path.join(dirs["steps"], f"{feature_name}_steps.py")
-            with open(steps_path, "w", encoding="utf-8") as fh:
-                fh.write(steps_content)
+            grouped_steps_path: Optional[str] = None
+            if linked and self._link_scenario:
+                from core.ui_automation.linked_steps_regenerator import regenerate_linked_steps
+
+                ff, sn = self._link_scenario
+                grouped_steps_path = regenerate_linked_steps(
+                    project_path=project_path,
+                    feature_file=ff,
+                    scenario_name=sn,
+                    steps_module_content=steps_content,
+                    page_import_line=None,
+                )
+            else:
+                steps_path = os.path.join(dirs["steps"], f"{feature_name}_steps.py")
+                with open(steps_path, "w", encoding="utf-8") as fh:
+                    fh.write(steps_content)
+                grouped_steps_path = steps_path
 
             # ── 8. Page Objects individuales ──────────────────────────
             created_pages: List[str] = []
@@ -483,13 +574,26 @@ class PuppeteerToBehaveConverter:
                 if background_steps else ""
             )
             pages_msg = "\n".join(f"  • {p}" for p in created_pages)
+            link_msg = ""
+            if linked and self._link_scenario:
+                link_msg = (
+                    f"\n  • Pasos agrupados añadidos al escenario «{self._link_scenario[1]}»"
+                )
+                if grouped_steps_path:
+                    link_msg += f"\n  • Steps: {os.path.basename(grouped_steps_path)}"
+            feature_line = (
+                f"  • {feature_name}.feature  ({len(scripts_data)} scenarios){bg_msg}\n"
+                if not linked
+                else f"  • Feature agrupado revisado ({len(scripts_data)} flujos) — fusionado en escenario existente{bg_msg}\n"
+            )
             self.ui.info(
                 "Éxito",
                 f"Feature agrupado generado en:\n{os.path.basename(project_path)}\n\n"
-                f"  • {feature_name}.feature  ({len(scripts_data)} scenarios){bg_msg}\n"
+                f"{feature_line}"
                 f"  • {feature_name}_steps.py\n"
                 f"{pages_msg}\n"
-                f"  • {feature_name}.json",
+                f"  • {feature_name}.json"
+                f"{link_msg}",
             )
 
         except Exception as exc:
@@ -839,14 +943,12 @@ class PuppeteerToBehaveConverter:
                 f"No se pudieron copiar algunos archivos de soporte:\n{str(e)}\n"
                 "El proyecto puede necesitar configuración manual adicional.")            
             
-    def _generate_bdd_feature(self, script_content, base_name):
-        """Genera feature con el formato exacto solicitado usando nombres de elementos"""
+    def _script_content_to_unique_actions(self, script_content: str) -> List[Tuple[str, str]]:
+        """Convierte líneas de script Puppeteer a acciones (tipo, descripción) para BDD."""
         if script_content is None:
             script_content = ""
-        
-        lines = script_content.split('\n')
-        actions = []
-        
+        lines = script_content.split("\n")
+        actions: List[Tuple[str, str]] = []
         for line in lines:
             line = line.strip()
             try:
@@ -855,7 +957,7 @@ class PuppeteerToBehaveConverter:
                     if url_match:
                         url = url_match.group(2)
                         actions.append(("given", f'Acceder a la pagina "{url}"'))
-                        continue  
+                        continue
 
                 elif "page.click(" in line:
                     selector_match = re.search(r'page\.click\((["\'])(.*?)\1', line)
@@ -884,21 +986,39 @@ class PuppeteerToBehaveConverter:
                 print(f"Error procesando línea: {line}\n{str(e)}")
                 continue
 
-        # Eliminar duplicados consecutivos
-        unique_actions = []
+        unique_actions: List[Tuple[str, str]] = []
         last_action = None
         for action in actions:
             if action != last_action:
                 unique_actions.append(action)
                 last_action = action
-        
+        return unique_actions
+
+    def _generate_bdd_feature(self, script_content, base_name):
+        """Genera feature con el formato exacto solicitado usando nombres de elementos."""
+        unique_actions = self._script_content_to_unique_actions(script_content)
+        excerpt = _trim_script_for_preview(script_content or "")
+        return self._generate_bdd_feature_from_unique_actions(
+            unique_actions, base_name, excerpt, platform="web"
+        )
+
+    def _generate_bdd_feature_from_unique_actions(
+        self,
+        unique_actions: List[Tuple[str, str]],
+        base_name: str,
+        recording_excerpt: str,
+        *,
+        platform: str = "web",
+    ) -> str:
+        """Genera .feature desde acciones ya normalizadas (web, móvil o legacy) con revisión IA opcional."""
+        unique_actions = self._group_similar_actions(unique_actions)
         if self.use_ai:
             try:
                 from core import gemma_inference
                 from core.elia_memory import append_correction, recent_examples_for_prompt
 
                 if gemma_inference.is_ai_runtime_configured():
-                    script_excerpt = _trim_script_for_preview(script_content)
+                    script_excerpt = recording_excerpt
                     ai_temps = [0.1, 0.4, 0.7]
                     examples = recent_examples_for_prompt(limit=3)
                     last_rendered: Optional[str] = None
@@ -940,7 +1060,9 @@ class PuppeteerToBehaveConverter:
                                 ft = rendered
                             edited = bool(review.get("edited"))
                             if edited or ft != rendered.strip():
-                                append_correction(script_snippet=script_content, feature_text=ft)
+                                append_correction(
+                                    script_snippet=recording_excerpt, feature_text=ft
+                                )
                             return ft
                         if action == "reject":
                             if attempt >= 4:
@@ -954,7 +1076,9 @@ class PuppeteerToBehaveConverter:
             except Exception as e:
                 print(f"ELIA IA BDD: fallback heurístico: {e}")
 
-        return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+        return self._generate_bdd_feature_heuristic_business(
+            unique_actions, base_name, platform=platform
+        )
 
     def _bdd_parse_actions(self, unique_actions: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Extrae URL, tokens de clic, textos de relleno y selecciones desde descripciones heurísticas."""
@@ -1059,12 +1183,20 @@ class PuppeteerToBehaveConverter:
         return when_body, and_body, then_body
 
     def _generate_bdd_feature_heuristic_business(
-        self, unique_actions: List[Tuple[str, str]], base_name: str
+        self,
+        unique_actions: List[Tuple[str, str]],
+        base_name: str,
+        *,
+        platform: str = "web",
     ) -> str:
         """Given / When / (And) / Then — máximo un And; texto orientado a negocio."""
         ctx = self._bdd_parse_actions(unique_actions)
         given_line = ""
-        if ctx["start_url"]:
+        if platform == "mobile":
+            given_line = "    Given el usuario tiene la aplicación móvil abierta y lista para usar\n"
+        elif platform == "legacy":
+            given_line = "    Given el usuario tiene abierta la aplicación de escritorio bajo prueba\n"
+        elif ctx["start_url"]:
             try:
                 netloc = urlparse(ctx["start_url"]).netloc or ctx["start_url"]
                 given_line = f'    Given el usuario ingresa al sitio "{netloc}"\n'

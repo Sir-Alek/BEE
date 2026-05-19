@@ -1,6 +1,14 @@
-import type { EliaConnectorsDocument, EliaJiraCreds, EliaValueEdgeCreds, LoadedDoc, ModulesStatus, ScenarioRef } from "./types";
+import type {
+  EliaConnectorsDocument,
+  EliaJiraCreds,
+  EliaValueEdgeCreds,
+  LoadedDoc,
+  ModulesStatus,
+  RecordingRef,
+  ScenarioRef,
+} from "./types";
 
-export type { LoadedDoc, ModulesStatus, ScenarioRef };
+export type { LoadedDoc, ModulesStatus, RecordingRef, ScenarioRef };
 
 export type JobStateResponse = {
   job_id: string;
@@ -20,6 +28,8 @@ export async function startConvertJob(params: {
     | "puppeteer_recorder"
     | "mobile_recorder"
     | "legacy_recorder"
+    | "mobile_to_behave"
+    | "legacy_to_behave"
     | "doc_to_bdd"
     // ELIA
     | "elia_jira_smoke"
@@ -41,11 +51,13 @@ export async function startConvertJob(params: {
   doc_files?: string[];
   link_recording?: string;
   link_scenario?: string;
+  link_scenario_by_doc?: Record<string, string>;
+  link_recording_by_doc?: Record<string, string>;
 }): Promise<{ job_id: string }> {
   const {
     mode, url, use_ai, elia_use_inline_connectors, elia_jira, elia_value_edge,
     platform, apk_path, device_id, window_name, exe_path,
-    doc_files, link_recording, link_scenario,
+    doc_files, link_recording, link_scenario, link_scenario_by_doc, link_recording_by_doc,
   } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
@@ -65,6 +77,8 @@ export async function startConvertJob(params: {
       ...(doc_files != null ? { doc_files } : {}),
       ...(link_recording != null ? { link_recording } : {}),
       ...(link_scenario != null ? { link_scenario } : {}),
+      ...(link_scenario_by_doc != null ? { link_scenario_by_doc } : {}),
+      ...(link_recording_by_doc != null ? { link_recording_by_doc } : {}),
     }),
   });
   if (!res.ok) {
@@ -94,6 +108,15 @@ export async function getScenarios(project?: string): Promise<{ scenarios: Scena
     : "/api/req/scenarios";
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function getRecordings(project?: string): Promise<{ recordings: RecordingRef[] }> {
+  const url = project
+    ? `/api/req/recordings?project=${encodeURIComponent(project)}`
+    : "/api/req/recordings";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch recordings: ${res.status}`);
   return res.json();
 }
 

@@ -51,14 +51,14 @@ PyGetWindow==0.0.9
 
 # --- Behave y utilidades de proyectos (resources/behave, step_by_step) ---
 behave==1.2.6
-pandas==2.3.0
-python-calamine==0.6.2
 fpdf2==2.7.4
 
-# --- Ingesta de documentos (Módulo Doc-to-BDD: Word/Excel → BDD) ---
+# --- Carga de documentos (Módulo Doc-to-BDD: Word/Excel → BDD) ---
 python-multipart>=0.0.20
 python-docx>=1.1.2
-# openpyxl: fallback para Excel si calamine falla; python-calamine ya lo cubre en la mayoría de casos
+pandas==2.3.0
+python-calamine==0.6.2
+# openpyxl: fallback si calamine no puede leer el .xlsx
 openpyxl>=3.1.0
 
 # --- Grabación Móvil (Building Block: mobile_recording — opcional) ---

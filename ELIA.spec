@@ -89,6 +89,10 @@ integrations_hidden = [
     "core.ui_automation.video_recorder",
     "core.ui_automation.mobile_recorder",
     "core.ui_automation.legacy_recorder",
+    "core.ui_automation.recording_to_behave_converter",
+    "core.ui_automation.mobile_dom_parser",
+    "core.ui_automation.recording_flow_analyzer",
+    "core.ui_automation.recording_linkage",
     # core/req_intelligence/ — módulos Cython compilados
     "core.req_intelligence",
     "core.req_intelligence.jira_extractor",
@@ -100,6 +104,8 @@ integrations_hidden = [
     "core.req_intelligence.doc_ingestion",
     "core.req_intelligence.bdd_doc_converter",
     "core.req_intelligence.feature_scanner",
+    "core.req_intelligence.recording_scanner",
+    "core.ui_automation.linked_steps_regenerator",
     # NOTA: los alias retrocompatibles (core.jira_extractor, core.flow_analyzer, etc.)
     # son proxies lazy registrados en sys.modules por core/__init__.py en tiempo de
     # ejecución. NO son archivos .pyd reales; PyInstaller no puede encontrarlos
@@ -119,16 +125,27 @@ try:
 except Exception:
     llama_hidden = ["llama_cpp", "llama_cpp.lib"]
 
+# Doc-to-BDD: ExcelIngester importa pandas en runtime (lazy); incluir motor y fallbacks.
+excel_datas, excel_binaries, excel_hidden = [], [], []
+for _pkg in ("pandas", "python_calamine", "openpyxl"):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        excel_datas += _d
+        excel_binaries += _b
+        excel_hidden += _h
+    except Exception:
+        excel_hidden.append(_pkg)
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=llama_binaries + cython_binaries,
+    binaries=llama_binaries + excel_binaries + cython_binaries,
     datas=_datas_if_exists(
         ('core/node',       'core/node'),
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
-    ) + llama_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + integrations_hidden + crypto_hidden,
+    ) + llama_datas + excel_datas + js_obf,
+    hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

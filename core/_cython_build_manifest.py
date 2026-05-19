@@ -22,6 +22,10 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/ui_automation/recorder_focus.py",
     "core/ui_automation/mobile_recorder.py",
     "core/ui_automation/legacy_recorder.py",
+    "core/ui_automation/recording_to_behave_converter.py",
+    "core/ui_automation/mobile_dom_parser.py",
+    "core/ui_automation/recording_flow_analyzer.py",
+    "core/ui_automation/recording_linkage.py",
     # core/req_intelligence/
     "core/req_intelligence/jira_extractor.py",
     "core/req_intelligence/value_edge_extractor.py",
@@ -32,4 +36,6 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/req_intelligence/doc_ingestion.py",
     "core/req_intelligence/bdd_doc_converter.py",
     "core/req_intelligence/feature_scanner.py",
+    "core/req_intelligence/recording_scanner.py",
+    "core/ui_automation/linked_steps_regenerator.py",
 )

@@ -11,5 +11,6 @@ Módulos:
   video_recorder              Grabación de pantalla a AVI.
   mobile_recorder             Grabación de interacciones móviles vía Appium (Building Block).
   legacy_recorder             Grabación de aplicaciones de escritorio Windows (Building Block).
+  recording_to_behave_converter  Conversión de grabaciones JSON móvil/legacy a Behave.
 """
 from __future__ import annotations

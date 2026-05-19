@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import List
+from typing import List, Literal, Optional
+
+MergeMode = Literal["append", "replace"]
 
 
 @dataclass
@@ -84,15 +86,28 @@ def find_scenario_in_file(feature_file: str, scenario_name: str) -> int:
     return -1
 
 
+def _parse_step_line(line: str) -> Optional[str]:
+    sm = re.match(r"^\s+(Given|When|Then|And|But)\s+(.+)", line, re.I)
+    if sm:
+        return f"{sm.group(1).capitalize()} {sm.group(2).strip()}"
+    return None
+
+
 def merge_steps_into_scenario(
     feature_file: str,
     scenario_name: str,
     new_steps: List[str],
+    *,
+    mode: MergeMode = "append",
 ) -> bool:
     """
-    Reemplaza los pasos de un Scenario: existente con new_steps.
+    Fusiona pasos en un Scenario: existente.
 
-    new_steps: lista de strings como ["Given el usuario está en...", "When hace clic en..."]
+    mode:
+      - append: añade new_steps tras los pasos actuales (sin duplicar líneas idénticas seguidas)
+      - replace: sustituye el bloque de pasos por new_steps
+
+    new_steps: lista como ["Given el usuario está en...", "When hace clic en..."]
 
     Devuelve True si el merge fue exitoso.
     """
@@ -126,9 +141,33 @@ def merge_steps_into_scenario(
         if i == step_start and not line.strip():
             step_start = i + 1
 
+    existing_steps: List[str] = []
+    for i in range(step_start, step_end):
+        parsed = _parse_step_line(lines[i])
+        if parsed:
+            existing_steps.append(parsed)
+
+    if mode == "append":
+        combined: List[str] = list(existing_steps)
+        for step in new_steps:
+            s = step.strip()
+            if not s:
+                continue
+            if not re.match(r"^(Given|When|Then|And|But)\s", s, re.I):
+                s = f"And {s}"
+            norm = s[0].upper() + s[1:] if s else s
+            if not combined or combined[-1] != norm:
+                combined.append(norm)
+    else:
+        combined = []
+        for step in new_steps:
+            s = step.strip()
+            if s:
+                combined.append(s)
+
     # Construir los nuevos pasos con indentación correcta (4 espacios)
     formatted_steps = []
-    for step in new_steps:
+    for step in combined:
         step = step.strip()
         if step:
             # Asegurar que empiece con una keyword BDD

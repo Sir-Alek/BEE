@@ -15,9 +15,10 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from core.req_intelligence.doc_ingestion import DocChunk
+from ui.interfaces import BDDUserCancelled, IUI
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ConversionResult:
     features_created: int
     scenarios_generated: int
     errors_logged: int
+    scenarios_linked: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +85,9 @@ _SYSTEM_PROMPT = (
     "3. Escribe en lenguaje de negocio (sin términos técnicos, sin selectores HTML/CSS)\n"
     "4. Máximo 120 caracteres por línea de paso\n"
     "5. Given: contexto/precondición; When: acción principal; Then: resultado verificable\n"
-    "6. NO incluyas texto explicativo, comentarios ni markdown — solo el bloque Gherkin\n\n"
+    "6. NO incluyas texto explicativo, comentarios ni markdown — solo el bloque Gherkin\n"
+    "7. NO uses prefijos genéricos como «Verificar:» en Scenario: ni «el contexto es:» en Given; "
+    "escribe el nombre del escenario y los pasos de forma directa en lenguaje de negocio\n\n"
     f"EJEMPLOS DE REFERENCIA:\n{_FEW_SHOT_EXAMPLES}\n"
 )
 
@@ -106,10 +110,47 @@ def _resolve_gbnf_path() -> Optional[str]:
     return None
 
 
-def _build_prompt(chunk: DocChunk) -> str:
+def _trim_doc_excerpt(source_chunks: List[DocChunk], max_chars: int = 10000) -> str:
+    parts: List[str] = []
+    total = 0
+    for ch in source_chunks:
+        block = f"### {ch.title}\n{ch.content}\n"
+        if total + len(block) > max_chars:
+            parts.append(block[: max_chars - total - 20] + "\n... [truncado]")
+            break
+        parts.append(block)
+        total += len(block)
+    return "\n".join(parts).strip()
+
+
+def _memory_few_shot_block(examples: List[Dict[str, str]]) -> str:
+    if not examples:
+        return ""
+    parts: List[str] = []
+    for i, ex in enumerate(examples[:3], start=1):
+        req = (ex.get("script") or "").strip()
+        ft = (ex.get("feature") or "").strip()
+        if req and ft:
+            parts.append(
+                f"[EJEMPLO DE ESTILO {i} — Requerimiento]\n{req}\n"
+                f"[EJEMPLO DE ESTILO {i} — Feature BDD]\n{ft}\n"
+            )
+    if not parts:
+        return ""
+    return (
+        "Imita el estilo de redacción de estos ejemplos del usuario "
+        "(lenguaje de negocio, sin tecnicismos):\n"
+        + "\n".join(parts)
+        + "\n"
+    )
+
+
+def _build_prompt(chunk: DocChunk, *, memory_block: str = "") -> str:
     """Construye el prompt para un DocChunk específico."""
+    mem = f"{memory_block}\n" if memory_block else ""
     return (
         f"{_SYSTEM_PROMPT}\n\n"
+        f"{mem}"
         "=== NUEVO REQUERIMIENTO A CONVERTIR ===\n"
         f"Título: {chunk.title}\n"
         f"{chunk.content}\n\n"
@@ -121,6 +162,50 @@ def _validate_gherkin(text: str) -> bool:
     """Validación básica: debe tener Feature: y al menos un Scenario:."""
     text = text.strip()
     return bool(re.search(r"Feature:", text) and re.search(r"Scenario:", text))
+
+
+def _scenario_display_name(chunk: DocChunk) -> str:
+    """Nombre legible del escenario sin prefijos «Caso CP001» ni «Verificar:»."""
+    if chunk.row_data:
+        name = str(chunk.row_data.get("name") or "").strip()
+        if name:
+            return name[:80]
+        desc = str(chunk.row_data.get("description") or "").strip()
+        if desc:
+            return desc[:80]
+    title = chunk.title.strip()
+    title = re.sub(r"^\[[^\]]+\]\s*", "", title)
+    title = re.sub(r"^Verificar:\s*", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"^Caso\s+[A-Z0-9_-]+:\s*", "", title, flags=re.IGNORECASE)
+    return (title or "Escenario")[:80]
+
+
+def _sanitize_gherkin_text(text: str) -> str:
+    """Quita prefijos redundantes en Scenario: y Given producidos por heurística o LLM."""
+    out: List[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        m_sc = re.match(r"(Scenario:)\s*(.+)", stripped, re.IGNORECASE)
+        if m_sc:
+            name = m_sc.group(2).strip()
+            name = re.sub(r"^Verificar:\s*", "", name, flags=re.IGNORECASE)
+            name = re.sub(r"^Caso\s+[A-Z0-9_-]+:\s*", "", name, flags=re.IGNORECASE)
+            out.append(f"{indent}Scenario: {name}")
+            continue
+        m_given = re.match(r"(Given)\s+(.+)", stripped, re.IGNORECASE)
+        if m_given:
+            body = m_given.group(2).strip()
+            body = re.sub(r"^el contexto es:\s*", "", body, flags=re.IGNORECASE)
+            body = re.sub(r"^que el contexto es\s*", "", body, flags=re.IGNORECASE)
+            out.append(f"{indent}Given {body}")
+            continue
+        out.append(line)
+    result = "\n".join(out)
+    return result + ("\n" if text.endswith("\n") else "")
 
 
 def _heuristic_gherkin(chunk: DocChunk) -> str:
@@ -140,16 +225,20 @@ def _heuristic_gherkin(chunk: DocChunk) -> str:
     if chunk.chunk_type == "test_matrix" and chunk.row_data:
         rd = chunk.row_data
         if rd.get("steps"):
-            when_line = rd["steps"][:100]
+            when_line = str(rd["steps"])[:120]
         if rd.get("expected"):
-            then_line = rd["expected"][:100]
-        if rd.get("description"):
-            given_line = f"el contexto es: {rd['description'][:80]}"
+            then_line = str(rd["expected"])[:120]
+        pre = str(rd.get("preconditions") or "").strip()
+        desc = str(rd.get("description") or "").strip()
+        if pre:
+            given_line = pre[:120]
+        elif desc:
+            given_line = desc[:120]
 
     feature_name = re.sub(r"[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9 _\-]", "", title).strip() or "Funcionalidad"
-    scenario_name = f"Verificar: {title[:60]}"
+    scenario_name = _scenario_display_name(chunk)
 
-    return (
+    return _sanitize_gherkin_text(
         f"Feature: {feature_name}\n"
         f"  Scenario: {scenario_name}\n"
         f"    Given {given_line}\n"
@@ -170,12 +259,30 @@ class BDDDocConverter:
     5. Ensamblar features: uno por documento fuente
     """
 
-    def __init__(self, use_ai: bool = True) -> None:
+    def __init__(self, use_ai: bool = True, ui: Optional[IUI] = None) -> None:
         self._use_ai = use_ai
+        self.ui = ui
 
-    def convert_chunks(self, chunks: List[DocChunk], output_dir: str) -> ConversionResult:
+    def convert_chunks(
+        self,
+        chunks: List[DocChunk],
+        output_dir: str,
+        *,
+        link_scenario: Optional[str] = None,
+        link_scenario_by_doc: Optional[Dict[str, str]] = None,
+        link_recording: Optional[str] = None,
+        link_recording_by_doc: Optional[Dict[str, str]] = None,
+        projects_dir: Optional[str] = None,
+    ) -> ConversionResult:
         os.makedirs(output_dir, exist_ok=True)
         error_log_path = os.path.join(output_dir, "_elia_errors.log")
+        from core.ui_automation.recording_linkage import (
+            annotate_scenario_recording,
+            apply_link_to_existing_scenario,
+            decode_scenario_link,
+            link_map_for_doc_paths,
+            resolve_recording_basename_for_doc,
+        )
 
         # Agrupar chunks por documento fuente
         by_source: dict[str, List[DocChunk]] = {}
@@ -185,6 +292,7 @@ class BDDDocConverter:
 
         features_created = 0
         scenarios_generated = 0
+        scenarios_linked = 0
         errors_logged = 0
 
         # Intentar cargar grammar GBNF
@@ -192,50 +300,77 @@ class BDDDocConverter:
         if self._use_ai:
             grammar = self._load_grammar()
 
+        memory_block = ""
+        if self._use_ai:
+            try:
+                from core.elia_memory import recent_examples_for_prompt
+
+                memory_block = _memory_few_shot_block(recent_examples_for_prompt(limit=3))
+            except Exception:
+                memory_block = ""
+
         for source_name, source_chunks in by_source.items():
             feature_name = os.path.splitext(source_name)[0]
             # Sanitize para nombre de archivo
             safe_name = re.sub(r"[^\w\-_]", "_", feature_name)
             out_path = os.path.join(output_dir, f"{safe_name}.feature")
 
-            scenario_blocks: List[str] = []
+            full_feature, doc_scenarios, doc_errors = self._assemble_document_feature(
+                feature_name,
+                source_chunks,
+                grammar,
+                memory_block=memory_block,
+                error_log_path=error_log_path,
+                temperature=0.1,
+            )
+            scenarios_generated += doc_scenarios
+            errors_logged += doc_errors
 
-            for chunk in source_chunks:
-                try:
-                    if self._use_ai:
-                        gherkin = self._convert_with_llm(chunk, grammar)
+            if not full_feature.strip():
+                continue
+
+            try:
+                full_feature = self._review_document_feature(
+                    full_feature,
+                    source_chunks,
+                    feature_name,
+                    grammar,
+                    memory_block=memory_block,
+                    error_log_path=error_log_path,
+                )
+            except BDDUserCancelled:
+                raise
+
+            if full_feature.strip():
+                source_path = source_chunks[0].source_file if source_chunks else source_name
+                encoded_link = link_map_for_doc_paths(
+                    link_scenario_by_doc, source_path, link_scenario
+                )
+                decoded = decode_scenario_link(encoded_link)
+
+                if decoded:
+                    ff, sn = decoded
+                    if apply_link_to_existing_scenario(
+                        full_feature, ff, sn, mode="append", prefer_named_scenario=False
+                    ):
+                        scenarios_linked += 1
+                        rec_explicit = link_map_for_doc_paths(
+                            link_recording_by_doc, source_path, link_recording
+                        )
+                        if projects_dir:
+                            rec_name = resolve_recording_basename_for_doc(
+                                source_path, projects_dir, rec_explicit
+                            )
+                            if rec_name:
+                                annotate_scenario_recording(ff, sn, rec_name)
                     else:
-                        gherkin = None
-
-                    if not gherkin or not _validate_gherkin(gherkin):
-                        gherkin = _heuristic_gherkin(chunk)
-
-                    # Extraer solo los bloques Scenario: (sin el Feature: header)
-                    scenario_text = self._extract_scenarios(gherkin, chunk)
-                    if scenario_text:
-                        scenario_blocks.append(scenario_text)
-                        scenarios_generated += 1
-
-                except Exception as e:
-                    errors_logged += 1
-                    self._log_error(error_log_path, chunk, str(e))
-                    # Fallback heurístico silencioso
-                    try:
-                        gherkin = _heuristic_gherkin(chunk)
-                        scenario_text = self._extract_scenarios(gherkin, chunk)
-                        if scenario_text:
-                            scenario_blocks.append(scenario_text)
-                            scenarios_generated += 1
-                    except Exception:
-                        pass
-
-            if scenario_blocks:
-                feature_header = f"Feature: {feature_name}\n"
-                full_feature = feature_header + "\n".join(scenario_blocks) + "\n"
-
-                with open(out_path, "w", encoding="utf-8") as f:
-                    f.write(full_feature)
-                features_created += 1
+                        with open(out_path, "w", encoding="utf-8") as f:
+                            f.write(full_feature)
+                        features_created += 1
+                else:
+                    with open(out_path, "w", encoding="utf-8") as f:
+                        f.write(full_feature)
+                    features_created += 1
 
         # Resumen final en el log de errores
         if errors_logged > 0:
@@ -252,7 +387,137 @@ class BDDDocConverter:
             features_created=features_created,
             scenarios_generated=scenarios_generated,
             errors_logged=errors_logged,
+            scenarios_linked=scenarios_linked,
         )
+
+    def _assemble_document_feature(
+        self,
+        feature_name: str,
+        source_chunks: List[DocChunk],
+        grammar,
+        *,
+        memory_block: str,
+        error_log_path: str,
+        temperature: float = 0.1,
+        use_llm: bool = True,
+    ) -> Tuple[str, int, int]:
+        """Ensambla Feature + scenarios desde chunks. Devuelve (texto, nº escenarios, errores)."""
+        scenario_blocks: List[str] = []
+        errors = 0
+        count = 0
+
+        for chunk in source_chunks:
+            try:
+                gherkin: Optional[str] = None
+                if self._use_ai and use_llm:
+                    gherkin = self._convert_with_llm(
+                        chunk, grammar, memory_block=memory_block, temperature=temperature
+                    )
+                if not gherkin or not _validate_gherkin(gherkin):
+                    gherkin = _heuristic_gherkin(chunk)
+                else:
+                    gherkin = _sanitize_gherkin_text(gherkin)
+
+                scenario_text = self._extract_scenarios(gherkin, chunk)
+                if scenario_text:
+                    scenario_blocks.append(scenario_text)
+                    count += 1
+            except Exception as e:
+                errors += 1
+                self._log_error(error_log_path, chunk, str(e))
+                try:
+                    gherkin = _heuristic_gherkin(chunk)
+                    scenario_text = self._extract_scenarios(gherkin, chunk)
+                    if scenario_text:
+                        scenario_blocks.append(scenario_text)
+                        count += 1
+                except Exception:
+                    pass
+
+        if not scenario_blocks:
+            return "", count, errors
+
+        header = f"Feature: {feature_name}\n"
+        return header + "\n".join(scenario_blocks) + "\n", count, errors
+
+    def _review_document_feature(
+        self,
+        full_feature: str,
+        source_chunks: List[DocChunk],
+        feature_name: str,
+        grammar,
+        *,
+        memory_block: str,
+        error_log_path: str,
+    ) -> str:
+        """Revisión interactiva (aceptar / rechazar / editar) con memoria de correcciones."""
+        if not self.ui or not self._use_ai:
+            return full_feature
+
+        try:
+            from core import gemma_inference
+            from core.elia_memory import append_correction, recent_examples_for_prompt
+
+            if not gemma_inference.is_ai_runtime_configured():
+                return full_feature
+        except ImportError:
+            return full_feature
+
+        excerpt = _trim_doc_excerpt(source_chunks)
+        ai_temps = [0.1, 0.4, 0.7]
+        last_rendered = full_feature.strip()
+        examples = recent_examples_for_prompt(limit=3)
+        mem = memory_block or _memory_few_shot_block(examples)
+
+        for attempt in range(1, 5):
+            can_manual = attempt >= 4
+            if attempt > 1:
+                temp = ai_temps[min(attempt - 1, 2)]
+                last_rendered, _, _ = self._assemble_document_feature(
+                    feature_name,
+                    source_chunks,
+                    grammar,
+                    memory_block=mem,
+                    error_log_path=error_log_path,
+                    temperature=temp,
+                    use_llm=True,
+                )
+
+            try:
+                review = self.ui.bdd_preview_review(
+                    feature_text=last_rendered,
+                    attempt=attempt,
+                    max_attempts=4,
+                    script_excerpt=excerpt,
+                    can_manual=can_manual,
+                )
+            except BDDUserCancelled:
+                raise
+            action = str(review.get("action") or "")
+            if action == "accept":
+                ft = str(review.get("feature_text") or last_rendered).strip()
+                if not ft:
+                    ft = last_rendered
+                edited = bool(review.get("edited"))
+                if edited or ft != last_rendered.strip():
+                    append_correction(script_snippet=excerpt, feature_text=ft)
+                return ft
+            if action == "reject":
+                if attempt >= 4:
+                    break
+                continue
+            if action == "use_heuristic":
+                heuristic, _, _ = self._assemble_document_feature(
+                    feature_name,
+                    source_chunks,
+                    grammar,
+                    memory_block="",
+                    error_log_path=error_log_path,
+                    use_llm=False,
+                )
+                return heuristic or last_rendered
+
+        return last_rendered
 
     def _load_grammar(self):
         """Carga la gramática GBNF de Gherkin para llama-cpp-python."""
@@ -276,7 +541,13 @@ class BDDDocConverter:
             logger.debug(f"GBNF grammar no disponible: {e}")
             return None
 
-    def _convert_with_llm(self, chunk: DocChunk, grammar) -> Optional[str]:
+    def _convert_with_llm(
+        self,
+        chunk: DocChunk,
+        grammar,
+        memory_block: str = "",
+        temperature: float = 0.1,
+    ) -> Optional[str]:
         """Llama al LLM con el prompt del chunk y opcionalmente con la gramática GBNF."""
         try:
             from core.gemma_inference import _get_llama, is_ai_runtime_configured, _INFERENCE_LOCK  # type: ignore
@@ -286,7 +557,7 @@ class BDDDocConverter:
         if not is_ai_runtime_configured():
             return None
 
-        prompt = _build_prompt(chunk)
+        prompt = _build_prompt(chunk, memory_block=memory_block)
 
         try:
             llm = _get_llama()
@@ -296,7 +567,7 @@ class BDDDocConverter:
         call_kwargs = {
             "prompt": prompt,
             "max_tokens": 512,
-            "temperature": 0.1,
+            "temperature": float(temperature),
             "top_p": 0.9,
         }
         if grammar is not None:

@@ -11,8 +11,11 @@ Estructura de modules.json:
     "doc_to_bdd": true
   }
 
-En desarrollo se puede usar ELIA_SKIP_LICENSE=1 o ELIA_MODULE_<NAME>=1 para
-forzar un módulo habilitado sin archivo.
+En desarrollo, ELIA_SKIP_LICENSE=1 omite la licencia y habilita todos los módulos
+(incluidos móvil y legacy). También: ELIA_MODULE_<NAME>=1 para forzar uno concreto.
+
+Los módulos móvil/legacy pueden activarse con la clave de licencia (flags M/L)
+o con claves de módulo individuales (enable_module).
 """
 from __future__ import annotations
 
@@ -86,27 +89,60 @@ def _env_override(name: str) -> bool | None:
     if val in ("0", "false", "no"):
         return False
     if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
-        # En modo dev sin licencia, todos los módulos están habilitados.
+        # Desarrollo: licencia omitida → todos los módulos (móvil, legacy, doc_to_bdd).
         return True
     return None
 
 
+def _license_override(name: str) -> bool | None:
+    """Estado concedido por licencia activa (solo móvil/legacy)."""
+    if name not in ("mobile_recording", "legacy_recording"):
+        return None
+    try:
+        from core.elia_license import get_active_license_modules
+
+        mods = get_active_license_modules()
+        if mods is None:
+            return None
+        return bool(mods.get(name))
+    except Exception:
+        return None
+
+
+def apply_licensed_modules(*, mobile: bool, legacy: bool) -> None:
+    """Persiste módulos concedidos al activar una clave de licencia."""
+    data = _load_modules()
+    data["mobile_recording"] = bool(mobile)
+    data["legacy_recording"] = bool(legacy)
+    _save_modules(data)
+
+
 def is_module_enabled(name: str) -> bool:
-    """Devuelve True si el módulo está habilitado (env override > modules.json > default)."""
+    """Devuelve True si el módulo está habilitado (env > licencia > modules.json > default)."""
     override = _env_override(name)
     if override is not None:
         return override
+    lic = _license_override(name)
+    if lic is not None:
+        return lic
     data = _load_modules()
     return data.get(name, _DEFAULTS.get(name, False))
 
 
 def list_modules() -> Dict[str, bool]:
-    """Devuelve el estado de todos los módulos respetando overrides de entorno."""
+    """Devuelve el estado de todos los módulos respetando env, licencia y modules.json."""
     data = _load_modules()
     result: Dict[str, bool] = {}
     for name in _DEFAULTS:
         override = _env_override(name)
-        result[name] = override if override is not None else data.get(name, False)
+        if override is not None:
+            result[name] = override
+            continue
+        lic = _license_override(name)
+        if lic is not None:
+            result[name] = lic
+            continue
+        result[name] = data.get(name, _DEFAULTS.get(name, False))
     return result
 
 
