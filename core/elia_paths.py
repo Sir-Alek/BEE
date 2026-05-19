@@ -57,3 +57,17 @@ def external_connectors_dir() -> Path:
 def integrations_secrets_path() -> Path:
     """Ruta recomendada para secrets.ini (Jira + Value Edge). No versionar."""
     return external_connectors_dir() / "secrets.ini"
+
+
+def uploads_tmp_dir() -> Path:
+    """Directorio temporal para archivos subidos (Word/Excel) — se limpia entre sesiones."""
+    d = ensure_user_data_root() / "uploads_tmp"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def doc_features_dir() -> Path:
+    """Directorio donde se guardan los .feature generados desde documentos."""
+    d = ensure_user_data_root() / "doc_features"
+    d.mkdir(parents=True, exist_ok=True)
+    return d

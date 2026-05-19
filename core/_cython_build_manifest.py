@@ -11,6 +11,7 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/elia_license.py",
     "core/elia_memory.py",
     "core/elia_paths.py",
+    "core/modules_config.py",
     # core/ui_automation/
     "core/ui_automation/puppeteer_script_converter.py",
     "core/ui_automation/flow_analyzer.py",
@@ -19,6 +20,8 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/ui_automation/step_by_step_converter.py",
     "core/ui_automation/node_wrapper.py",
     "core/ui_automation/recorder_focus.py",
+    "core/ui_automation/mobile_recorder.py",
+    "core/ui_automation/legacy_recorder.py",
     # core/req_intelligence/
     "core/req_intelligence/jira_extractor.py",
     "core/req_intelligence/value_edge_extractor.py",
@@ -26,4 +29,7 @@ CYTHON_REL_PATHS: tuple[str, ...] = (
     "core/req_intelligence/integrations_config_loader.py",
     "core/req_intelligence/connectors_profiles_store.py",
     "core/req_intelligence/integrations_service.py",
+    "core/req_intelligence/doc_ingestion.py",
+    "core/req_intelligence/bdd_doc_converter.py",
+    "core/req_intelligence/feature_scanner.py",
 )

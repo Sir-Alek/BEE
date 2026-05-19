@@ -1,4 +1,6 @@
-import type { EliaConnectorsDocument, EliaJiraCreds, EliaValueEdgeCreds } from "./types";
+import type { EliaConnectorsDocument, EliaJiraCreds, EliaValueEdgeCreds, LoadedDoc, ModulesStatus, ScenarioRef } from "./types";
+
+export type { LoadedDoc, ModulesStatus, ScenarioRef };
 
 export type JobStateResponse = {
   job_id: string;
@@ -16,6 +18,9 @@ export async function startConvertJob(params: {
     | "puppeteer_to_behave"
     | "puppeteer_to_step_by_step"
     | "puppeteer_recorder"
+    | "mobile_recorder"
+    | "legacy_recorder"
+    | "doc_to_bdd"
     // ELIA
     | "elia_jira_smoke"
     | "elia_value_edge_smoke"
@@ -25,8 +30,23 @@ export async function startConvertJob(params: {
   elia_use_inline_connectors?: boolean;
   elia_jira?: EliaJiraCreds;
   elia_value_edge?: EliaValueEdgeCreds;
+  // Mobile
+  platform?: string;
+  apk_path?: string;
+  device_id?: string;
+  // Legacy
+  window_name?: string;
+  exe_path?: string;
+  // Doc-to-BDD
+  doc_files?: string[];
+  link_recording?: string;
+  link_scenario?: string;
 }): Promise<{ job_id: string }> {
-  const { mode, url, use_ai, elia_use_inline_connectors, elia_jira, elia_value_edge } = params;
+  const {
+    mode, url, use_ai, elia_use_inline_connectors, elia_jira, elia_value_edge,
+    platform, apk_path, device_id, window_name, exe_path,
+    doc_files, link_recording, link_scenario,
+  } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,12 +57,43 @@ export async function startConvertJob(params: {
       ...(elia_use_inline_connectors != null ? { elia_use_inline_connectors } : {}),
       ...(elia_jira != null ? { elia_jira } : {}),
       ...(elia_value_edge != null ? { elia_value_edge } : {}),
+      ...(platform != null ? { platform } : {}),
+      ...(apk_path != null ? { apk_path } : {}),
+      ...(device_id != null ? { device_id } : {}),
+      ...(window_name != null ? { window_name } : {}),
+      ...(exe_path != null ? { exe_path } : {}),
+      ...(doc_files != null ? { doc_files } : {}),
+      ...(link_recording != null ? { link_recording } : {}),
+      ...(link_scenario != null ? { link_scenario } : {}),
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to start job: ${res.status} ${text}`);
   }
+  return res.json();
+}
+
+export async function getModulesStatus(): Promise<ModulesStatus> {
+  const res = await fetch("/api/modules/status");
+  if (!res.ok) throw new Error(`Failed to fetch modules: ${res.status}`);
+  return res.json();
+}
+
+export async function uploadDocs(files: File[]): Promise<{ ok: boolean; files: LoadedDoc[] }> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  const res = await fetch("/api/req/upload-docs", { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getScenarios(project?: string): Promise<{ scenarios: ScenarioRef[] }> {
+  const url = project
+    ? `/api/req/scenarios?project=${encodeURIComponent(project)}`
+    : "/api/req/scenarios";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch scenarios: ${res.status}`);
   return res.json();
 }
 

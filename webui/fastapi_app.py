@@ -6,7 +6,7 @@ import traceback
 import sys
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -61,12 +61,27 @@ class ConvertRequest(BaseModel):
         "elia_jira_smoke",
         "elia_value_edge_smoke",
         "elia_gherkin_batch",
+        # Building Blocks: nuevos módulos
+        "mobile_recorder",
+        "legacy_recorder",
+        "doc_to_bdd",
     ]
     url: Optional[str] = None
     use_ai: bool = False
     elia_use_inline_connectors: bool = False
     elia_jira: Optional[JiraCreds] = None
     elia_value_edge: Optional[ValueEdgeCreds] = None
+    # Mobile recording
+    platform: Optional[str] = None
+    apk_path: Optional[str] = None
+    device_id: Optional[str] = None
+    # Legacy recording
+    window_name: Optional[str] = None
+    exe_path: Optional[str] = None
+    # Doc-to-BDD
+    doc_files: Optional[List[str]] = None
+    link_recording: Optional[str] = None
+    link_scenario: Optional[str] = None
 
 
 class PromptResponseRequest(BaseModel):
@@ -179,6 +194,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "message": st.message,
             "can_run_jobs": elia_license.can_run_jobs(),
         }
+
+    @app.get("/api/modules/status")
+    def modules_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.modules_config import list_modules
+        return list_modules()
 
     @app.post("/api/license/activate")
     def license_activate(
@@ -609,6 +629,106 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.mark_error(job_id, message="ELIA Gherkin batch error", details=f"{e}\n{traceback.format_exc()}")
                     return
 
+                if req.mode == "mobile_recorder":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("mobile_recording"):
+                        jm.mark_error(
+                            job_id,
+                            message="Módulo no habilitado",
+                            details="La grabación móvil requiere licencia adicional. Contacta a soporte para activar este módulo.",
+                        )
+                        return
+                    from core.ui_automation.mobile_recorder import MobileRecorder
+                    recorder = MobileRecorder(adapter, jm, job_id)
+                    recorder.record(
+                        apk_path=req.apk_path or "",
+                        device_id=req.device_id or "",
+                        projects_dir=_projects_dir(),
+                    )
+                    return
+
+                if req.mode == "legacy_recorder":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("legacy_recording"):
+                        jm.mark_error(
+                            job_id,
+                            message="Módulo no habilitado",
+                            details="La grabación de aplicaciones legacy requiere licencia adicional. Contacta a soporte para activar este módulo.",
+                        )
+                        return
+                    from core.ui_automation.legacy_recorder import LegacyRecorder
+                    recorder = LegacyRecorder(adapter, jm, job_id)
+                    recorder.record(
+                        window_name=req.window_name or "",
+                        exe_path=req.exe_path or "",
+                        projects_dir=_projects_dir(),
+                    )
+                    return
+
+                if req.mode == "doc_to_bdd":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("doc_to_bdd"):
+                        jm.mark_error(
+                            job_id,
+                            message="Módulo no habilitado",
+                            details="La conversión de documentos a BDD requiere licencia adicional.",
+                        )
+                        return
+                    from core.req_intelligence.bdd_doc_converter import BDDDocConverter
+                    from core.req_intelligence.doc_ingestion import WordIngester, ExcelIngester
+                    from core.elia_paths import doc_features_dir
+
+                    jm.update_progress(job_id, {"stage": "Cargando documentos"})
+
+                    doc_files = req.doc_files or []
+                    if not doc_files:
+                        jm.mark_error(job_id, message="Sin documentos", details="No se proporcionaron archivos para procesar.")
+                        return
+
+                    chunks = []
+                    for fpath in doc_files:
+                        if not os.path.isfile(fpath):
+                            continue
+                        ext = os.path.splitext(fpath)[1].lower()
+                        if ext == ".docx":
+                            ingester = WordIngester()
+                            chunks.extend(ingester.ingest(fpath))
+                        elif ext == ".xlsx":
+                            ingester = ExcelIngester()
+                            chunks.extend(ingester.ingest(fpath))
+
+                    if not chunks:
+                        jm.mark_error(job_id, message="Sin contenido", details="Los documentos no produjeron chunks procesables.")
+                        return
+
+                    jm.update_progress(job_id, {"stage": f"Convirtiendo {len(chunks)} bloques a BDD…"})
+
+                    output_dir = str(doc_features_dir())
+                    converter = BDDDocConverter(use_ai=req.use_ai)
+                    result = converter.convert_chunks(chunks, output_dir)
+
+                    summary = (
+                        f"Conversión completada.\n\n"
+                        f"Features creados: {result.features_created}\n"
+                        f"Escenarios generados: {result.scenarios_generated}\n"
+                        f"Con errores (revisión manual): {result.errors_logged}\n\n"
+                        f"Archivos en:\n{output_dir}"
+                    )
+                    if result.errors_logged > 0:
+                        summary += f"\n\nRevisa _elia_errors.log para detalles de los {result.errors_logged} bloques con error."
+
+                    adapter.info("ELIA · Doc to BDD", summary)
+                    jm.add_event(job_id, "doc_to_bdd", {
+                        "features_created": result.features_created,
+                        "scenarios_generated": result.scenarios_generated,
+                        "errors_logged": result.errors_logged,
+                        "output_dir": output_dir,
+                        "link_recording": req.link_recording,
+                        "link_scenario": req.link_scenario,
+                    })
+                    jm.mark_done(job_id)
+                    return
+
                 jm.mark_error(job_id, message="Unknown mode", details=str(req.mode))
             except Exception as e:
                 jm.mark_error(job_id, message="Job failed", details=f"{e}\n{traceback.format_exc()}")
@@ -647,6 +767,74 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def cancel_job(job_id: str, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
         jm.cancel_job(job_id)
         return {"ok": True}
+
+    # -----------------------
+    # Req Intelligence: upload + scenarios
+    # -----------------------
+    @app.post("/api/req/upload-docs")
+    async def upload_docs(
+        files: List[UploadFile] = File(...),
+        _: None = Depends(_require_localhost),
+    ) -> Dict[str, Any]:
+        import shutil
+        from core.elia_paths import uploads_tmp_dir
+
+        tmp_dir = uploads_tmp_dir()
+        saved: List[Dict[str, str]] = []
+        allowed_exts = {".docx", ".xlsx", ".json"}
+        for upload in files:
+            name = upload.filename or "file"
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in allowed_exts:
+                continue
+            dest = os.path.join(str(tmp_dir), name)
+            # Avoid path traversal
+            dest = os.path.normpath(dest)
+            if not dest.startswith(str(tmp_dir)):
+                continue
+            with open(dest, "wb") as f:
+                shutil.copyfileobj(upload.file, f)
+            saved.append({"name": name, "path": dest, "ext": ext})
+        return {"ok": True, "files": saved}
+
+    @app.get("/api/req/scenarios")
+    def get_scenarios(project: Optional[str] = None, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.req_intelligence.feature_scanner import scan_project_scenarios
+        from core.elia_paths import behave_projects_dir, doc_features_dir
+
+        results: List[Dict[str, str]] = []
+        dirs_to_scan: List[str] = []
+
+        # Scan behave projects
+        proj_root = behave_projects_dir()
+        if project:
+            candidate = os.path.join(str(proj_root), project)
+            if os.path.isdir(candidate):
+                dirs_to_scan.append(candidate)
+        else:
+            try:
+                for entry in os.listdir(str(proj_root)):
+                    full = os.path.join(str(proj_root), entry)
+                    if os.path.isdir(full):
+                        dirs_to_scan.append(full)
+            except OSError:
+                pass
+
+        # Also scan doc_features dir
+        dirs_to_scan.append(str(doc_features_dir()))
+
+        for d in dirs_to_scan:
+            try:
+                for ref in scan_project_scenarios(d):
+                    results.append({
+                        "feature_file": ref.feature_file,
+                        "scenario_name": ref.scenario_name,
+                        "line": str(ref.line_number),
+                    })
+            except Exception:
+                pass
+
+        return {"scenarios": results}
 
     # -----------------------
     # SPA static serving

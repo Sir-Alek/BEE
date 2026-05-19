@@ -1,0 +1,17 @@
+# GBNF Grammar for Gherkin BDD output
+# Restricts llama.cpp inference to valid Gherkin syntax only.
+# Used by BDDDocConverter to guarantee syntactically valid .feature output.
+
+root ::= feature-block
+
+feature-block ::= "Feature: " text newline scenario+
+
+scenario ::= newline "  Scenario: " text newline step+
+
+step ::= "    " keyword " " text newline
+
+keyword ::= "Given" | "When" | "Then" | "And" | "But"
+
+text ::= [^\n\r]+
+
+newline ::= "\n"

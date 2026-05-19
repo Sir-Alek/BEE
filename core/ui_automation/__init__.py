@@ -9,5 +9,7 @@ Módulos:
   node_wrapper                Ejecuta scripts Puppeteer con el Node.js embebido.
   recorder_focus              Enfoca el navegador de automatización en Windows.
   video_recorder              Grabación de pantalla a AVI.
+  mobile_recorder             Grabación de interacciones móviles vía Appium (Building Block).
+  legacy_recorder             Grabación de aplicaciones de escritorio Windows (Building Block).
 """
 from __future__ import annotations

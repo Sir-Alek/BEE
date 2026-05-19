@@ -108,3 +108,21 @@ export type EliaConnectorsDocument = {
   profiles: EliaConnectorProfile[];
 };
 
+export type ModulesStatus = {
+  mobile_recording: boolean;
+  legacy_recording: boolean;
+  doc_to_bdd: boolean;
+};
+
+export type LoadedDoc = {
+  name: string;
+  path: string;
+  ext: string;
+};
+
+export type ScenarioRef = {
+  feature_file: string;
+  scenario_name: string;
+  line: string;
+};
+
