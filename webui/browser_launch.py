@@ -29,6 +29,14 @@ def _focus_new_browser_window_later(old_pids: Set[int], *, delay_sec: float = 1.
 
 def _candidate_executables() -> List[str]:
     out: List[str] = []
+    if sys.platform == "win32":
+        try:
+            from core.ui_automation.chrome_resolver import candidate_chrome_executables
+
+            out.extend(candidate_chrome_executables())
+        except Exception:
+            pass
+
     env_path = (os.environ.get("ELIA_BROWSER_PATH") or os.environ.get("CHROME_PATH") or "").strip()
     if env_path:
         out.append(env_path)

@@ -533,7 +533,9 @@ class main:
                 try:
                     from ui.interfaces import BDDUserCancelled
 
-                    use_ai = _env_get_first("ELIA_USE_AI").lower() in ("1", "true", "yes")
+                    from core.ai_policy import resolve_use_ai
+
+                    use_ai = resolve_use_ai().use_ai
                     converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
@@ -1019,9 +1021,10 @@ def _require_license_for_jobs() -> None:
 
 if __name__ == "__main__":
     from core import elia_license
+    from core.version import ELIA_DEVELOPER, ELIA_VERSION
 
     elia_license.ensure_license_or_exit()
-    print(""""
+    print(f"""
 ███████╗██╗     ██╗ █████╗ 
 ██╔════╝██║     ██║██╔══██╗
 █████╗  ██║     ██║███████║
@@ -1029,8 +1032,8 @@ if __name__ == "__main__":
 ███████╗███████╗██║██║  ██║
 ╚══════╝╚══════╝╚═╝╚═╝  ╚═╝
 
-   ELIA - Evolving Learning & Intelligent Automation v0.2.5
-   </Sir_Alek>
+   ELIA - Evolving Learning & Intelligent Automation v{ELIA_VERSION}
+   {ELIA_DEVELOPER}
           """)    
     def _run_web_ui() -> None:
         """

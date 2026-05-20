@@ -1,5 +1,16 @@
 # ELIA — Documentación para desarrollo y despliegue
 
+## Versión del producto (sincronizar en releases)
+
+| Dónde | Qué editar |
+|-------|------------|
+| **Pestaña Acerca de** (UI) | `core/version.py` → `ELIA_VERSION` (y opcionalmente `ELIA_DEVELOPER`, `ELIA_TAGLINE`) |
+| **Consola al arrancar** | Mismo `core/version.py` (importado desde `main.py`) |
+| **Instalador Windows** | `ELIA_Setup.iss` → `#define MyAppVersion` |
+| **Guía usuario** | `readme.txt` (texto libre; no muestra versión automática) |
+
+Tras cambiar `core/version.py`, recompila con PyInstaller antes de generar el `.exe` instalable.
+
 ## Entorno virtual (Python)
 
 Desde la raíz del repositorio:
@@ -14,6 +25,26 @@ pip install -r requirements.txt
 - **Excel → BDD** requiere `pandas`, `python-calamine` y `openpyxl` (incluidos en `requirements.txt`). Si ves `pandas no está instalado`, reinstala dependencias: `pip install -r requirements.txt`.
 - Activar después: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
 - Ejecutar la app: `python main.py`
+
+## Inteligencia local (Gemma) — política por defecto
+
+- **Marca:** Evolving Learning & Intelligent Automation (ELIA).
+- **Modo por defecto:** `auto` en `%LOCALAPPDATA%\ELIA\ai_preferences.json` (o datos de usuario vía `ELIA_USER_DATA`).
+  - **auto:** IA activa si el modelo GGUF existe, `llama-cpp-python` está disponible y hay **≥ 8 GB RAM total** y **≥ 4 GB libres**.
+  - **on:** fuerza IA en cada job.
+  - **off:** modo rápido / heurístico (sin Gemma).
+- Los jobs **ignoran** `use_ai` enviado por el frontend; el servidor resuelve la política en cada `POST /api/jobs/convert`.
+- Variables opcionales: `ELIA_AI_MIN_RAM_GB`, `ELIA_AI_MIN_RAM_FREE_GB`, `ELIA_USE_AI` (override 0/1), `ELIA_ALLOW_CHROMIUM_FALLBACK` (solo grabador Chrome).
+- API: `GET /api/ai/capabilities`, `PUT /api/ai/preferences` con `{ "mode": "auto"|"on"|"off" }`.
+
+## Requisitos de grabación web (Windows)
+
+- **Google Chrome** instalado (obligatorio). **Microsoft Edge no sustituye** a Chrome para la grabación Puppeteer.
+- Si Chrome está en una ruta no estándar, defina antes de arrancar ELIA:
+  - `ELIA_CHROME_PATH=C:\ruta\completa\chrome.exe` (también acepta `CHROME_PATH` o `ELIA_BROWSER_PATH`).
+- **Chromium empaquetado (Puppeteer)** solo como respaldo técnico, no como requisito de usuario:
+  - `ELIA_ALLOW_CHROMIUM_FALLBACK=1` y `cd core\node && npm install` (debe existir el Chromium descargado por puppeteer).
+- Diagnóstico: `python scripts/diagnose_recorder_env.py`
 
 ## Node.js en `core/node` (grabación con Puppeteer)
 

@@ -1,41 +1,134 @@
-function getChromePath() {
-    const defaultPaths = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
-    ];
-
-    // Primero intentar con las rutas predeterminadas
-    for (const chromePath of defaultPaths) {
-        if (fs.existsSync(chromePath)) {
-            return chromePath;
-        }
-    }
-
-    // Fallback para webdriver-manager portable
-    try {
-        // Ruta relativa al webdriver-manager incluido en el paquete
-        const webdriverPath = path.join(__dirname, '..', 'node', 'node_modules', 'webdriver-manager');
-        const { getInstalledChromePath } = require(webdriverPath);
-        
-        const chromePath = getInstalledChromePath();
-        if (chromePath && fs.existsSync(chromePath)) {
-            console.log('Chrome encontrado via webdriver-manager portable:', chromePath);
-            return chromePath;
-        }
-    } catch (e) {
-        console.warn('Error al usar webdriver-manager portable:', e.message);
-    }
-
-    throw new Error('Chrome no encontrado. Instala Chrome o verifica la ruta manualmente.');
-}
-
 const fs = require('fs');
 const path = require('path');
 const { Writable } = require('stream');
 const { Worker } = require('worker_threads');
 const puppeteer = require(path.join(__dirname, '..', 'node', 'node_modules', 'puppeteer'));
+
+function chromiumFallbackAllowed() {
+    const v = String(process.env.ELIA_ALLOW_CHROMIUM_FALLBACK || '').trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+function getChromePath() {
+    const { execSync } = require('child_process');
+
+    const tryPath = (chromePath, source) => {
+        if (chromePath && fs.existsSync(chromePath)) {
+            console.log(`[Recorder] Chrome: ${chromePath} (${source})`);
+            return chromePath;
+        }
+        return null;
+    };
+
+    for (const key of ['ELIA_CHROME_PATH', 'CHROME_PATH', 'ELIA_BROWSER_PATH']) {
+        const fromEnv = tryPath((process.env[key] || '').trim().replace(/^["']|["']$/g, ''), 'env');
+        if (fromEnv) return fromEnv;
+    }
+
+    const defaultPaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+    if (process.env.LOCALAPPDATA) {
+        defaultPaths.push(
+            path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        );
+    }
+    for (const chromePath of defaultPaths) {
+        const hit = tryPath(chromePath, 'install');
+        if (hit) return hit;
+    }
+
+    if (process.platform === 'win32') {
+        try {
+            const out = execSync('where chrome', { encoding: 'utf8', timeout: 8000 }).trim();
+            for (const line of out.split(/\r?\n/)) {
+                const hit = tryPath(line.trim().replace(/^["']|["']$/g, ''), 'where');
+                if (hit) return hit;
+            }
+        } catch (e) {
+            console.warn('[Recorder] where chrome:', e.message || e);
+        }
+    }
+
+    if (chromiumFallbackAllowed()) {
+        try {
+            const bundled = puppeteer.executablePath();
+            const hit = tryPath(bundled, 'puppeteer-chromium');
+            if (hit) {
+                console.warn(
+                    '[Recorder] No se detectó Google Chrome; usando Chromium de Puppeteer (ELIA_ALLOW_CHROMIUM_FALLBACK=1).'
+                );
+                return hit;
+            }
+        } catch (e) {
+            console.warn('[Recorder] puppeteer.executablePath():', e.message || e);
+        }
+    }
+
+    try {
+        const webdriverPath = path.join(__dirname, '..', 'node', 'node_modules', 'webdriver-manager');
+        const { getInstalledChromePath } = require(webdriverPath);
+        const chromePath = getInstalledChromePath();
+        const hit = tryPath(chromePath, 'webdriver-manager');
+        if (hit) return hit;
+    } catch (e) {
+        console.warn('[Recorder] webdriver-manager:', e.message || e);
+    }
+
+    const lines = [
+        'Google Chrome no encontrado en este equipo.',
+        'Requisito: instale Chrome desde https://www.google.com/chrome/ (Edge no es válido para grabar).',
+        'Si Chrome está instalado en otra ruta, defina ELIA_CHROME_PATH con la ruta completa a chrome.exe.',
+    ];
+    if (!chromiumFallbackAllowed()) {
+        lines.push(
+            'Respaldo Chromium (Puppeteer): solo con ELIA_ALLOW_CHROMIUM_FALLBACK=1 y tras ejecutar npm install en core/node.'
+        );
+    } else {
+        lines.push(
+            'ELIA_ALLOW_CHROMIUM_FALLBACK=1 está activo pero Chromium no está disponible; ejecute: cd core\\node && npm install'
+        );
+    }
+    throw new Error(lines.join('\n'));
+}
+
 const targetUrl = process.argv[3] || 'https://www.google.com';
+
+/** Flags de Chrome para Puppeteer (sin --disable-web-security: Chrome muestra aviso bajo la barra de URL). */
+function getChromeLaunchArgs() {
+  const args = [
+    '--start-maximized',
+    '--disable-infobars',
+    '--disable-dev-shm-usage',
+    '--disable-extensions',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--metrics-recording-only',
+    '--disable-default-apps',
+  ];
+  if (process.platform === 'linux') {
+    args.unshift('--disable-setuid-sandbox', '--no-sandbox');
+  }
+  return args;
+}
+
+async function getSingleRecordingPage(browser) {
+  const pages = await browser.pages();
+  const page = pages.length > 0 ? pages[0] : await browser.newPage();
+  for (const extra of await browser.pages()) {
+    if (extra !== page) {
+      try {
+        await extra.close();
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+  return page;
+}
 
 // Worker para escritura asíncrona en hilo separado
 const createFileWorker = (outputPath) => {
@@ -327,29 +420,14 @@ let actionRecorder = null;
     const browser = await puppeteer.launch({
       headless: false,
       defaultViewport: null,
-      args: [
-        '--start-maximized',
-        '--disable-infobars',
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--remote-debugging-port=9222',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-extensions',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--disable-default-apps'
-      ],
+      args: getChromeLaunchArgs(),
       executablePath: getChromePath(),
       ignoreDefaultArgs: ['--enable-automation'],
       timeout: 60000
     });
 
-    const page = await browser.newPage();
+    // Reutilizar la primera pestaña: newPage() dejaba about:blank extra con aviso de flags.
+    const page = await getSingleRecordingPage(browser);
     
     await page.evaluateOnNewDocument(() => {
       delete navigator.__proto__.webdriver;

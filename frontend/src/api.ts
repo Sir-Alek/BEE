@@ -36,6 +36,7 @@ export async function startConvertJob(params: {
     | "elia_value_edge_smoke"
     | "elia_gherkin_batch";
   url?: string;
+  /** Ignorado por el servidor; la política de IA se resuelve en backend (ai_preferences.json). */
   use_ai?: boolean;
   elia_use_inline_connectors?: boolean;
   elia_jira?: EliaJiraCreds;
@@ -55,7 +56,7 @@ export async function startConvertJob(params: {
   link_recording_by_doc?: Record<string, string>;
 }): Promise<{ job_id: string }> {
   const {
-    mode, url, use_ai, elia_use_inline_connectors, elia_jira, elia_value_edge,
+    mode, url, elia_use_inline_connectors, elia_jira, elia_value_edge,
     platform, apk_path, device_id, window_name, exe_path,
     doc_files, link_recording, link_scenario, link_scenario_by_doc, link_recording_by_doc,
   } = params;
@@ -65,7 +66,6 @@ export async function startConvertJob(params: {
     body: JSON.stringify({
       mode,
       url,
-      use_ai: use_ai ?? false,
       ...(elia_use_inline_connectors != null ? { elia_use_inline_connectors } : {}),
       ...(elia_jira != null ? { elia_jira } : {}),
       ...(elia_value_edge != null ? { elia_value_edge } : {}),
@@ -91,6 +91,23 @@ export async function startConvertJob(params: {
 export async function getModulesStatus(): Promise<ModulesStatus> {
   const res = await fetch("/api/modules/status");
   if (!res.ok) throw new Error(`Failed to fetch modules: ${res.status}`);
+  return res.json();
+}
+
+export type RecorderPreflightResponse = {
+  ok: boolean;
+  chrome_path: string | null;
+  source: string | null;
+  warnings: string[];
+  errors: string[];
+  chrome_required: boolean;
+  chromium_fallback_enabled: boolean;
+  platform: string;
+};
+
+export async function getRecorderPreflight(): Promise<RecorderPreflightResponse> {
+  const res = await fetch("/api/recorder/preflight");
+  if (!res.ok) throw new Error(`Failed to fetch recorder preflight: ${res.status}`);
   return res.json();
 }
 
@@ -132,6 +149,68 @@ export async function getAiStatus(): Promise<AiStatusResponse> {
   const res = await fetch("/api/ai/status");
   if (!res.ok) {
     throw new Error(`Failed to fetch AI status: ${res.status}`);
+  }
+  return res.json();
+}
+
+export type AiMode = "auto" | "on" | "off";
+
+export type AiCapabilitiesResponse = {
+  preferences: { mode: AiMode; version: number };
+  capability: {
+    model_ok: boolean;
+    llama_ok: boolean;
+    runtime_ok: boolean;
+    ram_ok: boolean;
+    ram_total_gb: number | null;
+    ram_available_gb: number | null;
+    ram_min_total_gb: number;
+    ram_min_free_gb: number;
+    capable: boolean;
+    reasons: string[];
+    model: { path: string; exists: boolean; size_bytes: number; frozen: boolean };
+  };
+  resolution: {
+    use_ai: boolean;
+    mode: AiMode;
+    capable: boolean;
+    degraded: boolean;
+    message: string;
+    reasons: string[];
+  };
+  runtime: AiStatusResponse;
+  brand_line: string;
+};
+
+export async function getAiCapabilities(): Promise<AiCapabilitiesResponse> {
+  const res = await fetch("/api/ai/capabilities");
+  if (!res.ok) throw new Error(`Failed to fetch AI capabilities: ${res.status}`);
+  return res.json();
+}
+
+export type AppAboutResponse = {
+  app_name: string;
+  version: string;
+  developer: string;
+  tagline: string;
+  license_text: string;
+};
+
+export async function getAppAbout(): Promise<AppAboutResponse> {
+  const res = await fetch("/api/app/about");
+  if (!res.ok) throw new Error(`Failed to fetch app about: ${res.status}`);
+  return res.json();
+}
+
+export async function putAiPreferences(mode: AiMode): Promise<AiCapabilitiesResponse> {
+  const res = await fetch("/api/ai/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to save AI preferences: ${res.status} ${text}`);
   }
   return res.json();
 }

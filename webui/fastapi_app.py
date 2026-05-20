@@ -97,6 +97,10 @@ class LicenseActivateRequest(BaseModel):
     key: str
 
 
+class AiPreferencesRequest(BaseModel):
+    mode: str  # auto | on | off
+
+
 def _repo_root() -> str:
     """
     Devuelve la raíz del proyecto / directorio del bundle.
@@ -179,14 +183,59 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def app_should_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         return {"exit": bool(exit_flag["value"])}
 
+    @app.get("/api/app/about")
+    def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION
+
+        licence_path = os.path.join(base_dir, "Licence.txt")
+        license_text = ""
+        if os.path.isfile(licence_path):
+            try:
+                with open(licence_path, encoding="utf-8") as f:
+                    license_text = f.read()
+            except Exception:
+                license_text = ""
+        return {
+            "app_name": "ELIA",
+            "version": ELIA_VERSION,
+            "developer": ELIA_DEVELOPER,
+            "tagline": ELIA_TAGLINE,
+            "license_text": license_text,
+        }
+
     @app.get("/api/ai/status")
     def ai_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Compatibilidad: devuelve runtime; preferir /api/ai/capabilities."""
         try:
             from core import gemma_inference
 
             return gemma_inference.get_ai_runtime_status()
         except Exception as e:
             return {"error": str(e)}
+
+    @app.get("/api/ai/capabilities")
+    def ai_capabilities(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.ai_policy import get_ai_status_payload
+
+        return get_ai_status_payload()
+
+    @app.get("/api/ai/preferences")
+    def ai_preferences_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.ai_policy import get_ai_status_payload
+
+        return get_ai_status_payload()
+
+    @app.put("/api/ai/preferences")
+    def ai_preferences_put(
+        req: AiPreferencesRequest, _: None = Depends(_require_localhost)
+    ) -> Dict[str, Any]:
+        from core.ai_policy import get_ai_status_payload, save_preferences
+
+        mode = (req.mode or "auto").strip().lower()
+        if mode not in ("auto", "on", "off"):
+            raise HTTPException(status_code=400, detail="mode debe ser auto, on u off")
+        save_preferences(mode=mode)  # type: ignore[arg-type]
+        return get_ai_status_payload()
 
     @app.get("/api/license/status")
     def license_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
@@ -209,6 +258,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def modules_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         from core.modules_config import list_modules
         return list_modules()
+
+    @app.get("/api/recorder/preflight")
+    def recorder_preflight(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Comprueba Google Chrome antes de iniciar puppeteer_recorder (Windows)."""
+        from core.ui_automation.chrome_resolver import resolve_chrome_for_recording
+
+        result = resolve_chrome_for_recording(base_dir)
+        return result.to_dict()
 
     @app.post("/api/license/activate")
     def license_activate(
@@ -285,7 +342,12 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         ve_cred_dict = req.elia_value_edge.model_dump() if req.elia_value_edge is not None else None
 
         def worker() -> None:
+            from core.ai_policy import resolve_use_ai
+
             adapter = WebUIAdapter(job_manager=jm, job_id=job_id)
+            ai_resolution = resolve_use_ai()
+            use_ai = ai_resolution.use_ai
+            jm.add_event(job_id, "ai_policy", ai_resolution.to_dict())
             try:
                 if req.mode == "demo":
                     # Simple smoke behavior: one prompt then done.
@@ -298,7 +360,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     converter = PuppeteerToBehaveConverter(
                         base_dir,
                         adapter,
-                        use_ai=req.use_ai,
+                        use_ai=use_ai,
                         link_scenario=req.link_scenario,
                     )
                     converter.convert_script()
@@ -322,7 +384,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         base_dir,
                         adapter,
                         platform="mobile",
-                        use_ai=req.use_ai,
+                        use_ai=use_ai,
                         link_scenario=req.link_scenario,
                     ).convert_script()
                     jm.mark_done(job_id)
@@ -345,7 +407,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         base_dir,
                         adapter,
                         platform="legacy",
-                        use_ai=req.use_ai,
+                        use_ai=use_ai,
                         link_scenario=req.link_scenario,
                     ).convert_script()
                     jm.mark_done(job_id)
@@ -683,7 +745,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     jm.update_progress(job_id, {"stage": "ELIA: Ejecutando conversión", "input_dir": input_dir, "output_dir": output_dir})
                     try:
-                        elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=req.use_ai)
+                        elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=use_ai)
                         adapter.info(
                             "ELIA · Gherkin batch",
                             f"Conversión completada.\n\nEntrada:\n{input_dir}\n\nSalida:\n{output_dir}",
@@ -779,7 +841,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from core.elia_paths import behave_projects_dir
 
                     output_dir = str(doc_features_dir())
-                    converter = BDDDocConverter(use_ai=req.use_ai, ui=adapter)
+                    converter = BDDDocConverter(use_ai=use_ai, ui=adapter)
                     result = converter.convert_chunks(
                         chunks,
                         output_dir,

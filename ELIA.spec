@@ -144,6 +144,8 @@ a = Analysis(
         ('core/node',       'core/node'),
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
+        ('Licence.txt',     '.'),
+        ('readme.txt',      '.'),
     ) + llama_datas + excel_datas + js_obf,
     hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],

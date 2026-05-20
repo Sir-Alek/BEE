@@ -71,3 +71,8 @@ def doc_features_dir() -> Path:
     d = ensure_user_data_root() / "doc_features"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def ai_preferences_path() -> Path:
+    """Preferencias de IA local (modo auto / on / off)."""
+    return ensure_user_data_root() / "ai_preferences.json"

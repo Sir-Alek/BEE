@@ -1,14 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activateLicense,
-  getAiStatus,
+  getAiCapabilities,
+  getAppAbout,
+  putAiPreferences,
+  type AppAboutResponse,
   getEliaConnectors,
   getJob,
   getLicenseStatus,
   getModulesStatus,
+  getRecorderPreflight,
   getScenarios,
   getRecordings,
   type LicenseStatusResponse,
+  type RecorderPreflightResponse,
+  type AiCapabilitiesResponse,
+  type AiMode,
   putEliaConnectors,
   sendPromptResponse,
   startConvertJob,
@@ -71,7 +78,17 @@ function encodeRecordingLink(r: RecordingRef): string {
 const ELIA_UI_BC = "elia-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const ELIA_WEB_UI_BUILD = "elia-ui-20260519-brand";
+const ELIA_WEB_UI_BUILD = "elia-ui-20260520-settings-tabs";
+
+type SettingsTabId = "general" | "ai" | "license" | "connectors" | "about";
+
+const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "ai", label: "Inteligencia" },
+  { id: "connectors", label: "Conectores" },
+  { id: "license", label: "Licencia" },
+  { id: "about", label: "Acerca de" },
+];
 
 const ELIA_LOGO_ICON_STYLE: React.CSSProperties = {
   height: 52,
@@ -240,13 +257,15 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [homeHint, setHomeHint] = useState<string | null>(null);
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
-  const [useAi, setUseAi] = useState(false);
-  const [aiStatusLine, setAiStatusLine] = useState<string | null>(null);
+  const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
+  const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
   const [license, setLicense] = useState<LicenseState | null>(null);
   const [activationKey, setActivationKey] = useState("");
   const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
+  const [aboutInfo, setAboutInfo] = useState<AppAboutResponse | null>(null);
   const [connectorProfiles, setConnectorProfiles] = useState<EliaConnectorProfile[]>([]);
   const [reqConnectorProfileId, setReqConnectorProfileId] = useState("");
   const [settingsProfileId, setSettingsProfileId] = useState("");
@@ -259,6 +278,8 @@ export default function App() {
 
   // UI Automation — selector de plataforma
   const [platform, setPlatform] = useState<"web" | "mobile" | "legacy">("web");
+  const [recorderPreflight, setRecorderPreflight] = useState<RecorderPreflightResponse | null>(null);
+  const [recorderPreflightLoading, setRecorderPreflightLoading] = useState(false);
   const [apkPath, setApkPath] = useState("");
   const [deviceId, setDeviceId] = useState("");
   const [windowName, setWindowName] = useState("");
@@ -332,33 +353,68 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
+  const refreshAiCapabilities = useCallback(async () => {
+    try {
+      const caps = await getAiCapabilities();
+      setAiCaps(caps);
+    } catch {
+      setAiCaps(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isHomeSurface) return;
+    void refreshAiCapabilities();
+  }, [isHomeSurface, refreshAiCapabilities]);
+
+  useEffect(() => {
+    if (settingsOpen && isHomeSurface) void refreshAiCapabilities();
+  }, [settingsOpen, isHomeSurface, refreshAiCapabilities]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
     let alive = true;
     void (async () => {
       try {
-        const s = await getAiStatus();
-        if (!alive) return;
-        const m = s.model;
-        const hasModel = m?.exists && (m.size_bytes ?? 0) > 0;
-        const hasLib = s.llama_cpp_python_available === true;
-        if (hasModel && hasLib) {
-          setAiStatusLine("IA lista para usar.");
-        } else if (hasModel && !hasLib) {
-          setAiStatusLine(
-            "Modelo de IA presente; falta el paquete llama-cpp-python (pip install). Modo heurístico hasta entonces.",
-          );
-        } else {
-          setAiStatusLine("Modelo de IA no encontrado en resources/models/ — conversión en modo heurístico.");
-        }
+        const info = await getAppAbout();
+        if (alive) setAboutInfo(info);
       } catch {
-        if (alive) setAiStatusLine(null);
+        if (alive) setAboutInfo(null);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [isHomeSurface]);
+  }, [settingsOpen]);
+
+  const deleteConnectorProfile = useCallback(() => {
+    const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+    if (!p) return;
+    if (!window.confirm(`¿Eliminar el perfil «${p.name}»? Esta acción no se puede deshacer.`)) return;
+    const next = connectorProfiles.filter((x) => x.id !== settingsProfileId);
+    setConnectorProfiles(next);
+    setSettingsProfileId(next[0]?.id ?? "");
+    setSettingsTestMsg(null);
+    setSettingsSaveMsg(null);
+    void persistConnectorProfiles(next);
+  }, [connectorProfiles, settingsProfileId, persistConnectorProfiles]);
+
+  const duplicateConnectorProfile = useCallback(() => {
+    const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+    if (!p) return;
+    const np = newConnectorProfile(connectorProfiles.length + 1);
+    const copy = {
+      ...np,
+      name: `${p.name} (copia)`,
+      jira: { ...p.jira },
+      value_edge: { ...p.value_edge },
+    };
+    const next = [...connectorProfiles, copy];
+    setConnectorProfiles(next);
+    setSettingsProfileId(copy.id);
+    setSettingsTestMsg(null);
+    setSettingsSaveMsg(null);
+  }, [connectorProfiles, settingsProfileId]);
 
   const refreshLicense = useCallback(async () => {
     try {
@@ -393,6 +449,36 @@ export default function App() {
     })();
     return () => { alive = false; };
   }, [isHomeSurface]);
+
+  useEffect(() => {
+    if (!isHomeSurface || homeTab !== "ui" || platform !== "web") return;
+    let alive = true;
+    setRecorderPreflightLoading(true);
+    void (async () => {
+      try {
+        const pf = await getRecorderPreflight();
+        if (alive) setRecorderPreflight(pf);
+      } catch {
+        if (alive) {
+          setRecorderPreflight({
+            ok: false,
+            chrome_path: null,
+            source: null,
+            warnings: [],
+            errors: ["No se pudo comprobar Chrome. Reinicie ELIA e inténtelo de nuevo."],
+            chrome_required: true,
+            chromium_fallback_enabled: false,
+            platform: "unknown",
+          });
+        }
+      } finally {
+        if (alive) setRecorderPreflightLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface, homeTab, platform]);
 
   // Close home tab = close whole app (backend). sendBeacon/fetch + main.py polling /api/app/should-exit.
   useEffect(() => {
@@ -453,6 +539,14 @@ export default function App() {
     }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
       setErrorText("URL requerida para 'Grabar Interacciones'.");
+      return;
+    }
+    if (mode === "puppeteer_recorder" && recorderPreflight && !recorderPreflight.ok) {
+      setErrorText(
+        recorderPreflight.errors.length
+          ? recorderPreflight.errors.join(" ")
+          : "Google Chrome es obligatorio para grabar. Instálelo o defina ELIA_CHROME_PATH.",
+      );
       return;
     }
     if (mode === "mobile_recorder" && !apkPath.trim() && !deviceId.trim()) {
@@ -526,13 +620,6 @@ export default function App() {
         const res = await startConvertJob({
           mode,
           url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
-          use_ai:
-            mode === "puppeteer_to_behave" ||
-            mode === "mobile_to_behave" ||
-            mode === "legacy_to_behave" ||
-            mode === "doc_to_bdd"
-              ? useAi
-              : false,
           ...(eliaModes.has(mode)
             ? {
                 elia_use_inline_connectors: true,
@@ -753,6 +840,7 @@ export default function App() {
             title={`Configuración · build ${ELIA_WEB_UI_BUILD}`}
             onClick={() => {
               setSettingsOpen(true);
+              setSettingsTab("general");
               setSettingsTestMsg(null);
               setSettingsSaveMsg(null);
               const fallback = reqConnectorProfileId || connectorProfiles[0]?.id || "";
@@ -844,6 +932,40 @@ export default function App() {
 
             <div
               style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                marginBottom: 16,
+                padding: 4,
+                borderRadius: 12,
+                border: `1px solid ${c.border}`,
+                background: c.neutralBg,
+              }}
+            >
+              {SETTINGS_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSettingsTab(t.id)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${settingsTab === t.id ? c.primary : c.btnGhostBorder}`,
+                    background: settingsTab === t.id ? c.primary : c.btnGhostBg,
+                    color: settingsTab === t.id ? c.primaryFg : c.text,
+                    fontWeight: settingsTab === t.id ? 700 : 500,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {settingsTab === "general" && (
+            <div
+              style={{
                 border: `1px solid ${c.border}`,
                 borderRadius: 12,
                 padding: 14,
@@ -897,7 +1019,96 @@ export default function App() {
                 </span>
               </label>
             </div>
+            )}
 
+            {settingsTab === "ai" && (
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>IA (Local)</div>
+              <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
+                {aiCaps?.brand_line ?? "Evolving Learning & Intelligent Automation"} — activa por defecto en modo automático.
+              </div>
+              {(["auto", "on", "off"] as AiMode[]).map((m) => (
+                <label
+                  key={m}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 10,
+                    cursor: aiPrefsSaving ? "wait" : "pointer",
+                    fontSize: 14,
+                    opacity: aiPrefsSaving ? 0.7 : 1,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="elia-ai-mode"
+                    checked={(aiCaps?.preferences.mode ?? "auto") === m}
+                    disabled={aiPrefsSaving}
+                    onChange={() => {
+                      setAiPrefsSaving(true);
+                      void (async () => {
+                        try {
+                          const next = await putAiPreferences(m);
+                          setAiCaps(next);
+                        } catch (e: unknown) {
+                          setErrorText(String((e as Error)?.message ?? e));
+                        } finally {
+                          setAiPrefsSaving(false);
+                        }
+                      })();
+                    }}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <b>
+                      {m === "auto"
+                        ? "Automático (recomendado)"
+                        : m === "on"
+                          ? "Siempre activada"
+                          : "Modo rápido (sin IA)"}
+                    </b>
+                    <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                      {m === "auto"
+                        ? "Usa IA si hay modelo de IA disponible, llama-cpp y RAM (≥8 GB total, ≥4 GB libres)."
+                        : m === "on"
+                          ? "Fuerza IA si el modelo está disponible; ignora el umbral de RAM libre (puede ir muy lento o fallar)."
+                          : "Conversiones heurísticas deterministas, sin revisión de IA."}
+                    </span>
+                  </span>
+                </label>
+              ))}
+              {aiCaps && (
+                <div style={{ fontSize: 12, color: c.muted, marginTop: 8, lineHeight: 1.4 }}>
+                  <div>{aiCaps.resolution.message}</div>
+                  {aiCaps.capability.ram_total_gb != null && (
+                    <div style={{ marginTop: 6 }}>
+                      RAM: {aiCaps.capability.ram_available_gb ?? "?"} GB libres /{" "}
+                      {aiCaps.capability.ram_total_gb} GB total (mín. {aiCaps.capability.ram_min_free_gb}{" "}
+                      libres, {aiCaps.capability.ram_min_total_gb} total).
+                    </div>
+                  )}
+                  {aiCaps.capability.reasons.length > 0 && (
+                    <ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+                      {aiCaps.capability.reasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
+
+            {settingsTab === "license" && (
             <div
               style={{
                 border: `1px solid ${c.border}`,
@@ -981,7 +1192,9 @@ export default function App() {
                 <div style={{ fontSize: 13, color: c.muted }}>No se pudo consultar el estado de la licencia.</div>
               )}
             </div>
+            )}
 
+            {settingsTab === "connectors" && (
             <div
               style={{
                 border: `1px solid ${c.border}`,
@@ -1040,6 +1253,40 @@ export default function App() {
                 >
                   Añadir nuevo
                 </button>
+                {connectorProfiles.length > 0 && settingsProfileId && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={duplicateConnectorProfile}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Duplicar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteConnectorProfile}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.licWarnBorder}`,
+                        background: c.licWarnBg,
+                        color: c.text,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Eliminar
+                    </button>
+                  </>
+                )}
               </div>
 
               {connectorProfiles.length === 0 && (
@@ -1050,6 +1297,9 @@ export default function App() {
 
               {connectorProfiles.length > 0 && settingsProfileId && (
                 <>
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
+                    Edita el perfil seleccionado (nombre, Jira y Value Edge). Usa «Guardar» al terminar.
+                  </div>
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
                       Nombre del perfil
@@ -1334,37 +1584,88 @@ export default function App() {
                   {settingsTestMsg}
                 </div>
               )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      setSettingsSaveMsg(null);
+                      try {
+                        await persistConnectorProfiles(connectorProfiles);
+                        setSettingsSaveMsg("Guardado en el navegador y en el backend (si está disponible).");
+                      } catch (e: unknown) {
+                        setSettingsSaveMsg(`Error al guardar: ${String((e as Error)?.message ?? e)}`);
+                      }
+                    })();
+                  }}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: c.primary,
+                    color: c.primaryFg,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Guardar perfiles
+                </button>
+              </div>
+              {settingsSaveMsg && (
+                <div style={{ marginTop: 10, fontSize: 13, color: c.muted }}>{settingsSaveMsg}</div>
+              )}
             </div>
+            )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  void (async () => {
-                    setSettingsSaveMsg(null);
-                    try {
-                      await persistConnectorProfiles(connectorProfiles);
-                      setSettingsSaveMsg("Guardado en el navegador y en el backend (si está disponible).");
-                    } catch (e: unknown) {
-                      setSettingsSaveMsg(`Error al guardar: ${String((e as Error)?.message ?? e)}`);
-                    }
-                  })();
-                }}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: c.primary,
-                  color: c.primaryFg,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Guardar
-              </button>
+            {settingsTab === "about" && (
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Acerca de ELIA</div>
+              {aboutInfo ? (
+                <>
+                  <div style={{ fontSize: 14, marginBottom: 6 }}>
+                    <b>{aboutInfo.app_name}</b> — {aboutInfo.tagline}
+                  </div>
+                  <div style={{ fontSize: 14, marginBottom: 6 }}>
+                    Versión: <b>{aboutInfo.version}</b>
+                  </div>
+                  <div style={{ fontSize: 14, marginBottom: 12 }}>
+                    Desarrollador: {aboutInfo.developer}
+                  </div>
+                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>Licencia de uso</div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 12,
+                      borderRadius: 10,
+                      border: `1px solid ${c.border}`,
+                      background: c.inputBg,
+                      color: c.text,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxHeight: "min(42vh, 360px)",
+                      overflow: "auto",
+                    }}
+                  >
+                    {aboutInfo.license_text || "(Licence.txt no disponible)"}
+                  </pre>
+                  <div style={{ fontSize: 11, color: c.muted, marginTop: 10 }}>
+                    Build UI: {ELIA_WEB_UI_BUILD}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: c.muted }}>Cargando información…</div>
+              )}
             </div>
-            {settingsSaveMsg && (
-              <div style={{ marginTop: 10, fontSize: 13, color: c.muted }}>{settingsSaveMsg}</div>
             )}
           </div>
         </div>
@@ -1503,6 +1804,39 @@ export default function App() {
               </div>
             )}
 
+            {aiCaps?.resolution.degraded && aiCaps.preferences.mode === "auto" && (
+              <div
+                role="status"
+                style={{
+                  background: c.hintBg,
+                  border: `1px solid ${c.hintBorder}`,
+                  color: c.hintText,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  marginBottom: 14,
+                  fontSize: 14,
+                }}
+              >
+                {aiCaps.resolution.message}
+              </div>
+            )}
+
+            {aiCaps && !aiCaps.resolution.degraded && aiCaps.resolution.use_ai && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: c.muted,
+                  marginBottom: 14,
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${c.border}`,
+                  background: c.neutralBg,
+                }}
+              >
+                {aiCaps.resolution.message} · {aiCaps.brand_line}
+              </div>
+            )}
+
             {license && licenseNeedsBanner(license) && (
               <div
                 role="alert"
@@ -1620,17 +1954,64 @@ export default function App() {
 
                 {/* Dynamic form by platform */}
                 {platform === "web" && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-                    <input
-                      value={urlValue}
-                      onChange={(e) => setUrlValue(e.target.value)}
-                      placeholder="URL para grabar (ej: https://miapp.com)"
-                      style={{
-                        flex: "1 1 360px", minWidth: 280, padding: "10px 12px",
-                        borderRadius: 10, border: `1px solid ${c.inputBorder}`,
-                        background: c.inputBg, color: c.text, outline: "none", fontSize: 14,
-                      }}
-                    />
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
+                      Requisito: <b>Google Chrome</b> instalado en este equipo (Microsoft Edge no es válido para
+                      grabar). Opcional: variable <code>ELIA_CHROME_PATH</code> si Chrome está en una ruta no estándar.
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <input
+                        value={urlValue}
+                        onChange={(e) => setUrlValue(e.target.value)}
+                        placeholder="URL para grabar (ej: https://miapp.com)"
+                        style={{
+                          flex: "1 1 360px", minWidth: 280, padding: "10px 12px",
+                          borderRadius: 10, border: `1px solid ${c.inputBorder}`,
+                          background: c.inputBg, color: c.text, outline: "none", fontSize: 14,
+                        }}
+                      />
+                    </div>
+                    {recorderPreflightLoading && (
+                      <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Comprobando Chrome…</div>
+                    )}
+                    {!recorderPreflightLoading && recorderPreflight && !recorderPreflight.ok && (
+                      <div
+                        role="alert"
+                        style={{
+                          marginTop: 10,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          fontSize: 13,
+                          background: c.licWarnBg,
+                          border: `1px solid ${c.licWarnBorder}`,
+                          color: c.text,
+                        }}
+                      >
+                        {recorderPreflight.errors.map((line, i) => (
+                          <div key={i} style={{ marginTop: i ? 6 : 0 }}>
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!recorderPreflightLoading && recorderPreflight?.ok && recorderPreflight.warnings.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          fontSize: 13,
+                          background: c.hintBg,
+                          border: `1px solid ${c.hintBorder}`,
+                          color: c.hintText,
+                        }}
+                      >
+                        {recorderPreflight.warnings.join(" ")}
+                      </div>
+                    )}
+                    {!recorderPreflightLoading && recorderPreflight?.ok && recorderPreflight.source === "install" && (
+                      <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Chrome detectado.</div>
+                    )}
                   </div>
                 )}
                 {platform === "mobile" && (
@@ -1688,27 +2069,14 @@ export default function App() {
                   </div>
                 )}
 
-                <label
-                  style={{
-                    display: "flex", gap: 10, alignItems: "flex-start",
-                    marginBottom: 14, cursor: "pointer", fontSize: 14, color: c.text,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={useAi}
-                    onChange={(e) => setUseAi(e.target.checked)}
-                    style={{ marginTop: 3 }}
-                  />
-                  <span>
-                    <b>Activar IA</b> en «Convertir a Behave»: genera el escenario BDD con revisión
-                    (aceptar, rechazar o editar). En web, se usa para localizadores. Sin modelo,
-                    se usa modo heurístico.
-                    {aiStatusLine && (
-                      <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>{aiStatusLine}</span>
-                    )}
-                  </span>
-                </label>
+                {aiCaps && (
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                    <b>Inteligencia local:</b> {aiCaps.resolution.message}
+                    {aiCaps.resolution.use_ai
+                      ? " Las conversiones a Behave usan revisión asistida por IA."
+                      : " Las conversiones usarán modo heurístico (rápido)."}
+                  </div>
+                )}
 
                 {(platform === "web" || platform === "mobile" || platform === "legacy") && (
                   <div style={{ marginBottom: 12 }}>
@@ -1781,7 +2149,11 @@ export default function App() {
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={
+                      (license ? !license.can_run_jobs : false) ||
+                      (platform === "web" &&
+                        (recorderPreflightLoading || (recorderPreflight != null && !recorderPreflight.ok)))
+                    }
                     onClick={() => {
                       if (platform === "web") startJob("puppeteer_recorder");
                       else if (platform === "mobile") startJob("mobile_recorder");
@@ -1789,9 +2161,18 @@ export default function App() {
                     }}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
-                      background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
+                      background:
+                        license && !license.can_run_jobs
+                          ? c.buttonDisabledBg
+                          : platform === "web" && recorderPreflight && !recorderPreflight.ok
+                            ? c.buttonDisabledBg
+                            : c.primary,
                       color: c.primaryFg, border: "none",
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      cursor:
+                        (license && !license.can_run_jobs) ||
+                        (platform === "web" && recorderPreflight && !recorderPreflight.ok)
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                   >
                     Grabar Interacciones
@@ -2048,34 +2429,11 @@ export default function App() {
                   </div>
                 )}
 
-                <label
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "flex-start",
-                    marginBottom: 12,
-                    cursor: "pointer",
-                    fontSize: 13,
-                    color: c.text,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={useAi}
-                    onChange={(e) => setUseAi(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
-                    <b>Activar IA</b> (Gemma): revisión del BDD generado (aceptar, rechazar para
-                    regenerar o editar manualmente). Las correcciones se guardan para mejorar
-                    conversiones futuras.
-                    {aiStatusLine && (
-                      <span style={{ display: "block", marginTop: 6, fontSize: 12, color: c.muted }}>
-                        {aiStatusLine}
-                      </span>
-                    )}
-                  </span>
-                </label>
+                {aiCaps && (
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                    <b>Inteligencia local:</b> {aiCaps.resolution.message}
+                  </div>
+                )}
 
                 {/* Botón de acción principal */}
                 <div style={{ marginTop: 4 }}>
