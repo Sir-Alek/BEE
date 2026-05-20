@@ -71,7 +71,26 @@ function encodeRecordingLink(r: RecordingRef): string {
 const ELIA_UI_BC = "elia-ui";
 
 /** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const ELIA_WEB_UI_BUILD = "elia-ui-20260505-c";
+const ELIA_WEB_UI_BUILD = "elia-ui-20260519-brand";
+
+const ELIA_LOGO_ICON_STYLE: React.CSSProperties = {
+  height: 52,
+  width: "auto",
+  maxWidth: 100,
+  objectFit: "contain",
+  flexShrink: 0,
+  transform: "scale(1.6)",       
+  transformOrigin: "left center",
+};
+const ELIA_LOGO_LETTERS_STYLE: React.CSSProperties = {
+  height: 64,
+  width: "auto",
+  maxWidth: 100,
+  objectFit: "contain",
+  flexShrink: 0,
+  transform: "scale(2.5)",       
+  transformOrigin: "left center",
+};
 
 /** Avisos de validación en la pantalla principal: se ocultan solos o con ✕ */
 const HOME_ERROR_DISMISS_MS = 8_000;
@@ -696,24 +715,8 @@ export default function App() {
           background: c.chromeBg,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 1 auto", minWidth: 0 }}>
-          <img
-            src="/logo.png"
-            alt="ELIA"
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 12,
-              objectFit: "contain",
-              background: "transparent",
-            }}
-          />
-          <div style={{ display: "flex", flexDirection: "column", minWidth: 140 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>ELIA</div>
-            <div style={{ fontSize: 12, color: c.chromeHint }}>
-              {isHome ? "Local Web UI — inicio" : sub + "ventana de trabajo"}
-            </div>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", flex: "0 0 auto" }}>
+          <img src="/logo-icon.png" alt="" aria-hidden style={ELIA_LOGO_ICON_STYLE} />
         </div>
         <div
           style={{
@@ -728,16 +731,20 @@ export default function App() {
             minWidth: 0,
           }}
         >
+          <img src="/logo-letters.png" alt="ELIA" style={ELIA_LOGO_LETTERS_STYLE} />
           <div
             style={{
               fontSize: 12,
               color: c.chromeHint,
               textAlign: "right",
-              flex: "1 1 220px",
-              minWidth: 160,
-              maxWidth: "min(520px, 100%)",
+              flex: "1 1 160px",
+              minWidth: 120,
+              maxWidth: "min(420px, 100%)",
             }}
           >
+            {!isHome && sub ? (
+              <div style={{ marginBottom: 4, fontSize: 11 }}>{sub}ventana de trabajo</div>
+            ) : null}
             {statusLine}
           </div>
           <button
@@ -909,7 +916,7 @@ export default function App() {
                   </div>
                   {!license.activated && (
                     <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, wordBreak: "break-all" }}>
-                      Huella de máquina (soporte): <code>{license.machine_fingerprint}</code>
+                      Huella de máquina (soporte): <code style={{ userSelect: "all", fontWeight: 600 }}>{license.machine_fingerprint}</code>
                     </div>
                   )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>

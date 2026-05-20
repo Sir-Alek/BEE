@@ -161,6 +161,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     base_dir = _repo_root()
     frontend_dist = os.path.join(base_dir, "frontend", "dist")
     logo_path = os.path.join(base_dir, "resources", "logo_elia.png")
+    logo_icon_path = os.path.join(base_dir, "resources", "logo_elia_icon.png")
+    logo_letters_path = os.path.join(base_dir, "resources", "logo_letras.png")
+    logo_ico_path = os.path.join(base_dir, "resources", "logo_elia.ico")
     exit_flag = {"value": False}
 
     @app.post("/api/app/exit")
@@ -960,6 +963,26 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if not os.path.exists(logo_path):
             raise HTTPException(status_code=404, detail="logo not found")
         return FileResponse(logo_path, media_type="image/png")
+
+    @app.get("/logo-icon.png")
+    def logo_icon_png() -> Any:
+        path = logo_icon_path if os.path.exists(logo_icon_path) else logo_path
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="logo icon not found")
+        return FileResponse(path, media_type="image/png")
+
+    @app.get("/logo-letters.png")
+    def logo_letters_png() -> Any:
+        path = logo_letters_path if os.path.exists(logo_letters_path) else logo_path
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="logo letters not found")
+        return FileResponse(path, media_type="image/png")
+
+    @app.get("/favicon.ico")
+    def favicon_ico() -> Any:
+        if not os.path.exists(logo_ico_path):
+            raise HTTPException(status_code=404, detail="favicon not found")
+        return FileResponse(logo_ico_path, media_type="image/x-icon")
 
     @app.get("/{path:path}")
     def spa_catchall(path: str, _: None = Depends(_require_localhost)) -> Any:
