@@ -431,7 +431,16 @@ class PuppeteerToBehaveConverter:
                 if linked_steps_path:
                     success_msg += f"\n  • Steps actualizados: {os.path.basename(linked_steps_path)}"
 
-            self.ui.info("Éxito", success_msg)
+            from webui.conversion_result import conversion_result
+
+            result_files: List[Tuple[str, str]] = [(name, path) for name, path in file_paths.items()]
+            if linked_steps_path:
+                result_files.append(("steps (vinculados)", linked_steps_path))
+            self.ui.info(
+                "Éxito",
+                success_msg,
+                result=conversion_result(project_dir=project_path, files=result_files),
+            )
 
         except Exception as e:
             error_msg = f"Error al configurar el proyecto {os.path.basename(project_path)}:\n{str(e)}"
@@ -586,6 +595,16 @@ class PuppeteerToBehaveConverter:
                 if not linked
                 else f"  • Feature agrupado revisado ({len(scripts_data)} flujos) — fusionado en escenario existente{bg_msg}\n"
             )
+            from webui.conversion_result import conversion_result
+
+            grouped_files: List[Tuple[str, str]] = []
+            if not linked:
+                grouped_files.append(("feature", os.path.join(dirs["features"], f"{feature_name}.feature")))
+            if grouped_steps_path:
+                grouped_files.append(("steps", grouped_steps_path))
+            for page_name in created_pages:
+                grouped_files.append(("page", os.path.join(dirs["pages"], page_name)))
+            grouped_files.append(("json", os.path.join(dirs["data"], f"{feature_name}.json")))
             self.ui.info(
                 "Éxito",
                 f"Feature agrupado generado en:\n{os.path.basename(project_path)}\n\n"
@@ -594,6 +613,7 @@ class PuppeteerToBehaveConverter:
                 f"{pages_msg}\n"
                 f"  • {feature_name}.json"
                 f"{link_msg}",
+                result=conversion_result(project_dir=project_path, files=grouped_files),
             )
 
         except Exception as exc:

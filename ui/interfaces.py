@@ -71,13 +71,13 @@ class IUI(Protocol):
         """
 
     # ----- Mensajes -----
-    def info(self, title: str, message: str) -> None:
+    def info(self, title: str, message: str, **kwargs: Any) -> None:
         ...
 
-    def warning(self, title: str, message: str) -> None:
+    def warning(self, title: str, message: str, **kwargs: Any) -> None:
         ...
 
-    def error(self, title: str, message: str) -> None:
+    def error(self, title: str, message: str, **kwargs: Any) -> None:
         ...
 
     # ----- Confirmaciones -----

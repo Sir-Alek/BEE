@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import tkinter as tk
 from tkinter import (
@@ -402,7 +402,7 @@ class TkUI(IUI):
     # ---------------------------
     # IUI: Mensajes
     # ---------------------------
-    def info(self, title: str, message: str) -> None:
+    def info(self, title: str, message: str, **kwargs: Any) -> None:
         messagebox.showinfo(title, message, parent=self.master)
 
     def warning(self, title: str, message: str) -> None:

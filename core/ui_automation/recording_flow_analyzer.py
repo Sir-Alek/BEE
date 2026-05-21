@@ -38,7 +38,7 @@ def extract_mobile_recording_actions(
 ) -> List[ActionTuple]:
     meta = meta or {}
     actions: List[ActionTuple] = []
-    apk = str(meta.get("apk_path") or meta.get("device_id") or "app_movil")
+    apk = str(meta.get("apk_path") or meta.get("app_package") or meta.get("device_id") or "app_movil")
     actions.append(("launch", apk, None))
 
     screen_idx = 0

@@ -78,6 +78,8 @@ class ConvertRequest(BaseModel):
     platform: Optional[str] = None
     apk_path: Optional[str] = None
     device_id: Optional[str] = None
+    app_package: Optional[str] = None
+    app_activity: Optional[str] = None
     # Legacy recording
     window_name: Optional[str] = None
     exe_path: Optional[str] = None
@@ -687,12 +689,19 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         except Exception:
                             pass
 
+                    from webui.conversion_result import conversion_result, file_entry
+
+                    generated = [file_entry(output_file, "grabación")]
+                    if video_path and os.path.isfile(video_path):
+                        generated.append(file_entry(video_path, "video"))
                     jm.update_progress(
                         job_id,
                         {
                             "result_file": output_file,
                             "video_path": video_path,
                             "stage": "Listo",
+                            "output_dir": os.path.dirname(output_file),
+                            "generated_files": generated,
                         },
                     )
                     jm.mark_done(job_id)
@@ -776,9 +785,12 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     jm.update_progress(job_id, {"stage": "ELIA: Ejecutando conversión", "input_dir": input_dir, "output_dir": output_dir})
                     try:
                         elia_service.run_gherkin_batch(input_dir, output_dir, use_ai=use_ai)
+                        from webui.conversion_result import files_in_directory
+
                         adapter.info(
                             "ELIA · Gherkin batch",
                             f"Conversión completada.\n\nEntrada:\n{input_dir}\n\nSalida:\n{output_dir}",
+                            result=files_in_directory(output_dir),
                         )
                         jm.add_event(job_id, "elia_gherkin_batch", {"input_dir": input_dir, "output_dir": output_dir})
                         jm.mark_done(job_id)
@@ -801,6 +813,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         apk_path=req.apk_path or "",
                         device_id=req.device_id or "",
                         projects_dir=_projects_dir(),
+                        app_package=req.app_package or "",
+                        app_activity=req.app_activity or "",
                     )
                     return
 
@@ -893,7 +907,13 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     if result.errors_logged > 0:
                         summary += f"\n\nRevisa _elia_errors.log para detalles de los {result.errors_logged} bloques con error."
 
-                    adapter.info("ELIA · Doc to BDD", summary)
+                    from webui.conversion_result import files_in_directory
+
+                    adapter.info(
+                        "ELIA · Doc to BDD",
+                        summary,
+                        result=files_in_directory(output_dir),
+                    )
                     jm.add_event(job_id, "doc_to_bdd", {
                         "features_created": result.features_created,
                         "scenarios_generated": result.scenarios_generated,
@@ -959,6 +979,19 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         jm.cancel_job(job_id)
+        return {"ok": True}
+
+    @app.post("/api/jobs/{job_id}/stop-recording")
+    def stop_recording(
+        job_id: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        try:
+            jm.get_job(job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="job not found")
+        jm.request_recording_stop(job_id)
         return {"ok": True}
 
     # -----------------------

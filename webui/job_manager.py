@@ -234,6 +234,26 @@ class JobManager:
             job.updated_at = time.time()
         # No emit_event here: polling reads job.progress directly.
 
+    def request_recording_stop(self, job_id: str) -> None:
+        """Señal desde la UI para finalizar grabación móvil/legacy sin cancelar el job."""
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return
+        with job.lock:
+            job.progress = {**job.progress, "stop_requested": True}
+            job.updated_at = time.time()
+
+    def should_stop_recording(self, job_id: str) -> bool:
+        with self._global_lock:
+            job = self._jobs.get(job_id)
+        if not job:
+            return True
+        with job.lock:
+            if job.state == "cancelled":
+                return True
+            return bool(job.progress.get("stop_requested"))
+
     def get_job_summary(self, job_id: str) -> Dict[str, Any]:
         job = self.get_job(job_id)
         with job.lock:

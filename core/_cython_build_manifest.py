@@ -20,7 +20,12 @@ _SKIP_FILENAMES = frozenset(
         "_version.py",
         "install_manifest.py",
         "modules_config.py",
+        "mobile_recorder.py",
     }
+)
+
+NON_CYTHON_PY_FILENAMES = frozenset(
+    name for name in _SKIP_FILENAMES if name.endswith(".py") and name != "__init__.py"
 )
 
 

@@ -45,6 +45,8 @@ export async function startConvertJob(params: {
   platform?: string;
   apk_path?: string;
   device_id?: string;
+  app_package?: string;
+  app_activity?: string;
   // Legacy
   window_name?: string;
   exe_path?: string;
@@ -57,7 +59,7 @@ export async function startConvertJob(params: {
 }): Promise<{ job_id: string }> {
   const {
     mode, url, elia_use_inline_connectors, elia_jira, elia_value_edge,
-    platform, apk_path, device_id, window_name, exe_path,
+    platform, apk_path, device_id, app_package, app_activity, window_name, exe_path,
     doc_files, link_recording, link_scenario, link_scenario_by_doc, link_recording_by_doc,
   } = params;
   const res = await fetch("/api/jobs/convert", {
@@ -72,6 +74,8 @@ export async function startConvertJob(params: {
       ...(platform != null ? { platform } : {}),
       ...(apk_path != null ? { apk_path } : {}),
       ...(device_id != null ? { device_id } : {}),
+      ...(app_package != null ? { app_package } : {}),
+      ...(app_activity != null ? { app_activity } : {}),
       ...(window_name != null ? { window_name } : {}),
       ...(exe_path != null ? { exe_path } : {}),
       ...(doc_files != null ? { doc_files } : {}),
@@ -290,6 +294,16 @@ export async function getJob(jobId: string): Promise<JobStateResponse> {
     throw new Error(`Failed to fetch job: ${res.status}`);
   }
   return res.json();
+}
+
+export async function stopRecording(jobId: string): Promise<void> {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/stop-recording`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`No se pudo finalizar la grabación: ${res.status} ${text}`);
+  }
 }
 
 export async function sendPromptResponse(params: {

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Diagnóstico de Chrome + Node para grabación Puppeteer (Windows)."""
+"""Diagnóstico de entorno de grabación: Chrome/Node, Appium móvil y legacy Windows."""
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 
@@ -10,17 +11,48 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 
+def _check_import(label: str, module: str) -> bool:
+    try:
+        importlib.import_module(module)
+        print(f"  {label:<28} OK")
+        return True
+    except ImportError as exc:
+        print(f"  {label:<28} FALTA ({exc})")
+        return False
+
+
 def main() -> int:
-    print("ELIA — diagnóstico grabador (Chrome / Node)\n")
+    print("ELIA — diagnóstico grabadores (web / móvil / legacy)\n")
+    print(f"  python       = {sys.executable}")
     print(f"  platform     = {sys.platform}")
+    print(f"  frozen exe   = {getattr(sys, 'frozen', False)}")
     print(f"  ELIA_ALLOW_CHROMIUM_FALLBACK = {os.environ.get('ELIA_ALLOW_CHROMIUM_FALLBACK', '')!r}")
 
+    ok = True
+
+    print("\n--- Dependencias pip (requirements.txt) ---")
+    ok &= _check_import("Appium-Python-Client", "appium")
+    try:
+        from appium.options.common.base import AppiumOptions  # noqa: F401
+
+        print(f"  {'AppiumOptions (API)':<28} OK")
+    except ImportError as exc:
+        ok = False
+        print(f"  {'AppiumOptions (API)':<28} FALTA ({exc})")
+    ok &= _check_import("pynput", "pynput")
+    ok &= _check_import("pywinauto", "pywinauto")
+    if sys.platform == "win32":
+        ok &= _check_import("pywin32", "win32gui")
+        ok &= _check_import("comtypes", "comtypes")
+
+    print("\n--- Grabación web (Chrome / Node) ---")
     from core.ui_automation.chrome_resolver import (
         chromium_fallback_allowed,
         resolve_chrome_for_recording,
     )
 
     result = resolve_chrome_for_recording(ROOT)
+    web_ok = result.ok
     print(f"\n  chrome ok      = {result.ok}")
     print(f"  chrome_path    = {result.chrome_path}")
     print(f"  source         = {result.source}")
@@ -46,7 +78,25 @@ def main() -> int:
     except Exception as exc:
         print(f"  node_path                  = ERROR: {exc}")
 
-    return 0 if result.ok else 1
+    print("\n--- Appium Server (localhost:4723) ---")
+    try:
+        import http.client
+
+        conn = http.client.HTTPConnection("localhost", 4723, timeout=3)
+        conn.request("GET", "/status")
+        resp = conn.getresponse()
+        appium_up = resp.status == 200
+        print(f"  appium /status             = {'OK' if appium_up else resp.status}")
+    except Exception as exc:
+        appium_up = False
+        print(f"  appium /status             = no accesible ({exc})")
+
+    if not ok:
+        print("\n  → Reinstala dependencias: pip install -r requirements.txt")
+        if getattr(sys, "frozen", False):
+            print("  → Si usas el .exe, reinstala o actualiza ELIA.")
+
+    return 0 if (web_ok and ok) else 1
 
 
 if __name__ == "__main__":

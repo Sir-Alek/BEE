@@ -29,7 +29,7 @@ CORE_UI = os.path.join(CORE, "ui_automation")
 OBFUSCATED_JS = os.path.join(CORE_UI, "recorder.obfuscated.js")
 SOURCE_RECORDER = os.path.join(CORE_UI, "recorder.js")
 
-from core._cython_build_manifest import CYTHON_REL_PATHS
+from core._cython_build_manifest import CYTHON_REL_PATHS, NON_CYTHON_PY_FILENAMES
 
 # Solo estos .py pueden quedar en dist/ELIA/.../core (marcadores de paquete).
 _KEEP_PY_NAMES = frozenset({"__init__.py"})
@@ -58,23 +58,33 @@ def _native_extension_exists(py_path: str) -> bool:
 
 def build_cython() -> None:
     run([sys.executable, "setup_cython.py", "build_ext", "--inplace"])
-    remove_stale_version_native()
+    remove_stale_non_cython_native()
+
+
+def remove_stale_non_cython_native() -> None:
+    """Borra .pyd/.so obsoletos de módulos excluidos del manifiesto Cython."""
+    import glob
+
+    for py_name in sorted(NON_CYTHON_PY_FILENAMES):
+        base = os.path.splitext(py_name)[0]
+        patterns = [
+            os.path.join(CORE, f"{base}*.pyd"),
+            os.path.join(CORE, f"{base}*.so"),
+            os.path.join(CORE, "**", f"{base}*.pyd"),
+            os.path.join(CORE, "**", f"{base}*.so"),
+        ]
+        for pattern in patterns:
+            for path in glob.glob(pattern, recursive=True):
+                try:
+                    os.remove(path)
+                    print(f"OK Eliminado (no va a Cython): {os.path.relpath(path, ROOT)}")
+                except OSError as e:
+                    print(f"AVISO: no se pudo eliminar {path}: {e}", file=sys.stderr)
 
 
 def remove_stale_version_native() -> None:
-    """version.py no se compila; un .pyd antiguo oculta bumps de ELIA_VERSION."""
-    import glob
-
-    for pattern in (
-        os.path.join(CORE, "version*.pyd"),
-        os.path.join(CORE, "version*.so"),
-    ):
-        for path in glob.glob(pattern):
-            try:
-                os.remove(path)
-                print(f"OK Eliminado (version no va a Cython): {os.path.relpath(path, ROOT)}")
-            except OSError as e:
-                print(f"AVISO: no se pudo eliminar {path}: {e}", file=sys.stderr)
+    """Compatibilidad: delega en remove_stale_non_cython_native()."""
+    remove_stale_non_cython_native()
 
 
 def verify_cython_artifacts(strict: bool = True) -> list[str]:

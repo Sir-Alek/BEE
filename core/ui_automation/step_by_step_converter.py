@@ -4,6 +4,7 @@ import re
 import json
 import shutil
 import time
+from typing import List, Tuple
 
 from ui.interfaces import IUI
 
@@ -309,8 +310,17 @@ class PuppeteerToStepByStepConverter:
             else:
                 success_message = (f"Test step by step generado en:\n{output_file}\n\n"
                                 f"JSON de pasos generado en:\n{json_path}" if json_path else "")
-            
-            self.ui.info("Éxito", success_message)
+
+            from webui.conversion_result import conversion_result
+
+            files: List[Tuple[str, str]] = [("test", output_file)]
+            if json_path:
+                files.append(("json", json_path))
+            self.ui.info(
+                "Éxito",
+                success_message,
+                result=conversion_result(project_dir=project_path, files=files),
+            )
                     
         except Exception as e:
             self.ui.error("Error", f"Error al generar test step by step:\n{str(e)}")

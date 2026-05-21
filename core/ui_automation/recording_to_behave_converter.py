@@ -350,6 +350,7 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
         steps_content = self._generate_grouped_recording_steps(
             feature_name, scripts_data, background_steps, common_prefix
         )
+        grouped_steps_path: Optional[str] = None
         if linked and self._link_scenario and self.platform == "mobile":
             from core.ui_automation.linked_steps_regenerator import regenerate_linked_steps
 
@@ -357,7 +358,7 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
             first = scripts_data[0] if scripts_data else {}
             bn = first.get("base_name", feature_name)
             cn = first.get("class_name", "Page")
-            regenerate_linked_steps(
+            grouped_steps_path = regenerate_linked_steps(
                 project_path=project_path,
                 feature_file=ff,
                 scenario_name=sn,
@@ -368,6 +369,7 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
             steps_path = os.path.join(dirs["steps"], f"{feature_name}_steps.py")
             with open(steps_path, "w", encoding="utf-8") as fh:
                 fh.write(steps_content)
+            grouped_steps_path = steps_path
 
         created_pages: List[str] = []
         for d in scripts_data:
@@ -393,6 +395,16 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
             if linked
             else ""
         )
+        from webui.conversion_result import conversion_result
+
+        grouped_files: List[Tuple[str, str]] = []
+        if not linked:
+            grouped_files.append(("feature", os.path.join(dirs["features"], f"{feature_name}.feature")))
+        if grouped_steps_path:
+            grouped_files.append(("steps", grouped_steps_path))
+        for page_name in created_pages:
+            grouped_files.append(("page", os.path.join(dirs["pages"], page_name)))
+        grouped_files.append(("json", os.path.join(dirs["data"], f"{feature_name}.json")))
         self.ui.info(
             "Éxito",
             f"Feature agrupado {self._platform_label()} en {os.path.basename(project_path)}\n"
@@ -400,6 +412,7 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
             f"  • {feature_name}_steps.py\n"
             + "\n".join(f"  • {p}" for p in created_pages)
             + link_msg,
+            result=conversion_result(project_dir=project_path, files=grouped_files),
         )
 
     def _generate_grouped_recording_steps(
@@ -538,7 +551,16 @@ class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
             msg += f"\n\nPasos vinculados al escenario «{self._link_scenario[1]}»."
             if self.platform == "mobile" and linked_steps_path:
                 msg += f"\n  • Steps: {os.path.basename(linked_steps_path)}"
-        self.ui.info("Éxito", msg)
+        from webui.conversion_result import conversion_result
+
+        result_files: List[Tuple[str, str]] = [(name, path) for name, path in file_paths.items()]
+        if linked_steps_path:
+            result_files.append(("steps (vinculados)", linked_steps_path))
+        self.ui.info(
+            "Éxito",
+            msg,
+            result=conversion_result(project_dir=project_path, files=result_files),
+        )
 
     def _generate_bdd_feature(self, recording_content: str, base_name: str) -> str:
         data = parse_recording_json(recording_content)

@@ -24,6 +24,7 @@ pip install -r requirements.txt
 ```
 
 - **Excel → BDD** requiere `pandas`, `python-calamine` y `openpyxl` (incluidos en `requirements.txt`). Si ves `pandas no está instalado`, reinstala dependencias: `pip install -r requirements.txt`.
+- **Grabación móvil (Appium)** y **legacy (escritorio Windows)** requieren los paquetes pip de `requirements.txt` (`Appium-Python-Client`, `pynput`, `pywinauto`, `pywin32`, `comtypes`). Tras `pip install -r requirements.txt`, reconstruye el `.exe` con `python scripts/build_release.py` para que PyInstaller los empaquete (imports lazy).
 - Activar después: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
 - Ejecutar la app: `python main.py`
 - Usa siempre el **venv del repo** (`.venv\Scripts\activate`). Si ejecutas `python main.py` con el Python global de Windows, faltarán paquetes como `python-multipart` y la UI web no arrancará.
@@ -47,6 +48,25 @@ pip install -r requirements.txt
 - **Chromium empaquetado (Puppeteer)** solo como respaldo técnico, no como requisito de usuario:
   - `ELIA_ALLOW_CHROMIUM_FALLBACK=1` y `cd core\node && npm install` (debe existir el Chromium descargado por puppeteer).
 - Diagnóstico: `python scripts/diagnose_recorder_env.py`
+
+## Requisitos de grabación móvil (Appium)
+
+- **Paquetes pip** (incluidos en `requirements.txt`): `Appium-Python-Client` (depende de `selenium`, ya listado).
+- **Fuera de pip** (instalar en el PC de desarrollo/pruebas):
+  1. Node.js + Appium Server: `npm install -g appium`
+  2. Driver Android: `appium driver install uiautomator2`
+  3. Android SDK / platform-tools con `adb` en PATH
+  4. Servidor en marcha: `appium` (puerto **4723**)
+  5. Dispositivo visible: `adb devices`
+- Si el job falla con *Appium-Python-Client no instalado*:
+  - **Desarrollo:** activa `.venv` y `pip install -r requirements.txt`; arranca con `.venv\Scripts\python.exe main.py` (no el Python global).
+  - **Ejecutable:** reinstala deps en el venv de build y vuelve a ejecutar `python scripts/build_release.py`.
+
+## Requisitos de grabación legacy (Windows)
+
+- **Paquetes pip:** `pynput`, `pywinauto`, `pywin32`, `comtypes` (incluidos en `requirements.txt`).
+- Sin `pynput`, la grabación cae a un modo básico con PyAutoGUI (posición del cursor cada 2 s).
+- `pywinauto` enriquece clicks con nombre/tipo de control UIA (opcional en runtime, recomendado).
 
 ## Node.js en `core/node` (grabación con Puppeteer)
 

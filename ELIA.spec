@@ -111,18 +111,32 @@ for _pkg in ("pandas", "python_calamine", "openpyxl"):
     except Exception:
         excel_hidden.append(_pkg)
 
+# Grabación móvil/legacy: imports lazy en mobile_recorder.py y legacy_recorder.py.
+recording_datas, recording_binaries, recording_hidden = [], [], []
+for _pkg in ("appium", "pynput", "pywinauto", "comtypes", "win32com", "pythoncom"):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        recording_datas += _d
+        recording_binaries += _b
+        recording_hidden += _h
+    except Exception:
+        try:
+            recording_hidden += collect_submodules(_pkg)
+        except Exception:
+            recording_hidden.append(_pkg)
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=llama_binaries + excel_binaries + cython_binaries,
+    binaries=llama_binaries + excel_binaries + recording_binaries + cython_binaries,
     datas=_datas_if_exists(
         ('core/node',       'core/node'),
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
         ('Licence.txt',     '.'),
         ('readme.txt',      '.'),
-    ) + llama_datas + excel_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'multipart'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
+    ) + llama_datas + excel_datas + recording_datas + js_obf,
+    hiddenimports=['mss', 'cv2', 'numpy', 'multipart'] + web_hidden + llama_hidden + excel_hidden + recording_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

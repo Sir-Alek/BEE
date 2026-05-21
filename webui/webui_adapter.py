@@ -191,7 +191,17 @@ class WebUIAdapter(IUI):
             raise BDDUserCancelled()
         return answer
 
-    def info(self, title: str, message: str) -> None:
+    def info(self, title: str, message: str, **kwargs: Any) -> None:
+        result = kwargs.get("result")
+        if isinstance(result, dict):
+            self.job_manager.update_progress(
+                self.job_id,
+                {
+                    "output_dir": result.get("output_dir") or result.get("project_dir"),
+                    "project_dir": result.get("project_dir") or result.get("output_dir"),
+                    "generated_files": result.get("generated_files", []),
+                },
+            )
         # Paridad con Tk: messagebox bloqueante hasta Aceptar.
         prompt_id = self._new_prompt_id()
         prompt = Prompt(
@@ -200,13 +210,23 @@ class WebUIAdapter(IUI):
             title=title,
             message=message,
             severity="info",
+            payload=result if isinstance(result, dict) else None,
         )
         try:
             self._safe_wait(prompt)
         except JobCancelledError:
             return
 
-    def warning(self, title: str, message: str) -> None:
+    def warning(self, title: str, message: str, **kwargs: Any) -> None:
+        result = kwargs.get("result")
+        if isinstance(result, dict):
+            self.job_manager.update_progress(
+                self.job_id,
+                {
+                    "output_dir": result.get("output_dir") or result.get("project_dir"),
+                    "generated_files": result.get("generated_files", []),
+                },
+            )
         prompt_id = self._new_prompt_id()
         prompt = Prompt(
             prompt_id=prompt_id,
@@ -214,13 +234,14 @@ class WebUIAdapter(IUI):
             title=title,
             message=message,
             severity="warning",
+            payload=result if isinstance(result, dict) else None,
         )
         try:
             self._safe_wait(prompt)
         except JobCancelledError:
             return
 
-    def error(self, title: str, message: str) -> None:
+    def error(self, title: str, message: str, **kwargs: Any) -> None:
         prompt_id = self._new_prompt_id()
         prompt = Prompt(
             prompt_id=prompt_id,

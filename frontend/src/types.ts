@@ -1,3 +1,15 @@
+export type GeneratedFileEntry = {
+  path: string;
+  label?: string;
+  preview?: string;
+};
+
+export type ConversionResultPayload = {
+  project_dir?: string;
+  output_dir?: string;
+  generated_files?: GeneratedFileEntry[];
+};
+
 export type ActivePrompt =
   | {
       prompt_id: string;
@@ -53,6 +65,7 @@ export type ActivePrompt =
       title: string;
       message: string;
       severity: "info" | "warning" | "error";
+      payload?: ConversionResultPayload | null;
       options: null;
       actions: null;
     }

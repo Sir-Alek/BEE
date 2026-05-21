@@ -19,12 +19,15 @@ import {
   putEliaConnectors,
   sendPromptResponse,
   startConvertJob,
+  stopRecording,
   testEliaConnector,
   uploadDocs,
 } from "./api";
 import type {
   ActivePrompt,
+  ConversionResultPayload,
   EliaConnectorProfile,
+  GeneratedFileEntry,
   LoadedDoc,
   ModulesStatus,
   RecordingRef,
@@ -61,6 +64,113 @@ function formatJobMode(mode: string | null): string {
   if (mode === "legacy_to_behave") return "Convertir a Behave (Legacy)";
   if (mode === "doc_to_bdd") return "ELIA · Procesar y Convertir a BDD";
   return mode;
+}
+
+function normalizeGeneratedFiles(
+  payload?: ConversionResultPayload | null,
+  progress?: Record<string, any>,
+): { dir?: string; files: GeneratedFileEntry[] } {
+  const dir =
+    payload?.output_dir ||
+    payload?.project_dir ||
+    progress?.output_dir ||
+    progress?.project_dir;
+  let files: GeneratedFileEntry[] =
+    payload?.generated_files ||
+    progress?.generated_files ||
+    [];
+  if (!files.length && progress?.result_file) {
+    files = [{ path: String(progress.result_file), label: "grabación" }];
+  }
+  if (!files.length && progress?.video_path) {
+    files = [{ path: String(progress.video_path), label: "video" }];
+  }
+  return { dir: dir ? String(dir) : undefined, files };
+}
+
+function GeneratedFilesResultView(props: {
+  message?: string;
+  payload?: ConversionResultPayload | null;
+  progress?: Record<string, any>;
+  c: Record<string, string>;
+}) {
+  const { message, payload, progress, c } = props;
+  const { dir, files } = normalizeGeneratedFiles(payload, progress);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {message ? (
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{message}</div>
+      ) : null}
+      {dir ? (
+        <div style={{ fontSize: 13 }}>
+          <div style={{ color: c.muted, marginBottom: 4 }}>Carpeta de salida</div>
+          <code
+            style={{
+              display: "block",
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: c.codeBg,
+              border: `1px solid ${c.border}`,
+              fontSize: 12,
+              wordBreak: "break-all",
+            }}
+          >
+            {dir}
+          </code>
+        </div>
+      ) : null}
+      {files.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13, color: c.muted }}>Archivos generados</div>
+          {files.map((f) => (
+            <div
+              key={f.path}
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 10,
+                padding: 10,
+                background: c.surface,
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13, color: c.text }}>
+                {f.label || f.path.split(/[/\\]/).pop()}
+              </div>
+              <code
+                style={{
+                  display: "block",
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: c.muted,
+                  wordBreak: "break-all",
+                }}
+              >
+                {f.path}
+              </code>
+              {f.preview ? (
+                <textarea
+                  readOnly
+                  value={f.preview}
+                  style={{
+                    width: "100%",
+                    minHeight: 120,
+                    marginTop: 8,
+                    padding: 8,
+                    borderRadius: 8,
+                    border: `1px solid ${c.border}`,
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    background: c.codeBg,
+                    color: c.text,
+                    resize: "vertical",
+                  }}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function openJobUrlInNewTabPrepared(): Window | null {
@@ -267,6 +377,7 @@ export default function App() {
   const [urlValue, setUrlValue] = useState<string>("");
   const [initialChecked, setInitialChecked] = useState<boolean>(false);
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
+  const [stoppingRecording, setStoppingRecording] = useState(false);
   const [homeHint, setHomeHint] = useState<string | null>(null);
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
@@ -299,6 +410,8 @@ export default function App() {
   const [recorderPreflightLoading, setRecorderPreflightLoading] = useState(false);
   const [apkPath, setApkPath] = useState("");
   const [deviceId, setDeviceId] = useState("");
+  const [appPackage, setAppPackage] = useState("");
+  const [appActivity, setAppActivity] = useState("");
   const [windowName, setWindowName] = useState("");
   const [exePath, setExePath] = useState("");
 
@@ -590,9 +703,17 @@ export default function App() {
       );
       return;
     }
-    if (mode === "mobile_recorder" && !apkPath.trim() && !deviceId.trim()) {
-      setErrorText("Introduce la ruta del APK o el ID del dispositivo para la grabación móvil.");
-      return;
+    if (mode === "mobile_recorder") {
+      if (!deviceId.trim()) {
+        setErrorText("Introduce el ID del dispositivo o emulador (salida de adb devices).");
+        return;
+      }
+      if (!apkPath.trim() && !appPackage.trim()) {
+        setErrorText(
+          "Indica el paquete Android (app ya instalada) o la ruta del APK en este PC.",
+        );
+        return;
+      }
     }
     if (mode === "legacy_recorder" && !windowName.trim() && !exePath.trim()) {
       setErrorText("Introduce el nombre de ventana o la ruta del ejecutable para la grabación legacy.");
@@ -668,7 +789,15 @@ export default function App() {
                 elia_value_edge: prof?.value_edge ?? emptyValueEdgeCreds(),
               }
             : {}),
-          ...(mode === "mobile_recorder" ? { platform: "mobile", apk_path: apkPath.trim(), device_id: deviceId.trim() } : {}),
+          ...(mode === "mobile_recorder"
+            ? {
+                platform: "mobile",
+                apk_path: apkPath.trim(),
+                device_id: deviceId.trim(),
+                app_package: appPackage.trim(),
+                app_activity: appActivity.trim(),
+              }
+            : {}),
           ...(mode === "legacy_recorder" ? { platform: "legacy", window_name: windowName.trim(), exe_path: exePath.trim() } : {}),
           ...(mode === "doc_to_bdd" ? {
             doc_files: loadedDocs.map((d) => d.path),
@@ -717,7 +846,7 @@ export default function App() {
     ) {
       setBddPreviewText(String(ap.payload.feature_text));
     }
-  }, [activePrompt?.prompt_id, activePrompt]);
+  }, [activePrompt?.prompt_id, activePrompt?.type]);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -2282,9 +2411,22 @@ export default function App() {
                 {platform === "mobile" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
                     <input
-                      value={apkPath}
-                      onChange={(e) => setApkPath(e.target.value)}
-                      placeholder="Ruta del APK (ej: C:\apps\miapp.apk)"
+                      value={deviceId}
+                      onChange={(e) => setDeviceId(e.target.value)}
+                      placeholder="ID del dispositivo / emulador (adb devices, ej: emulator-5554)"
+                      style={{
+                        padding: "10px 12px", borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`, background: c.inputBg,
+                        color: c.text, outline: "none", fontSize: 14,
+                      }}
+                    />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
+                      App ya instalada en el móvil
+                    </div>
+                    <input
+                      value={appPackage}
+                      onChange={(e) => setAppPackage(e.target.value)}
+                      placeholder="Paquete Android (ej: com.empresa.miapp)"
                       style={{
                         padding: "10px 12px", borderRadius: 10,
                         border: `1px solid ${c.inputBorder}`, background: c.inputBg,
@@ -2292,9 +2434,28 @@ export default function App() {
                       }}
                     />
                     <input
-                      value={deviceId}
-                      onChange={(e) => setDeviceId(e.target.value)}
-                      placeholder="ID del Dispositivo / Emulador (ej: emulator-5554)"
+                      value={appActivity}
+                      onChange={(e) => setAppActivity(e.target.value)}
+                      placeholder="Actividad principal — opcional (ej: .MainActivity)"
+                      style={{
+                        padding: "10px 12px", borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`, background: c.inputBg,
+                        color: c.text, outline: "none", fontSize: 14,
+                      }}
+                    />
+                    <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
+                      Si dejas la actividad vacía, ELIA intenta detectarla con{" "}
+                      <code style={{ fontSize: 11 }}>adb shell cmd package resolve-activity</code>.
+                      Lista paquetes:{" "}
+                      <code style={{ fontSize: 11 }}>adb shell pm list packages</code>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
+                      O instalar desde APK en este PC
+                    </div>
+                    <input
+                      value={apkPath}
+                      onChange={(e) => setApkPath(e.target.value)}
+                      placeholder="Ruta del APK en Windows (opcional, ej: C:\apps\miapp.apk)"
                       style={{
                         padding: "10px 12px", borderRadius: 10,
                         border: `1px solid ${c.inputBorder}`, background: c.inputBg,
@@ -2302,7 +2463,8 @@ export default function App() {
                       }}
                     />
                     <div style={{ fontSize: 12, color: c.muted }}>
-                      Requiere Appium Server corriendo en localhost:4723 y Android SDK configurado.
+                      Requiere Appium en localhost:4723, Android SDK y{" "}
+                      <code style={{ fontSize: 11 }}>adb</code> en el PATH.
                     </div>
                   </div>
                 )}
@@ -2800,7 +2962,45 @@ export default function App() {
               fontSize: 14,
             }}
           >
-            Procesando… (espera; esta pestaña no se cerrará sola).
+            <div>
+              {job.progress?.stage
+                ? String(job.progress.stage)
+                : "Procesando… (espera; esta pestaña no se cerrará sola)."}
+            </div>
+            {job.progress?.events_captured != null && (
+              <div style={{ marginTop: 8, fontSize: 13 }}>
+                Pantallas / eventos capturados: <b>{job.progress.events_captured}</b>
+                {job.progress?.elapsed_s != null ? ` · ${job.progress.elapsed_s}s` : ""}
+              </div>
+            )}
+            {job.progress?.recording && (
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    disabled={stoppingRecording}
+                    onClick={() => {
+                      if (!jobId) return;
+                      setStoppingRecording(true);
+                      void stopRecording(jobId)
+                        .catch((e: unknown) => {
+                          setErrorText(String((e as Error)?.message ?? e));
+                        })
+                        .finally(() => setStoppingRecording(false));
+                    }}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 10,
+                      background: c.primary,
+                      color: c.primaryFg,
+                      border: "none",
+                      cursor: stoppingRecording ? "wait" : "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {stoppingRecording ? "Finalizando…" : "Finalizar grabación"}
+                  </button>
+                </div>
+              )}
           </div>
         )}
 
@@ -3268,8 +3468,20 @@ export default function App() {
 
             {activePrompt.type === "message_ack" && (() => {
               const ap = activePrompt as Extract<ActivePrompt, { type: "message_ack" }>;
+              const resultPayload = ap.payload ?? null;
+              const hasFiles =
+                Boolean(resultPayload?.generated_files?.length) ||
+                Boolean(resultPayload?.output_dir || resultPayload?.project_dir);
               return (
               <div>
+                {hasFiles ? (
+                  <GeneratedFilesResultView
+                    message={ap.message}
+                    payload={resultPayload}
+                    progress={job?.progress}
+                    c={c}
+                  />
+                ) : (
                 <div
                   style={{
                     background:
@@ -3301,6 +3513,7 @@ export default function App() {
                 >
                   {ap.message}
                 </div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -3419,10 +3632,8 @@ export default function App() {
             }}
           >
             <b style={{ color: c.successTitle }}>Conversión finalizada</b>
-            <div style={{ marginTop: 6, color: c.successBody, whiteSpace: "pre-wrap" }}>
-              {job?.progress?.result_file ? `Archivo: ${job.progress.result_file}` : ""}
-              {job?.progress?.video_path ? `\nVideo: ${job.progress.video_path}` : ""}
-              {!job?.progress?.result_file && !job?.progress?.video_path ? "OK" : ""}
+            <div style={{ marginTop: 10 }}>
+              <GeneratedFilesResultView progress={job.progress} c={c} />
             </div>
             <div style={{ marginTop: 12, fontSize: 13, color: c.successHint }}>
               <b>Volver al inicio:</b> si abriste el flujo desde la pestaña de inicio, se cierra <b>esta</b> pestaña y se

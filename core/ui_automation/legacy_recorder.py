@@ -190,7 +190,7 @@ class LegacyRecorder:
                 )
 
         # 5. Iniciar grabación con PyAutoGUI + pynput
-        jm.update_progress(job_id, {"stage": "Grabando… cierra la ventana o presiona ESC para finalizar"})
+        jm.update_progress(job_id, {"stage": "Grabando… presiona ESC o pulsa «Finalizar grabación» en ELIA", "recording": True})
         recorded_events: List[Dict[str, Any]] = []
         stop_recording = {"value": False}
         start_ts = time.time()
@@ -242,7 +242,11 @@ class LegacyRecorder:
 
             max_duration = 300
             while time.time() - start_ts < max_duration and not stop_recording["value"]:
+                if jm.should_stop_recording(job_id):
+                    stop_recording["value"] = True
+                    break
                 time.sleep(0.5)
+                jm.update_progress(job_id, {"events_captured": len(recorded_events)})
 
             mouse_listener.stop()
             key_listener.stop()
@@ -255,6 +259,8 @@ class LegacyRecorder:
             interval = 2.0
             elapsed = 0.0
             while elapsed < max_duration:
+                if jm.should_stop_recording(job_id):
+                    break
                 time.sleep(interval)
                 elapsed += interval
                 pos = pyautogui.position()
@@ -283,9 +289,15 @@ class LegacyRecorder:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
 
+        from webui.conversion_result import conversion_result
+
         adapter.info(
             "Grabación Legacy",
-            f"Grabación completada.\n\nArchivo: {output_file}\nEventos capturados: {len(recorded_events)}",
+            f"Grabación completada.\n\nEventos capturados: {len(recorded_events)}",
+            result=conversion_result(
+                project_dir=project_path,
+                files=[("grabación", output_file)],
+            ),
         )
         jm.add_event(job_id, "legacy_recorder", {"output_file": output_file, "events": len(recorded_events)})
         jm.mark_done(job_id)
