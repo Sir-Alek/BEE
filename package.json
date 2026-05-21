@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "python tests/run_all.py",
+    "test:integration": "python tests/run_integration.py",
+    "test:e2e": "npm run test:e2e --prefix tests/e2e"
+  }
+}

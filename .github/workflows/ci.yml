@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  python:
+    name: Python (unit + api + smoke)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install -U pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: Unit + API tests
+        run: python tests/run_all.py
+
+      - name: Integration smoke (Puppeteer stub)
+        run: python tests/run_integration.py
+
+  e2e:
+    name: Playwright E2E
+    runs-on: windows-latest
+    needs: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install -U pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install chromium
+
+      - name: Run E2E
+        working-directory: tests/e2e
+        env:
+          ELIA_E2E_STUB_PUPPETEER: "1"
+        run: npm run test:e2e
+
+  integration-live:
+    name: Jira / Value Edge (opt-in)
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || vars.ELIA_RUN_INTEGRATION == '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Live connector tests
+        env:
+          ELIA_RUN_INTEGRATION: "1"
+          ELIA_JIRA_URL: ${{ secrets.ELIA_JIRA_URL }}
+          ELIA_JIRA_EMAIL: ${{ secrets.ELIA_JIRA_EMAIL }}
+          ELIA_JIRA_TOKEN: ${{ secrets.ELIA_JIRA_TOKEN }}
+          ELIA_VE_URL: ${{ secrets.ELIA_VE_URL }}
+          ELIA_VE_SHARED_SPACE: ${{ secrets.ELIA_VE_SHARED_SPACE }}
+          ELIA_VE_WORKSPACE: ${{ secrets.ELIA_VE_WORKSPACE }}
+          ELIA_VE_USER: ${{ secrets.ELIA_VE_USER }}
+          ELIA_VE_PASSWORD: ${{ secrets.ELIA_VE_PASSWORD }}
+        run: python tests/run_integration.py
+
+  nightly:
+    name: Appium / Legacy runtime (nightly)
+    runs-on: windows-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Nightly runtime tests
+        env:
+          ELIA_RUN_NIGHTLY: "1"
+          ELIA_APPIUM_URL: ${{ secrets.ELIA_APPIUM_URL }}
+        run: python tests/run_integration.py

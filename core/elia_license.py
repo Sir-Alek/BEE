@@ -517,6 +517,11 @@ def _load_effective_state() -> Dict[str, Any]:
         _sync_activation_backups(fp, key, ts)
         return state
 
+    # Clave presente en el JSON principal pero inválida (HMAC/issue_ts alterado):
+    # no restaurar desde respaldo oculto — evita extender caducidad editando license_state.json.
+    if _normalize_stored_key(str(state.get("saved_activation_key", ""))):
+        return state
+
     restored = _find_activation_in_backups(fp)
     if restored is not None:
         key, activated_ts = restored

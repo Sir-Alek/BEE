@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,12 @@ from core import modules_config as mods
 
 class TestModulesConfig(unittest.TestCase):
     def setUp(self) -> None:
+        self._env_patch = patch.dict(
+            os.environ,
+            {"ELIA_SKIP_LICENSE": "", "ELIA_ACTIVATION_KEY": ""},
+            clear=False,
+        )
+        self._env_patch.start()
         self._tmp = tempfile.TemporaryDirectory()
         self._state_file = Path(self._tmp.name) / "license_state.json"
         self._fp = "b" * 32
@@ -30,6 +37,7 @@ class TestModulesConfig(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
+        self._env_patch.stop()
 
     def _patch_state(self):
         return patch.object(lic, "_state_path", return_value=self._state_file)

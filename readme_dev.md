@@ -146,6 +146,7 @@ python -m PyInstaller --noconfirm ELIA.spec
 python scripts/revoke_license.py
 python scripts/revoke_license.py --keep-backups
 ELIA_REVOKE_ON_START=1 python main.py
+$env:ELIA_REVOKE_ON_START=1; python main.py    
 ```
 
 **Kill switch duro** (app no arranca — `exit 2`). Crear uno de estos archivos:
@@ -180,6 +181,12 @@ Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen est
 Tras cambios en `frontend/`, ejecuta `npm run build` y prueba en `127.0.0.1`. La UI depende de `frontend/dist` empaquetado o generado localmente. Si no ves controles nuevos (p. ej. tema oscuro), casi siempre es que el `.exe` o `frontend/dist` no se regeneró tras el `git pull`.
 
 Al cerrar la **pestaña de inicio**, el frontend llama a `POST /api/app/exit` y `main.py` hace polling de `GET /api/app/should-exit` para detener Uvicorn y salir del proceso (evita que la app quede en segundo plano sin consola).
+
+## Pruebas automatizadas
+
+Unitarias, API, integración (smoke Puppeteer, Jira/VE opt-in, nightly Appium/Legacy) y E2E Playwright están bajo **`tests/`**. Comandos rápidos desde la raíz: `npm test`, `npm run test:integration`, `npm run test:e2e`.
+
+Documentación completa: **[tests/readme_tests.md](tests/readme_tests.md)**.
 
 ## Ramas Git
 

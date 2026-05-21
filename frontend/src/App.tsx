@@ -1006,6 +1006,7 @@ export default function App() {
           </div>
           <button
             type="button"
+            data-testid="elia-settings-open"
             aria-label="Abrir configuración"
             title={`Configuración · build ${ELIA_WEB_UI_BUILD}`}
             onClick={() => {
@@ -1069,6 +1070,7 @@ export default function App() {
           onClick={() => setSettingsOpen(false)}
         >
           <div
+            data-testid="elia-settings-dialog"
             style={{
               width: "min(680px, 100%)",
               maxHeight: "min(92vh, 920px)",
@@ -1116,6 +1118,7 @@ export default function App() {
                 <button
                   key={t.id}
                   type="button"
+                  data-testid={`elia-settings-tab-${t.id}`}
                   onClick={() => setSettingsTab(t.id)}
                   style={{
                     padding: "8px 12px",
@@ -1411,6 +1414,7 @@ export default function App() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                     <input
                       type="text"
+                      data-testid="elia-license-key"
                       value={activationKey}
                       onChange={(e) => setActivationKey(e.target.value)}
                       placeholder="Introduce tu código de activación"
@@ -1427,6 +1431,7 @@ export default function App() {
                     />
                     <button
                       type="button"
+                      data-testid="elia-license-activate"
                       disabled={!activationKey.trim()}
                       onClick={() => {
                         setLicenseActivateMsg(null);
@@ -1465,7 +1470,7 @@ export default function App() {
                     </button>
                   </div>
                   {licenseActivateMsg && (
-                    <div style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
+                    <div data-testid="elia-license-message" style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
                   )}
                   {license.activated && !licenseFpVisible && (
                     <button
@@ -1921,6 +1926,7 @@ export default function App() {
 
             {settingsTab === "about" && (
             <div
+              data-testid="elia-about-panel"
               style={{
                 border: `1px solid ${c.border}`,
                 borderRadius: 12,
@@ -2058,6 +2064,7 @@ export default function App() {
         {errorText && (
           <div
             role="alert"
+            data-testid="elia-error-alert"
             style={{
               background: c.errorBg,
               border: `1px solid ${c.errorBorder}`,
@@ -2096,6 +2103,7 @@ export default function App() {
 
         {isHomeSurface && initialChecked && (
           <div
+            data-testid="elia-home"
             style={{
               background: c.surface,
               border: `1px solid ${c.border}`,
@@ -2124,6 +2132,7 @@ export default function App() {
             >
               <button
                 type="button"
+                data-testid="elia-home-tab-ui"
                 onClick={() => setHomeTab("ui")}
                 style={{
                   padding: "10px 14px",
@@ -2139,6 +2148,7 @@ export default function App() {
               </button>
               <button
                 type="button"
+                data-testid="elia-home-tab-req"
                 onClick={() => setHomeTab("req")}
                 style={{
                   padding: "10px 14px",
@@ -2156,6 +2166,7 @@ export default function App() {
 
             {homeHint && (
               <div
+                data-testid="elia-home-hint"
                 style={{
                   background: c.hintBg,
                   border: `1px solid ${c.hintBorder}`,
@@ -2206,6 +2217,7 @@ export default function App() {
             {license && licenseNeedsActivationBanner(license) && (
               <div
                 role="alert"
+                data-testid="elia-license-banner"
                 style={{
                   background: c.licWarnBg,
                   border: `1px solid ${c.licWarnBorder}`,
@@ -2278,9 +2290,14 @@ export default function App() {
                     onClick={() => setShowLockModal(null)}
                   >
                     <div
+                      data-testid="elia-lock-modal"
                       style={{
-                      background: c.surface, border: `1px solid ${c.border}`,
-                      borderRadius: 16, padding: "28px 32px", maxWidth: 380, textAlign: "center",
+                        background: c.surface,
+                        border: `1px solid ${c.border}`,
+                        borderRadius: 16,
+                        padding: "28px 32px",
+                        maxWidth: 380,
+                        textAlign: "center",
                         boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
                       }}
                       onClick={(e) => e.stopPropagation()}
@@ -2322,6 +2339,7 @@ export default function App() {
                     return (
                       <button
                         key={p}
+                        data-testid={`elia-platform-${p}`}
                         onClick={() => {
                           if (locked) { setShowLockModal(p); return; }
                           setPlatform(p);
@@ -2355,6 +2373,7 @@ export default function App() {
                     </div>
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <input
+                        data-testid="elia-web-url"
                         value={urlValue}
                         onChange={(e) => setUrlValue(e.target.value)}
                         placeholder="URL para grabar (ej: https://miapp.com)"
@@ -2579,6 +2598,7 @@ export default function App() {
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
+                    data-testid="elia-btn-record"
                     disabled={
                       (license ? !license.can_run_jobs : false) ||
                       (platform === "web" &&
@@ -2873,6 +2893,7 @@ export default function App() {
                 {/* Botón de acción principal */}
                 <div style={{ marginTop: 4 }}>
                   <button
+                    data-testid="elia-btn-doc-bdd"
                     disabled={license ? !license.can_run_jobs : false}
                     onClick={() => startJob("doc_to_bdd")}
                     style={{
@@ -3041,6 +3062,7 @@ export default function App() {
 
         {job?.state === "waiting_user" && activePrompt && (
           <div
+            data-testid="elia-job-prompt"
             style={{
               background: c.surface,
               border: `1px solid ${c.border}`,
@@ -3624,6 +3646,7 @@ export default function App() {
 
         {!isHomeSurface && job?.state === "done" && (
           <div
+            data-testid="elia-job-done"
             style={{
               background: c.successBg,
               border: `1px solid ${c.successBorder}`,

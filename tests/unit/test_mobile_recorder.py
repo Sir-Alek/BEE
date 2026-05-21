@@ -8,7 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests.paths import REPO_ROOT
+
+ROOT = REPO_ROOT
 
 
 def _load_mobile_recorder_py():

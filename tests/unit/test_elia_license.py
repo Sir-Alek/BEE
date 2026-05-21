@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import tempfile
 import time
@@ -24,15 +25,30 @@ class TestEliaLicense(unittest.TestCase):
         self._key_v2_15d = lic.build_activation_key(
             self._fp, lic.DURATION_15D, issue_ts=self._issue_ts
         )
+        # Asegurar que los tests no hereden ELIA_SKIP_LICENSE del entorno de desarrollo.
+        self._env_patch = patch.dict(
+            os.environ,
+            {"ELIA_SKIP_LICENSE": "", "ELIA_ACTIVATION_KEY": ""},
+            clear=False,
+        )
+        self._env_patch.start()
+        self._backup_paths: list[Path] = []
+        self._backup_patch = patch.object(
+            lic, "_get_hidden_backup_paths", lambda: self._backup_paths
+        )
+        self._backup_patch.start()
 
     def tearDown(self) -> None:
+        self._backup_patch.stop()
+        self._env_patch.stop()
         self._tmp.cleanup()
 
     def _patch_state(self):
         return patch.object(lic, "_state_path", return_value=self._state_file)
 
     def _patch_backups(self, *paths: Path):
-        return patch.object(lic, "_get_hidden_backup_paths", return_value=list(paths))
+        self._backup_paths[:] = list(paths)
+        return patch.object(lic, "_get_hidden_backup_paths", lambda: self._backup_paths)
 
     def _patch_fp(self):
         return patch.object(lic, "get_machine_fingerprint", return_value=self._fp)
@@ -82,6 +98,9 @@ class TestEliaLicense(unittest.TestCase):
         self.assertEqual(st.reason, "license_expired")
 
     def test_v2_tamper_issue_ts_in_key_string_fails(self) -> None:
+        backup = Path(self._tmp.name) / "backup.db"
+        lic._write_activation_backup(backup, self._fp, self._key_v2_15d, float(self._issue_ts))
+        self._backup_paths.append(backup)
         with self._patch_state(), self._patch_fp():
             self.assertTrue(lic.activate_with_key(self._key_v2_15d))
             state = json.loads(self._state_file.read_text(encoding="utf-8"))
@@ -92,12 +111,28 @@ class TestEliaLicense(unittest.TestCase):
             st = lic.get_license_status()
         self.assertEqual(st.reason, "not_activated")
 
+    def test_tampered_state_does_not_restore_from_backup(self) -> None:
+        """Respaldo válido no debe anular una clave manipulada en license_state.json."""
+        backup = Path(self._tmp.name) / "backup.db"
+        lic._write_activation_backup(backup, self._fp, self._key_v2_perm, float(self._issue_ts))
+        tampered = self._key_v2_perm.replace(str(self._issue_ts), str(self._issue_ts + 99999), 1)
+        self._state_file.write_text(
+            json.dumps({"saved_activation_key": tampered, "activated": True}),
+            encoding="utf-8",
+        )
+        self._backup_paths.append(backup)
+        with self._patch_state(), self._patch_fp():
+            st = lic.get_license_status()
+            self.assertEqual(st.reason, "not_activated")
+            self.assertFalse(lic.can_run_jobs())
+
     def test_activation_restored_from_hidden_backup(self) -> None:
         backup = Path(self._tmp.name) / "backup.db"
         lic._write_activation_backup(backup, self._fp, self._key_v2_perm, float(self._issue_ts))
+        self._backup_paths.append(backup)
         self.assertFalse(self._state_file.is_file())
 
-        with self._patch_state(), self._patch_backups(backup), self._patch_fp():
+        with self._patch_state(), self._patch_fp():
             st = lic.get_license_status()
 
         self.assertEqual(st.reason, "activated")
@@ -109,7 +144,8 @@ class TestEliaLicense(unittest.TestCase):
             json.dumps({"v": 2, "key": self._key_v2_perm, "ts": time.time(), "sig": "0" * 64}),
             encoding="utf-8",
         )
-        with self._patch_state(), self._patch_backups(backup), self._patch_fp():
+        self._backup_paths.append(backup)
+        with self._patch_state(), self._patch_fp():
             st = lic.get_license_status()
         self.assertEqual(st.reason, "not_activated")
 

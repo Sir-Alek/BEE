@@ -28,3 +28,11 @@ core/**/*.so
 
 # Integraciones: no versionar credenciales locales
 **/external_connectors/secrets.ini
+
+# Playwright E2E (tests/e2e/)
+tests/e2e/.runtime/
+tests/e2e/report/
+tests/e2e/test-results/
+test-results/
+playwright-report/
+tests/e2e/node_modules/

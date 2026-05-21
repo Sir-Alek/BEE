@@ -978,6 +978,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         _: None = Depends(_require_localhost),
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
+        try:
+            jm.get_job(job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="job not found")
         jm.cancel_job(job_id)
         return {"ok": True}
 
@@ -1095,7 +1099,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     # SPA static serving
     # -----------------------
     @app.get("/")
-    def spa_root() -> Any:
+    def spa_root(_: None = Depends(_require_localhost)) -> Any:
         if not os.path.exists(frontend_dist):
             frozen = getattr(sys, "frozen", False)
             hint = (
@@ -1107,27 +1111,27 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
     @app.get("/logo.png")
-    def logo_png() -> Any:
+    def logo_png(_: None = Depends(_require_localhost)) -> Any:
         if not os.path.exists(logo_path):
             raise HTTPException(status_code=404, detail="logo not found")
         return FileResponse(logo_path, media_type="image/png")
 
     @app.get("/logo-icon.png")
-    def logo_icon_png() -> Any:
+    def logo_icon_png(_: None = Depends(_require_localhost)) -> Any:
         path = logo_icon_path if os.path.exists(logo_icon_path) else logo_path
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="logo icon not found")
         return FileResponse(path, media_type="image/png")
 
     @app.get("/logo-letters.png")
-    def logo_letters_png() -> Any:
+    def logo_letters_png(_: None = Depends(_require_localhost)) -> Any:
         path = logo_letters_path if os.path.exists(logo_letters_path) else logo_path
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="logo letters not found")
         return FileResponse(path, media_type="image/png")
 
     @app.get("/favicon.ico")
-    def favicon_ico() -> Any:
+    def favicon_ico(_: None = Depends(_require_localhost)) -> Any:
         if not os.path.exists(logo_ico_path):
             raise HTTPException(status_code=404, detail="favicon not found")
         return FileResponse(logo_ico_path, media_type="image/x-icon")
