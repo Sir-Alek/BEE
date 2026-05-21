@@ -9,10 +9,10 @@ Uso (desde la raíz del repo):
   python scripts/generate_license_key.py --machine <huella> --duration perm
 
 Duraciones:
-  15d   — 15 días
+  15d   — 15 días (por defecto)
   30d   — 1 mes
   365d  — 1 año
-  perm  — permanente (por defecto)
+  perm  — permanente 
 
 Módulos opcionales:
   --mobile   incluye grabación móvil (flag M en la clave)
@@ -95,8 +95,8 @@ def main() -> int:
     )
     ap.add_argument(
         "--duration",
-        default="perm",
-        help="15d | 30d | 365d | perm (default: perm)",
+        default="15d",
+        help="Opciones: 15d, 30d, 365d, perm. (Por defecto: 15d)",
     )
     ap.add_argument(
         "--mobile",
