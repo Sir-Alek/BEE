@@ -41,14 +41,17 @@ def chrome_like_pids_snapshot() -> Set[int]:
     return out
 
 
-def _try_focus_pid_windows(pid: int) -> bool:
+def chrome_like_top_level_hwnds_snapshot() -> Set[int]:
+    """Visible top-level HWNDs owned by Chrome/Chromium/Edge processes."""
     if sys.platform != "win32":
-        return False
+        return set()
 
     user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
+    pids = chrome_like_pids_snapshot()
+    if not pids:
+        return set()
 
-    hwnds: list[int] = []
+    out: Set[int] = set()
 
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
@@ -56,21 +59,29 @@ def _try_focus_pid_windows(pid: int) -> bool:
     def enum_cb(hwnd, lparam):
         proc_id = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
-        if int(proc_id.value) == pid and user32.IsWindowVisible(hwnd):
-            hwnds.append(int(hwnd))
+        if int(proc_id.value) in pids and user32.IsWindowVisible(hwnd):
+            out.add(int(hwnd))
         return True
 
     user32.EnumWindows(enum_cb, 0)
-    if not hwnds:
+    return out
+
+
+def _try_focus_hwnd_windows(hwnd: int, *, maximize: bool = False) -> bool:
+    if sys.platform != "win32":
         return False
 
-    hwnd = max(hwnds)  # often the top-level window has the largest HWND
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
 
-    # SW_RESTORE demaximizes a maximized window (MSDN). Only restore if minimized;
-    # if already maximized, skip ShowWindow and only bring to foreground.
     SW_SHOW = 5
     SW_RESTORE = 9
-    if user32.IsIconic(hwnd):
+    SW_MAXIMIZE = 3
+    if maximize:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.ShowWindow(hwnd, SW_MAXIMIZE)
+    elif user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, SW_RESTORE)
     elif user32.IsZoomed(hwnd):
         pass
@@ -91,26 +102,132 @@ def _try_focus_pid_windows(pid: int) -> bool:
     return True
 
 
-def try_focus_new_automation_browser(old_pids: Set[int], *, delay_sec: float = 2.2) -> None:
+def _hwnd_is_maximized(hwnd: int) -> bool:
+    if sys.platform != "win32":
+        return True
+    return bool(ctypes.windll.user32.IsZoomed(hwnd))
+
+
+def _pid_top_level_hwnd(pid: int) -> int | None:
+    if sys.platform != "win32":
+        return None
+
+    user32 = ctypes.windll.user32
+    hwnds: list[int] = []
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    @WNDENUMPROC
+    def enum_cb(hwnd, lparam):
+        proc_id = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
+        if int(proc_id.value) == pid and user32.IsWindowVisible(hwnd):
+            hwnds.append(int(hwnd))
+        return True
+
+    user32.EnumWindows(enum_cb, 0)
+    if not hwnds:
+        return None
+    return max(hwnds)
+
+
+def _try_focus_pid_windows(pid: int, *, maximize: bool = False) -> bool:
+    if sys.platform != "win32":
+        return False
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    hwnd = _pid_top_level_hwnd(pid)
+    if hwnd is None:
+        return False
+
+    SW_SHOW = 5
+    SW_RESTORE = 9
+    SW_MAXIMIZE = 3
+    if maximize:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.ShowWindow(hwnd, SW_MAXIMIZE)
+    elif user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, SW_RESTORE)
+    elif user32.IsZoomed(hwnd):
+        pass
+    else:
+        user32.ShowWindow(hwnd, SW_SHOW)
+
+    fg = user32.GetForegroundWindow()
+    dummy_pid = wintypes.DWORD()
+    fg_thread_id = user32.GetWindowThreadProcessId(fg, ctypes.byref(dummy_pid))
+    cur_tid = kernel32.GetCurrentThreadId()
+
+    user32.AttachThreadInput(cur_tid, fg_thread_id, True)
+    try:
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+    finally:
+        user32.AttachThreadInput(cur_tid, fg_thread_id, False)
+    return True
+
+
+def _pid_window_is_maximized(pid: int) -> bool:
+    if sys.platform != "win32":
+        return True
+    hwnd = _pid_top_level_hwnd(pid)
+    if hwnd is None:
+        return False
+    return bool(ctypes.windll.user32.IsZoomed(hwnd))
+
+
+def try_focus_new_automation_browser(
+    old_pids: Set[int],
+    *,
+    delay_sec: float = 2.2,
+    maximize: bool = False,
+    old_hwnds: Set[int] | None = None,
+) -> None:
     time.sleep(delay_sec)
     if sys.platform != "win32":
         return
 
-    fresh = chrome_like_pids_snapshot() - old_pids
-    if not fresh:
-        return
+    attempts = 5 if maximize else 1
+    prior_hwnds = old_hwnds if old_hwnds is not None else set()
+    for attempt in range(attempts):
+        if attempt > 0:
+            time.sleep(0.45)
 
-    for pid in sorted(fresh, reverse=True):
-        if _try_focus_pid_windows(pid):
-            return
+        fresh = chrome_like_pids_snapshot() - old_pids
+        for pid in sorted(fresh, reverse=True):
+            if not _try_focus_pid_windows(pid, maximize=maximize):
+                continue
+            if not maximize or _pid_window_is_maximized(pid):
+                return
+
+        fresh_hwnds = chrome_like_top_level_hwnds_snapshot() - prior_hwnds
+        for hwnd in sorted(fresh_hwnds, reverse=True):
+            if not _try_focus_hwnd_windows(hwnd, maximize=maximize):
+                continue
+            if not maximize or _hwnd_is_maximized(hwnd):
+                return
 
 
-def spawn_focus_thread_for_automation_browser(old_pids: Set[int], *, delay_sec: float = 2.2) -> None:
+def spawn_focus_thread_for_automation_browser(
+    old_pids: Set[int],
+    *,
+    delay_sec: float = 2.2,
+    maximize: bool = False,
+    old_hwnds: Set[int] | None = None,
+) -> None:
     """Non-blocking: background thread attempts focus after delay."""
 
     def _run() -> None:
         try:
-            try_focus_new_automation_browser(old_pids, delay_sec=delay_sec)
+            try_focus_new_automation_browser(
+                old_pids,
+                delay_sec=delay_sec,
+                maximize=maximize,
+                old_hwnds=old_hwnds,
+            )
         except Exception:
             pass
 

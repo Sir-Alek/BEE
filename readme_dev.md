@@ -4,12 +4,13 @@
 
 | Dónde | Qué editar |
 |-------|------------|
-| **Pestaña Acerca de** (UI) | `core/version.py` → `ELIA_VERSION` (y opcionalmente `ELIA_DEVELOPER`, `ELIA_TAGLINE`) |
-| **Consola al arrancar** | Mismo `core/version.py` (importado desde `main.py`) |
+| **Pestaña Acerca de** (UI) | `core/_version.py` → `ELIA_VERSION` |
+| **Consola al arrancar** | Mismo `core/_version.py` (importado desde `main.py`) |
 | **Instalador Windows** | `ELIA_Setup.iss` → `#define MyAppVersion` |
-| **Guía usuario** | `readme.txt` (texto libre; no muestra versión automática) |
 
-Tras cambiar `core/version.py`, recompila con PyInstaller antes de generar el `.exe` instalable.
+Edita **`core/_version.py`** (y sincroniza `ELIA_Setup.iss`). Esos módulos **no van a Cython**. Si existe un `core/version*.pyd` antiguo, cierra ELIA y bórralo (o ejecuta `build_release.py`, que intenta limpiarlo).
+
+Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a ejecutar PyInstaller.
 
 ## Entorno virtual (Python)
 

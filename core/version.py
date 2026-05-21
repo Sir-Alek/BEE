@@ -1,5 +1,5 @@
-"""Versión de producto (sincronizar con main.py, ELIA_Setup.iss y /api/app/about)."""
+"""Compatibilidad: preferir ``from core._version import ...`` (no usar Cython aquí)."""
 
-ELIA_VERSION = "0.5.3"
-ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
-ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
+from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION
+
+__all__ = ["ELIA_VERSION", "ELIA_DEVELOPER", "ELIA_TAGLINE"]

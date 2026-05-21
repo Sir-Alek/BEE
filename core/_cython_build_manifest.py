@@ -4,6 +4,7 @@ Módulos de core/ a compilar con Cython en builds de release.
 Se descubren automáticamente todos los .py bajo core/ excepto:
   - __init__.py (marcadores de paquete; PyInstaller los necesita como .py)
   - _cython_build_manifest.py (solo build)
+  - version.py / _version.py (constantes de producto; no compilar)
 """
 from __future__ import annotations
 
@@ -11,7 +12,9 @@ from pathlib import Path
 
 _CORE_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _CORE_DIR.parent
-_SKIP_FILENAMES = frozenset({"__init__.py", "_cython_build_manifest.py"})
+_SKIP_FILENAMES = frozenset(
+    {"__init__.py", "_cython_build_manifest.py", "version.py", "_version.py"}
+)
 
 
 def discover_core_cython_modules() -> tuple[str, ...]:

@@ -14,15 +14,40 @@ import webbrowser
 from typing import Iterable, List, Sequence, Set
 
 
-def _focus_new_browser_window_later(old_pids: Set[int], *, delay_sec: float = 1.2) -> None:
+def _browser_launch_snapshots() -> tuple[Set[int], Set[int]]:
+    try:
+        from core.ui_automation.recorder_focus import (
+            chrome_like_pids_snapshot,
+            chrome_like_top_level_hwnds_snapshot,
+        )
+
+        return chrome_like_pids_snapshot(), chrome_like_top_level_hwnds_snapshot()
+    except Exception:
+        return set(), set()
+
+
+def _focus_new_browser_window_later(
+    old_pids: Set[int],
+    *,
+    delay_sec: float = 1.2,
+    maximize: bool = False,
+    old_hwnds: Set[int] | None = None,
+) -> None:
     """
-    Trae al frente la ventana del navegador recién abierta (sin maximizar todas
-    las ventanas Chrome/Edge del usuario, que provocaba parpadeos y minimizado).
+    Trae al frente la ventana del navegador recién abierta.
+
+    Con ``maximize=True`` (UI de ELIA), fuerza SW_MAXIMIZE en esa ventana nueva;
+    Chrome/Edge a menudo ignoran ``--start-maximized`` si ya hay otra instancia abierta.
     """
     try:
         from core.ui_automation.recorder_focus import spawn_focus_thread_for_automation_browser
 
-        spawn_focus_thread_for_automation_browser(old_pids, delay_sec=delay_sec)
+        spawn_focus_thread_for_automation_browser(
+            old_pids,
+            delay_sec=delay_sec,
+            maximize=maximize,
+            old_hwnds=old_hwnds,
+        )
     except Exception:
         pass
 
@@ -81,24 +106,19 @@ def _candidate_executables() -> List[str]:
 
 
 def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
-    try:
-        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
-
-        old_pids = chrome_like_pids_snapshot()
-    except Exception:
-        old_pids = set()
+    old_pids, old_hwnds = _browser_launch_snapshots()
 
     for exe in executables:
         if not os.path.isfile(exe):
             continue
         try:
             subprocess.Popen(
-                [exe, "--new-window", "--start-maximized", "--window-size=1920,1080", url],
+                [exe, "--new-window", "--start-maximized", url],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
-            _focus_new_browser_window_later(old_pids)
+            _focus_new_browser_window_later(old_pids, maximize=True, old_hwnds=old_hwnds)
             return True
         except Exception:
             continue
@@ -111,43 +131,34 @@ def open_url_in_new_browser_window(url: str) -> None:
     """
     if _try_chromium_new_window(url, _candidate_executables()):
         return
+    old_pids, old_hwnds = _browser_launch_snapshots()
     try:
         webbrowser.open_new(url)
     except Exception:
         try:
             webbrowser.open(url)
         except Exception:
-            pass
-    try:
-        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
-
-        _focus_new_browser_window_later(chrome_like_pids_snapshot())
-    except Exception:
-        pass
+            return
+    _focus_new_browser_window_later(old_pids, maximize=True, old_hwnds=old_hwnds)
 
 
 def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> bool:
     """Open multiple URLs as tabs in one Chromium instance (order preserved)."""
     if not urls:
         return False
-    try:
-        from core.ui_automation.recorder_focus import chrome_like_pids_snapshot
-
-        old_pids = chrome_like_pids_snapshot()
-    except Exception:
-        old_pids = set()
+    old_pids, old_hwnds = _browser_launch_snapshots()
     argv = list(urls)
     for exe in executables:
         if not os.path.isfile(exe):
             continue
         try:
             subprocess.Popen(
-                [exe, "--new-window", "--start-maximized", "--window-size=1920,1080", *argv],
+                [exe, "--new-window", "--start-maximized", *argv],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
             )
-            _focus_new_browser_window_later(old_pids)
+            _focus_new_browser_window_later(old_pids, maximize=True, old_hwnds=old_hwnds)
             return True
         except Exception:
             continue

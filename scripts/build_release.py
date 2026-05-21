@@ -58,6 +58,23 @@ def _native_extension_exists(py_path: str) -> bool:
 
 def build_cython() -> None:
     run([sys.executable, "setup_cython.py", "build_ext", "--inplace"])
+    remove_stale_version_native()
+
+
+def remove_stale_version_native() -> None:
+    """version.py no se compila; un .pyd antiguo oculta bumps de ELIA_VERSION."""
+    import glob
+
+    for pattern in (
+        os.path.join(CORE, "version*.pyd"),
+        os.path.join(CORE, "version*.so"),
+    ):
+        for path in glob.glob(pattern):
+            try:
+                os.remove(path)
+                print(f"OK Eliminado (version no va a Cython): {os.path.relpath(path, ROOT)}")
+            except OSError as e:
+                print(f"AVISO: no se pudo eliminar {path}: {e}", file=sys.stderr)
 
 
 def verify_cython_artifacts(strict: bool = True) -> list[str]:

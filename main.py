@@ -1021,7 +1021,7 @@ def _require_license_for_jobs() -> None:
 
 if __name__ == "__main__":
     from core import elia_license
-    from core.version import ELIA_DEVELOPER, ELIA_VERSION
+    from core._version import ELIA_DEVELOPER, ELIA_VERSION
 
     elia_license.ensure_license_or_exit()
     print(f"""
