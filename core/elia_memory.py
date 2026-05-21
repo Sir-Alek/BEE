@@ -6,16 +6,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.bee_paths import bee_memory_path
+from core import elia_paths
 
 _LOCK = threading.Lock()
 _MAX_ENTRIES = 80
 _KEEP_RECENT = 12
+
+
+def _resolved_memory_path() -> Path:
+    p = elia_paths.elia_memory_path()
+    legacy = elia_paths.ensure_user_data_root() / "bee_memory.json"
+    if not p.is_file() and legacy.is_file():
+        try:
+            shutil.copy2(legacy, p)
+        except OSError:
+            pass
+    return p
 
 
 def _trim_script(script: str, max_chars: int = 12000) -> str:
@@ -57,7 +69,7 @@ def append_correction(*, script_snippet: str, feature_text: str) -> None:
     if not script_snippet or not feature_text:
         return
 
-    path = bee_memory_path()
+    path = _resolved_memory_path()
     with _LOCK:
         data = _load(path)
         entries: List[Dict[str, Any]] = list(data.get("entries") or [])
@@ -78,7 +90,7 @@ def append_correction(*, script_snippet: str, feature_text: str) -> None:
 
 def recent_examples_for_prompt(*, limit: int = 3) -> List[Dict[str, str]]:
     """Últimas correcciones para inyectar en el prompt (más recientes primero)."""
-    path = bee_memory_path()
+    path = _resolved_memory_path()
     with _LOCK:
         data = _load(path)
     entries: List[Dict[str, Any]] = list(data.get("entries") or [])

@@ -1,10 +1,10 @@
 """
-Carga de configuración ELIA (Jira + Value Edge) desde datos de usuario o variables de entorno.
+Carga de configuración de integraciones (Jira + Value Edge) desde datos de usuario o variables de entorno.
 
 Prioridad:
-1. Archivo en «Documentos/ELIA/elia/secrets.ini» (equivalente a `elia_secrets_path()`) si existe
+1. `{ELIA_USER_DATA}/external_connectors/secrets.ini` si existe (o ubicación anterior bajo datos de usuario, ver ``secrets_ini_path``)
 2. ELIA_SECRETS_INI (ruta absoluta a un secrets.ini)
-3. Env individuales (prefijo ELIA_ / BEE_ELIA_) para sustituir claves del ini cuando existan
+3. Variables de entorno con prefijo ELIA_* que sustituyen claves del ini cuando existan
 """
 from __future__ import annotations
 
@@ -13,31 +13,28 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from core import bee_paths
+from core import elia_paths
 
 
-def _default_elia_secrets_ini() -> Path:
-    """Ruta canónica secrets.ini bajo datos de usuario (sin depender de bee_paths.elia_secrets_path en .pyd legacy)."""
-    d = bee_paths.ensure_user_data_root() / "elia"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "secrets.ini"
+def secrets_ini_path() -> Path:
+    """Ruta del secrets.ini efectivo para lectura."""
+    env_abs = os.environ.get("ELIA_SECRETS_INI", "").strip()
+    if env_abs:
+        return Path(env_abs)
+    canon = elia_paths.integrations_secrets_path()
+    legacy_subdir = elia_paths.ensure_user_data_root() / "elia" / "secrets.ini"
+    if canon.is_file():
+        return canon
+    if legacy_subdir.is_file():
+        return legacy_subdir
+    return canon
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
     v = os.environ.get(key, "").strip()
     if v:
         return v
-    alt = os.environ.get(f"BEE_{key}", "").strip()
-    if alt:
-        return alt
     return default
-
-
-def secrets_ini_path() -> Path:
-    override = _env("ELIA_SECRETS_INI")
-    if override:
-        return Path(override)
-    return _default_elia_secrets_ini()
 
 
 def load_config_parser() -> tuple[configparser.ConfigParser, Path]:

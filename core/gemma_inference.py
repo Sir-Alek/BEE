@@ -2,8 +2,8 @@
 Inferencia local vía llama-cpp-python (llama.cpp embebido, sin binario llama-cli).
 
 Variables de entorno opcionales:
-  ELIA_LLAMA_N_CTX — contexto en tokens (default 4096). (Compat: BEE_LLAMA_N_CTX)
-  ELIA_LLAMA_N_GPU_LAYERS — capas en GPU (default 0 = solo CPU). (Compat: BEE_LLAMA_N_GPU_LAYERS)
+  ELIA_LLAMA_N_CTX — contexto en tokens (default 4096).
+  ELIA_LLAMA_N_GPU_LAYERS — capas en GPU (default 0 = solo CPU).
 
 El modelo GGUF se resuelve con gemma_model_paths.resolve_gguf_path().
 """
@@ -74,8 +74,8 @@ def _get_llama(gguf_path: Optional[str] = None):
             return _llama_instance
 
         Llama = _llama_cpp_import()
-        n_ctx = int(os.environ.get("ELIA_LLAMA_N_CTX") or os.environ.get("BEE_LLAMA_N_CTX") or "4096")
-        n_gpu = int(os.environ.get("ELIA_LLAMA_N_GPU_LAYERS") or os.environ.get("BEE_LLAMA_N_GPU_LAYERS") or "0")
+        n_ctx = int(os.environ.get("ELIA_LLAMA_N_CTX") or "4096")
+        n_gpu = int(os.environ.get("ELIA_LLAMA_N_GPU_LAYERS") or "0")
 
         _llama_instance = Llama(
             model_path=model,
