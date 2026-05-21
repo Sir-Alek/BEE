@@ -33,6 +33,7 @@ from core._cython_build_manifest import (
     CYTHON_REL_PATHS,
     NON_CYTHON_PY_FILENAMES,
     NON_CYTHON_RUNTIME_REL_PATHS,
+    rel_path_to_module,
     verify_core_manifest_coverage,
 )
 
@@ -184,11 +185,29 @@ def _find_in_dist(rel_posix: str) -> list[str]:
     return hits
 
 
+def _analysis_toc_path() -> str | None:
+    path = os.path.join(ROOT, "build", "ELIA", "Analysis-00.toc")
+    return path if os.path.isfile(path) else None
+
+
+def _module_in_analysis_toc(module_name: str, toc_text: str) -> bool:
+    """Comprueba hiddenimports / pure modules registrados por PyInstaller."""
+    return f"'{module_name}'" in toc_text
+
+
+def _runtime_module_packaged(rel_py: str, toc_text: str) -> bool:
+    if _find_in_dist(rel_py):
+        return True
+    if not toc_text:
+        return False
+    return _module_in_analysis_toc(rel_path_to_module(rel_py), toc_text)
+
+
 def verify_dist_bundle(strict: bool = True) -> None:
     """
     Tras PyInstaller + strip:
-      - Los módulos Cython no deben quedar como .py (solo .pyd/.so + __init__.py).
-      - Los módulos runtime excluidos de Cython deben conservar su .py.
+      - Los módulos Cython no deben quedar como .py sueltos (solo .pyd/.so + __init__.py).
+      - Los módulos runtime excluidos de Cython deben estar en el bundle (PYZ o .py suelto).
       - Cada módulo Cython debe tener extensión nativa en dist/.
     """
     roots = _dist_core_roots()
@@ -200,11 +219,20 @@ def verify_dist_bundle(strict: bool = True) -> None:
         print(f"AVISO: {msg}")
         return
 
+    toc_text = ""
+    toc_path = _analysis_toc_path()
+    if toc_path:
+        try:
+            with open(toc_path, encoding="utf-8", errors="ignore") as f:
+                toc_text = f.read()
+        except OSError as exc:
+            print(f"AVISO: no se pudo leer {toc_path}: {exc}")
+
     errors: list[str] = []
 
     for rel_py in CYTHON_REL_PATHS:
         for hit in _find_in_dist(rel_py):
-            errors.append(f"Quedó .py de módulo Cython en el bundle: {os.path.relpath(hit, ROOT)}")
+            errors.append(f"Quedó .py suelto de módulo Cython en el bundle: {os.path.relpath(hit, ROOT)}")
         rel_native = os.path.splitext(rel_py)[0]
         native_hits: list[str] = []
         for core_root in roots:
@@ -221,8 +249,13 @@ def verify_dist_bundle(strict: bool = True) -> None:
             errors.append(f"Falta extensión nativa en dist/ para {rel_py}")
 
     for rel_py in NON_CYTHON_RUNTIME_REL_PATHS:
-        if not _find_in_dist(rel_py):
-            errors.append(f"Falta .py runtime (no Cython) en dist/: {rel_py}")
+        if not _runtime_module_packaged(rel_py, toc_text):
+            mod = rel_path_to_module(rel_py)
+            errors.append(
+                f"Modulo runtime no empaquetado (PYZ/datas): {mod}"
+                if toc_text
+                else f"Modulo runtime no encontrado en dist/: {rel_py}"
+            )
 
     if errors and strict:
         print("ERROR: Verificación del bundle dist/ELIA:", file=sys.stderr)
@@ -232,6 +265,11 @@ def verify_dist_bundle(strict: bool = True) -> None:
     elif errors:
         for err in errors:
             print(f"AVISO bundle: {err}")
+    else:
+        print(
+            f"OK verify_dist_bundle: {len(CYTHON_REL_PATHS)} modulo(s) Cython con .pyd, "
+            f"{len(NON_CYTHON_RUNTIME_REL_PATHS)} runtime en PYZ/datas."
+        )
 
 
 def strip_py_from_dist() -> None:
@@ -282,7 +320,11 @@ def strip_py_from_dist() -> None:
         if len(warned_missing_native) > 12:
             print(f"   ... y {len(warned_missing_native) - 12} más", file=sys.stderr)
 
-    print(f"OK strip_py_from_dist: {removed} archivo(s) .py retirado(s) del bundle.")
+    print(f"OK strip_py_from_dist: {removed} archivo(s) .py suelto(s) retirado(s) del bundle.")
+    if removed == 0:
+        print(
+            "   (0 retirados es normal si PyInstaller ya empaquetó core/ como .pyd/PYZ sin .py sueltos.)"
+        )
 
 
 def report_manifest() -> None:
@@ -291,7 +333,7 @@ def report_manifest() -> None:
     for rel in CYTHON_REL_PATHS:
         print(f"  · {rel}")
     print(
-        f"Runtime sin Cython: {len(NON_CYTHON_RUNTIME_REL_PATHS)} modulo(s) -> .py en el exe"
+        f"Runtime sin Cython: {len(NON_CYTHON_RUNTIME_REL_PATHS)} modulo(s) -> bytecode PYZ en el exe"
     )
     for rel in NON_CYTHON_RUNTIME_REL_PATHS:
         print(f"  · {rel}")

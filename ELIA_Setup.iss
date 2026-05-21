@@ -103,7 +103,8 @@ end;
 
 function ReadMaxVersionFromManifest: String;
 var
-  Path, Content, Tag: String;
+  Path, Tag: String;
+  Content: AnsiString;
   PStart, PEnd: Integer;
 begin
   Result := '';
@@ -161,18 +162,7 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ReadmeSrc, ReadmeDst: string;
 begin
-  // Tras compilar: copiar readme junto al instalador (carpeta OutputDir = ELIA\).
-  if CurStep = ssPostCompile then
-  begin
-    ReadmeSrc := ExpandConstant('{sd}\readme.txt');
-    ReadmeDst := ExpandConstant('{sd}\{#MyOutputDir}\readme.txt');
-    if FileExists(ReadmeSrc) then
-      FileCopy(ReadmeSrc, ReadmeDst, False);
-  end;
-
   // Configurar permisos después de la instalación
   if CurStep = ssPostInstall then
   begin
