@@ -8,17 +8,23 @@ import {
   getEliaConnectors,
   getJob,
   getLicenseStatus,
+  getMobileAvds,
+  getMobileDevices,
+  getMobilePreflight,
   getModulesStatus,
   getRecorderPreflight,
   getScenarios,
   getRecordings,
   type LicenseStatusResponse,
+  type MobileDeviceInfo,
+  type MobilePreflightResponse,
   type RecorderPreflightResponse,
   type AiCapabilitiesResponse,
   type AiMode,
   putEliaConnectors,
   sendPromptResponse,
   startConvertJob,
+  startMobileEmulator,
   stopRecording,
   testEliaConnector,
   uploadDocs,
@@ -410,6 +416,18 @@ export default function App() {
   const [recorderPreflightLoading, setRecorderPreflightLoading] = useState(false);
   const [apkPath, setApkPath] = useState("");
   const [deviceId, setDeviceId] = useState("");
+  const [deviceMode, setDeviceMode] = useState<"physical" | "emulator">("physical");
+  const [mobileDevices, setMobileDevices] = useState<MobileDeviceInfo[]>([]);
+  const [mobileDevicesLoading, setMobileDevicesLoading] = useState(false);
+  const [mobileDevicesError, setMobileDevicesError] = useState<string | null>(null);
+  const [mobileAvds, setMobileAvds] = useState<string[]>([]);
+  const [mobileAvdsLoading, setMobileAvdsLoading] = useState(false);
+  const [mobileAvdsError, setMobileAvdsError] = useState<string | null>(null);
+  const [selectedAvd, setSelectedAvd] = useState("");
+  const [mobilePreflight, setMobilePreflight] = useState<MobilePreflightResponse | null>(null);
+  const [mobilePreflightLoading, setMobilePreflightLoading] = useState(false);
+  const [emulatorStarting, setEmulatorStarting] = useState(false);
+  const [emulatorMessage, setEmulatorMessage] = useState<string | null>(null);
   const [appPackage, setAppPackage] = useState("");
   const [appActivity, setAppActivity] = useState("");
   const [windowName, setWindowName] = useState("");
@@ -634,6 +652,104 @@ export default function App() {
     };
   }, [isHomeSurface, homeTab, platform, canRunJobs]);
 
+  const refreshMobileDevices = useCallback(async () => {
+    setMobileDevicesLoading(true);
+    setMobileDevicesError(null);
+    try {
+      const res = await getMobileDevices();
+      const devices = res.devices ?? [];
+      setMobileDevices(devices);
+      if (res.error) setMobileDevicesError(res.error);
+      const online = devices.filter((d) => d.state === "device");
+      setDeviceId((prev) => {
+        const filtered =
+          deviceMode === "physical"
+            ? online.filter((d) => d.kind === "physical")
+            : online.filter((d) => d.kind === "emulator");
+        if (filtered.length === 1) return filtered[0].id;
+        if (prev && filtered.some((d) => d.id === prev)) return prev;
+        return filtered[0]?.id ?? prev;
+      });
+    } catch {
+      setMobileDevices([]);
+      setMobileDevicesError("No se pudo obtener la lista de dispositivos adb.");
+    } finally {
+      setMobileDevicesLoading(false);
+    }
+  }, [deviceMode]);
+
+  const refreshMobileAvds = useCallback(async () => {
+    setMobileAvdsLoading(true);
+    setMobileAvdsError(null);
+    try {
+      const res = await getMobileAvds();
+      const avds = res.avds ?? [];
+      setMobileAvds(avds);
+      if (res.error) setMobileAvdsError(res.error);
+      setSelectedAvd((prev) => (prev && avds.includes(prev) ? prev : avds[0] ?? ""));
+    } catch {
+      setMobileAvds([]);
+      setMobileAvdsError("No se pudo listar AVDs del SDK.");
+    } finally {
+      setMobileAvdsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHomeSurface || homeTab !== "ui" || platform !== "mobile" || !canRunJobs) return;
+    let alive = true;
+    setMobilePreflightLoading(true);
+    void (async () => {
+      try {
+        const pf = await getMobilePreflight();
+        if (alive) setMobilePreflight(pf);
+      } catch {
+        if (alive) {
+          setMobilePreflight({
+            ok: false,
+            platform: "unknown",
+            items: [],
+            warnings: [],
+            errors: ["No se pudo comprobar el entorno móvil. Reinicie ELIA e inténtelo de nuevo."],
+            env: {},
+            android_only: true,
+          });
+        }
+      } finally {
+        if (alive) setMobilePreflightLoading(false);
+      }
+    })();
+    void refreshMobileDevices();
+    void refreshMobileAvds();
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface, homeTab, platform, canRunJobs, refreshMobileDevices, refreshMobileAvds]);
+
+  useEffect(() => {
+    if (platform !== "mobile") return;
+    void refreshMobileDevices();
+  }, [deviceMode, platform, refreshMobileDevices]);
+
+  const handleStartEmulator = useCallback(async () => {
+    if (!selectedAvd.trim()) {
+      setEmulatorMessage("Selecciona un AVD.");
+      return;
+    }
+    setEmulatorStarting(true);
+    setEmulatorMessage("Iniciando emulador…");
+    try {
+      const res = await startMobileEmulator({ avd: selectedAvd.trim(), wait_boot: true });
+      if (res.device_id) setDeviceId(res.device_id);
+      setEmulatorMessage(res.message || (res.ok ? "Emulador listo." : "No se pudo iniciar el emulador."));
+      await refreshMobileDevices();
+    } catch (e) {
+      setEmulatorMessage(e instanceof Error ? e.message : "Error al iniciar el emulador.");
+    } finally {
+      setEmulatorStarting(false);
+    }
+  }, [refreshMobileDevices, selectedAvd]);
+
   // Close home tab = close whole app (backend). sendBeacon/fetch + main.py polling /api/app/should-exit.
   useEffect(() => {
     if (!isHomeSurface) return;
@@ -705,7 +821,19 @@ export default function App() {
     }
     if (mode === "mobile_recorder") {
       if (!deviceId.trim()) {
-        setErrorText("Introduce el ID del dispositivo o emulador (salida de adb devices).");
+        setErrorText(
+          deviceMode === "emulator"
+            ? "Inicia un emulador o selecciona uno visible en adb devices."
+            : "Conecta un dispositivo Android o selecciónalo en la lista adb.",
+        );
+        return;
+      }
+      if (mobilePreflight && !mobilePreflight.ok) {
+        setErrorText(
+          mobilePreflight.errors.length
+            ? mobilePreflight.errors.join(" ")
+            : "Revisa el entorno móvil (adb, Appium, dispositivo) antes de grabar.",
+        );
         return;
       }
       if (!apkPath.trim() && !appPackage.trim()) {
@@ -2429,16 +2557,281 @@ export default function App() {
                 )}
                 {platform === "mobile" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-                    <input
-                      value={deviceId}
-                      onChange={(e) => setDeviceId(e.target.value)}
-                      placeholder="ID del dispositivo / emulador (adb devices, ej: emulator-5554)"
-                      style={{
-                        padding: "10px 12px", borderRadius: 10,
-                        border: `1px solid ${c.inputBorder}`, background: c.inputBg,
-                        color: c.text, outline: "none", fontSize: 14,
-                      }}
-                    />
+                    {mobilePreflightLoading && (
+                      <div style={{ fontSize: 12, color: c.muted }}>Comprobando entorno Android…</div>
+                    )}
+                    {!mobilePreflightLoading && mobilePreflight && !mobilePreflight.ok && (
+                      <div
+                        data-testid="elia-mobile-preflight-errors"
+                        role="alert"
+                        style={{
+                          fontSize: 13,
+                          color: c.text,
+                          background: c.licWarnBg,
+                          border: `1px solid ${c.licWarnBorder}`,
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {mobilePreflight.errors.map((line, i) => (
+                          <div key={i}>{line}</div>
+                        ))}
+                      </div>
+                    )}
+                    {!mobilePreflightLoading && mobilePreflight?.ok && mobilePreflight.warnings.length > 0 && (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: c.text,
+                          background: c.warnBg,
+                          border: `1px solid ${c.warnBorder}`,
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {mobilePreflight.warnings.join(" ")}
+                      </div>
+                    )}
+                    {!mobilePreflightLoading && mobilePreflight && (
+                      <div
+                        data-testid="elia-mobile-preflight-checklist"
+                        style={{
+                          fontSize: 11,
+                          color: c.muted,
+                          lineHeight: 1.5,
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: `1px solid ${c.inputBorder}`,
+                          background: c.inputBg,
+                        }}
+                      >
+                        {mobilePreflight.items.map((item) => (
+                          <div key={item.id}>
+                            {item.ok ? "✓" : "✗"} {item.label}: {item.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 12, fontWeight: 600, color: c.text }}>Origen del dispositivo (Android)</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        data-testid="elia-mobile-mode-physical"
+                        onClick={() => setDeviceMode("physical")}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${deviceMode === "physical" ? c.primary : c.inputBorder}`,
+                          background: deviceMode === "physical" ? c.primary : c.inputBg,
+                          color: deviceMode === "physical" ? c.primaryFg : c.text,
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        Dispositivo físico
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="elia-mobile-mode-emulator"
+                        onClick={() => setDeviceMode("emulator")}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${deviceMode === "emulator" ? c.primary : c.inputBorder}`,
+                          background: deviceMode === "emulator" ? c.primary : c.inputBg,
+                          color: deviceMode === "emulator" ? c.primaryFg : c.text,
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        Emulador Android
+                      </button>
+                    </div>
+
+                    {deviceMode === "physical" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <select
+                            data-testid="elia-mobile-device-select"
+                            value={deviceId}
+                            onChange={(e) => setDeviceId(e.target.value)}
+                            style={{
+                              flex: "1 1 220px",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              fontSize: 14,
+                            }}
+                          >
+                            <option value="">— Selecciona dispositivo adb —</option>
+                            {mobileDevices
+                              .filter((d) => d.kind === "physical")
+                              .map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.id}
+                                  {d.model ? ` · ${d.model}` : ""} ({d.state})
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            data-testid="elia-mobile-refresh-devices"
+                            disabled={mobileDevicesLoading}
+                            onClick={() => void refreshMobileDevices()}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              cursor: mobileDevicesLoading ? "wait" : "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            {mobileDevicesLoading ? "…" : "Actualizar"}
+                          </button>
+                        </div>
+                        {mobileDevicesError && (
+                          <div style={{ fontSize: 11, color: c.errorTitle }}>{mobileDevicesError}</div>
+                        )}
+                        <input
+                          value={deviceId}
+                          onChange={(e) => setDeviceId(e.target.value)}
+                          placeholder="O escribe el serial manualmente (adb devices)"
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: `1px solid ${c.inputBorder}`,
+                            background: c.inputBg,
+                            color: c.text,
+                            outline: "none",
+                            fontSize: 14,
+                          }}
+                        />
+                        <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
+                          Conecta el móvil por USB o Wi‑Fi adb. Activa depuración USB en el dispositivo.
+                        </div>
+                      </div>
+                    )}
+
+                    {deviceMode === "emulator" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <select
+                            data-testid="elia-mobile-avd-select"
+                            value={selectedAvd}
+                            onChange={(e) => setSelectedAvd(e.target.value)}
+                            disabled={mobileAvdsLoading || mobileAvds.length === 0}
+                            style={{
+                              flex: "1 1 220px",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              fontSize: 14,
+                            }}
+                          >
+                            <option value="">
+                              {mobileAvdsLoading ? "Cargando AVDs…" : "— Selecciona AVD —"}
+                            </option>
+                            {mobileAvds.map((avd) => (
+                              <option key={avd} value={avd}>
+                                {avd}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            data-testid="elia-mobile-start-emulator"
+                            disabled={emulatorStarting || !selectedAvd.trim()}
+                            onClick={() => void handleStartEmulator()}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: emulatorStarting ? c.buttonDisabledBg : c.primary,
+                              color: c.primaryFg,
+                              cursor: emulatorStarting ? "wait" : "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            {emulatorStarting ? "Arrancando…" : "Iniciar emulador"}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="elia-mobile-refresh-avds"
+                            disabled={mobileAvdsLoading}
+                            onClick={() => void refreshMobileAvds()}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              cursor: mobileAvdsLoading ? "wait" : "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            AVDs
+                          </button>
+                        </div>
+                        {mobileAvdsError && <div style={{ fontSize: 11, color: c.errorTitle }}>{mobileAvdsError}</div>}
+                        {emulatorMessage && (
+                          <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>{emulatorMessage}</div>
+                        )}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <select
+                            data-testid="elia-mobile-emulator-device-select"
+                            value={deviceId}
+                            onChange={(e) => setDeviceId(e.target.value)}
+                            style={{
+                              flex: "1 1 220px",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              fontSize: 14,
+                            }}
+                          >
+                            <option value="">— Emulador en adb —</option>
+                            {mobileDevices
+                              .filter((d) => d.kind === "emulator")
+                              .map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.id} ({d.state})
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={mobileDevicesLoading}
+                            onClick={() => void refreshMobileDevices()}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              cursor: mobileDevicesLoading ? "wait" : "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            adb
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
+                          Requiere Android SDK + imagen AVD creada en Android Studio. iOS no soportado.
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
                       App ya instalada en el móvil
                     </div>
@@ -2483,7 +2876,9 @@ export default function App() {
                     />
                     <div style={{ fontSize: 12, color: c.muted }}>
                       Requiere Appium en localhost:4723, Android SDK y{" "}
-                      <code style={{ fontSize: 11 }}>adb</code> en el PATH.
+                      <code style={{ fontSize: 11 }}>adb</code> en el PATH. Variables opcionales:{" "}
+                      <code style={{ fontSize: 11 }}>ELIA_ANDROID_HOME</code>,{" "}
+                      <code style={{ fontSize: 11 }}>ELIA_ADB_PATH</code>.
                     </div>
                   </div>
                 )}
@@ -2602,7 +2997,9 @@ export default function App() {
                     disabled={
                       (license ? !license.can_run_jobs : false) ||
                       (platform === "web" &&
-                        (recorderPreflightLoading || (recorderPreflight != null && !recorderPreflight.ok)))
+                        (recorderPreflightLoading || (recorderPreflight != null && !recorderPreflight.ok))) ||
+                      (platform === "mobile" &&
+                        (mobilePreflightLoading || (mobilePreflight != null && !mobilePreflight.ok)))
                     }
                     onClick={() => {
                       if (platform === "web") startJob("puppeteer_recorder");
@@ -2616,11 +3013,14 @@ export default function App() {
                           ? c.buttonDisabledBg
                           : platform === "web" && recorderPreflight && !recorderPreflight.ok
                             ? c.buttonDisabledBg
-                            : c.primary,
+                            : platform === "mobile" && mobilePreflight && !mobilePreflight.ok
+                              ? c.buttonDisabledBg
+                              : c.primary,
                       color: c.primaryFg, border: "none",
                       cursor:
                         (license && !license.can_run_jobs) ||
-                        (platform === "web" && recorderPreflight && !recorderPreflight.ok)
+                        (platform === "web" && recorderPreflight && !recorderPreflight.ok) ||
+                        (platform === "mobile" && mobilePreflight && !mobilePreflight.ok)
                           ? "not-allowed"
                           : "pointer",
                     }}

@@ -205,7 +205,7 @@ def _apply_android_app_capabilities(
 
 class MobileRecorder:
     """
-    Grabador de interacciones para aplicaciones móviles Android/iOS vía Appium.
+    Grabador de interacciones para aplicaciones Android vía Appium (iOS no soportado).
 
     Flujo:
       1. Verificar que Appium Server está corriendo
@@ -232,7 +232,16 @@ class MobileRecorder:
         adapter = self._adapter
         job_id = self._job_id
 
-        # 1. Validar Appium
+        # 1. Validar entorno Android + Appium
+        jm.update_progress(job_id, {"stage": "Verificando entorno Android…"})
+        from core.ui_automation.mobile_android import assert_device_online
+
+        device_err = assert_device_online(device_id)
+        if device_err:
+            msg, details = device_err
+            jm.mark_error(job_id, message=msg, details=details)
+            return
+
         jm.update_progress(job_id, {"stage": "Verificando Appium Server…"})
         if not _check_appium_server():
             jm.mark_error(

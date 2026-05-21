@@ -103,6 +103,16 @@ class AiPreferencesRequest(BaseModel):
     mode: str  # auto | on | off
 
 
+class MobileEmulatorStartRequest(BaseModel):
+    avd: str
+    wait_boot: bool = True
+    timeout_sec: int = Field(default=180, ge=30, le=600)
+
+
+class MobileEmulatorStopRequest(BaseModel):
+    device_id: Optional[str] = None
+
+
 def _repo_root() -> str:
     """
     Devuelve la raíz del proyecto / directorio del bundle.
@@ -291,6 +301,74 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
         result = resolve_chrome_for_recording(base_dir)
         return result.to_dict()
+
+    @app.get("/api/mobile/devices")
+    def mobile_devices(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        """Lista dispositivos adb (físico / emulador). Android only."""
+        from core.ui_automation.mobile_android import list_devices
+
+        devices, err = list_devices()
+        return {
+            "ok": err is None,
+            "devices": [d.to_dict() for d in devices],
+            "error": err,
+            "android_only": True,
+        }
+
+    @app.get("/api/mobile/diagnostics")
+    def mobile_diagnostics(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import run_diagnostics
+
+        return run_diagnostics()
+
+    @app.get("/api/mobile/avds")
+    def mobile_avds(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import list_avds
+
+        avds, err = list_avds()
+        return {"ok": err is None, "avds": avds, "error": err, "android_only": True}
+
+    @app.get("/api/mobile/preflight")
+    def mobile_preflight(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import run_preflight
+
+        return run_preflight().to_dict()
+
+    @app.post("/api/mobile/emulator/start")
+    def mobile_emulator_start(
+        req: MobileEmulatorStartRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import start_emulator
+
+        return start_emulator(
+            req.avd,
+            wait_boot=req.wait_boot,
+            timeout_sec=float(req.timeout_sec),
+        )
+
+    @app.post("/api/mobile/emulator/stop")
+    def mobile_emulator_stop(
+        req: MobileEmulatorStopRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import stop_emulator
+
+        return stop_emulator(req.device_id)
 
     @app.post("/api/license/activate")
     def license_activate(

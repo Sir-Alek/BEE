@@ -115,6 +115,103 @@ export async function getRecorderPreflight(): Promise<RecorderPreflightResponse>
   return res.json();
 }
 
+export type MobileDeviceInfo = {
+  id: string;
+  state: string;
+  kind: "physical" | "emulator";
+  model?: string | null;
+  product?: string | null;
+};
+
+export type MobileDevicesResponse = {
+  ok: boolean;
+  devices: MobileDeviceInfo[];
+  error?: string | null;
+  android_only: boolean;
+};
+
+export type MobileAvdsResponse = {
+  ok: boolean;
+  avds: string[];
+  error?: string | null;
+  android_only: boolean;
+};
+
+export type MobilePreflightItem = {
+  id: string;
+  label: string;
+  ok: boolean;
+  message: string;
+  hint?: string | null;
+};
+
+export type MobilePreflightResponse = {
+  ok: boolean;
+  platform: string;
+  items: MobilePreflightItem[];
+  warnings: string[];
+  errors: string[];
+  env: Record<string, string | null | undefined>;
+  android_only: boolean;
+};
+
+export type MobileEmulatorStartResponse = {
+  ok: boolean;
+  message: string;
+  device_id: string | null;
+  reused?: boolean;
+  hint?: string;
+};
+
+export async function getMobileDevices(): Promise<MobileDevicesResponse> {
+  const res = await fetch("/api/mobile/devices");
+  if (!res.ok) throw new Error(`Failed to fetch mobile devices: ${res.status}`);
+  return res.json();
+}
+
+export async function getMobileAvds(): Promise<MobileAvdsResponse> {
+  const res = await fetch("/api/mobile/avds");
+  if (!res.ok) throw new Error(`Failed to fetch mobile AVDs: ${res.status}`);
+  return res.json();
+}
+
+export async function getMobilePreflight(): Promise<MobilePreflightResponse> {
+  const res = await fetch("/api/mobile/preflight");
+  if (!res.ok) throw new Error(`Failed to fetch mobile preflight: ${res.status}`);
+  return res.json();
+}
+
+export async function startMobileEmulator(params: {
+  avd: string;
+  wait_boot?: boolean;
+  timeout_sec?: number;
+}): Promise<MobileEmulatorStartResponse> {
+  const res = await fetch("/api/mobile/emulator/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : JSON.stringify(data);
+    throw new Error(`No se pudo iniciar el emulador: ${detail}`);
+  }
+  return data;
+}
+
+export async function stopMobileEmulator(deviceId?: string): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch("/api/mobile/emulator/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(deviceId ? { device_id: deviceId } : {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`No se pudo detener el emulador: ${res.status}`);
+  }
+  return data;
+}
+
 export async function uploadDocs(files: File[]): Promise<{ ok: boolean; files: LoadedDoc[] }> {
   const form = new FormData();
   for (const f of files) form.append("files", f);

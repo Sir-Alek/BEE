@@ -1,0 +1,546 @@
+"""
+Descubrimiento de entorno Android (adb, SDK, AVD, Appium) para grabación móvil.
+
+Alcance: Android únicamente. iOS no está soportado en Windows.
+"""
+from __future__ import annotations
+
+import http.client
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
+
+@dataclass
+class AndroidTool:
+    name: str
+    path: Optional[str] = None
+    source: Optional[str] = None
+    version: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "path": self.path,
+            "source": self.source,
+            "version": self.version,
+            "ok": bool(self.path),
+        }
+
+
+@dataclass
+class MobileDevice:
+    id: str
+    state: str
+    kind: str  # physical | emulator
+    model: Optional[str] = None
+    product: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "state": self.state,
+            "kind": self.kind,
+            "model": self.model,
+            "product": self.product,
+        }
+
+
+@dataclass
+class MobilePreflightResult:
+    ok: bool
+    platform: str = sys.platform
+    items: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    env: Dict[str, Optional[str]] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "platform": self.platform,
+            "items": self.items,
+            "warnings": self.warnings,
+            "errors": self.errors,
+            "env": self.env,
+            "android_only": True,
+        }
+
+
+def _subprocess_flags() -> int:
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _run_cmd(
+    argv: List[str],
+    *,
+    timeout: float = 30.0,
+    text: bool = True,
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        argv,
+        capture_output=True,
+        text=text,
+        timeout=timeout,
+        creationflags=_subprocess_flags(),
+    )
+
+
+def resolve_android_sdk() -> Tuple[Optional[str], Optional[str]]:
+    for env_name in ("ELIA_ANDROID_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        val = (os.environ.get(env_name) or "").strip()
+        if val and os.path.isdir(val):
+            return val, env_name.lower()
+    local = (os.environ.get("LOCALAPPDATA") or "").strip()
+    if local:
+        candidate = os.path.join(local, "Android", "Sdk")
+        if os.path.isdir(candidate):
+            return candidate, "localappdata"
+    return None, None
+
+
+def _resolve_from_env_or_sdk(
+    env_names: Tuple[str, ...],
+    sdk_relative: str,
+    which_name: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    for env_name in env_names:
+        val = (os.environ.get(env_name) or "").strip()
+        if val and os.path.isfile(val):
+            return val, env_name.lower()
+    sdk_root, sdk_src = resolve_android_sdk()
+    if sdk_root:
+        candidate = os.path.join(sdk_root, *sdk_relative.replace("/", os.sep).split(os.sep))
+        if os.path.isfile(candidate):
+            return candidate, sdk_src or "sdk"
+    found = shutil.which(which_name)
+    if found:
+        return found, "path"
+    return None, None
+
+
+def resolve_adb() -> AndroidTool:
+    path, source = _resolve_from_env_or_sdk(
+        ("ELIA_ADB_PATH",),
+        os.path.join("platform-tools", "adb.exe" if sys.platform == "win32" else "adb"),
+        "adb",
+    )
+    version = None
+    if path:
+        try:
+            proc = _run_cmd([path, "version"], timeout=10)
+            if proc.returncode == 0:
+                version = (proc.stdout or proc.stderr or "").strip().splitlines()[0]
+        except Exception:
+            pass
+    return AndroidTool(name="adb", path=path, source=source, version=version)
+
+
+def resolve_emulator() -> AndroidTool:
+    path, source = _resolve_from_env_or_sdk(
+        ("ELIA_EMULATOR_PATH",),
+        os.path.join("emulator", "emulator.exe" if sys.platform == "win32" else "emulator"),
+        "emulator",
+    )
+    version = None
+    if path:
+        try:
+            proc = _run_cmd([path, "-version"], timeout=10)
+            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+            if out:
+                version = out.splitlines()[0]
+        except Exception:
+            pass
+    return AndroidTool(name="emulator", path=path, source=source, version=version)
+
+
+def check_appium_server(host: str = "localhost", port: int = 4723) -> bool:
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=3)
+        conn.request("GET", "/status")
+        resp = conn.getresponse()
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def parse_adb_devices_output(text: str) -> List[MobileDevice]:
+    devices: List[MobileDevice] = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("list of devices"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        serial, state = parts[0], parts[1]
+        props: Dict[str, str] = {}
+        for token in parts[2:]:
+            if ":" in token:
+                key, val = token.split(":", 1)
+                props[key] = val
+        kind = "emulator" if serial.startswith("emulator-") else "physical"
+        devices.append(
+            MobileDevice(
+                id=serial,
+                state=state,
+                kind=kind,
+                model=props.get("model"),
+                product=props.get("product"),
+            )
+        )
+    return devices
+
+
+def list_devices(*, adb_tool: Optional[AndroidTool] = None) -> Tuple[List[MobileDevice], Optional[str]]:
+    tool = adb_tool or resolve_adb()
+    if not tool.path:
+        return [], "adb no encontrado. Instala Android SDK platform-tools o define ELIA_ADB_PATH."
+    try:
+        proc = _run_cmd([tool.path, "devices", "-l"], timeout=15)
+    except Exception as exc:
+        return [], f"No se pudo ejecutar adb devices: {exc}"
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        return [], err or "adb devices falló"
+    return parse_adb_devices_output(proc.stdout or ""), None
+
+
+def list_avds(*, emulator_tool: Optional[AndroidTool] = None) -> Tuple[List[str], Optional[str]]:
+    tool = emulator_tool or resolve_emulator()
+    if not tool.path:
+        return [], "emulator no encontrado. Instala Android Emulator o define ANDROID_HOME."
+    try:
+        proc = _run_cmd([tool.path, "-list-avds"], timeout=20)
+    except Exception as exc:
+        return [], f"No se pudo listar AVDs: {exc}"
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        return [], err or "emulator -list-avds falló"
+    avds = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    return avds, None
+
+
+def device_boot_completed(device_id: str, *, adb_tool: Optional[AndroidTool] = None) -> bool:
+    tool = adb_tool or resolve_adb()
+    if not tool.path or not device_id.strip():
+        return False
+    try:
+        proc = _run_cmd(
+            [tool.path, "-s", device_id.strip(), "shell", "getprop", "sys.boot_completed"],
+            timeout=10,
+        )
+        return proc.returncode == 0 and (proc.stdout or "").strip() == "1"
+    except Exception:
+        return False
+
+
+def wait_for_emulator_device(
+    *,
+    timeout_sec: float = 180.0,
+    poll_sec: float = 2.0,
+    adb_tool: Optional[AndroidTool] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Espera a que aparezca un emulador online en adb. Devuelve (device_id, error)."""
+    deadline = time.monotonic() + timeout_sec
+    last_err: Optional[str] = None
+    while time.monotonic() < deadline:
+        devices, err = list_devices(adb_tool=adb_tool)
+        if err:
+            last_err = err
+        for dev in devices:
+            if dev.kind == "emulator" and dev.state == "device":
+                return dev.id, None
+        time.sleep(poll_sec)
+    return None, last_err or "Tiempo de espera agotado: ningún emulador visible en adb devices"
+
+
+def wait_for_boot(
+    device_id: str,
+    *,
+    timeout_sec: float = 180.0,
+    poll_sec: float = 2.0,
+    adb_tool: Optional[AndroidTool] = None,
+) -> Tuple[bool, Optional[str]]:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        devices, _ = list_devices(adb_tool=adb_tool)
+        match = next((d for d in devices if d.id == device_id), None)
+        if match and match.state != "device":
+            time.sleep(poll_sec)
+            continue
+        if device_boot_completed(device_id, adb_tool=adb_tool):
+            return True, None
+        time.sleep(poll_sec)
+    return False, "El emulador no terminó de arrancar (sys.boot_completed ≠ 1)"
+
+
+def start_emulator(
+    avd: str,
+    *,
+    wait_boot: bool = True,
+    timeout_sec: float = 180.0,
+) -> Dict[str, Any]:
+    avd = (avd or "").strip()
+    if not avd:
+        return {"ok": False, "message": "Nombre de AVD requerido", "device_id": None}
+
+    emulator_tool = resolve_emulator()
+    if not emulator_tool.path:
+        return {
+            "ok": False,
+            "message": "No se encontró el ejecutable emulator.",
+            "device_id": None,
+            "hint": "Instala Android Emulator desde Android Studio y define ANDROID_HOME o ELIA_ANDROID_HOME.",
+        }
+
+    adb_tool = resolve_adb()
+    devices, _ = list_devices(adb_tool=adb_tool)
+    online_emulators = [d for d in devices if d.kind == "emulator" and d.state == "device"]
+    if online_emulators:
+        device_id = online_emulators[0].id
+        if wait_boot:
+            boot_ok, boot_err = wait_for_boot(device_id, timeout_sec=timeout_sec, adb_tool=adb_tool)
+            if not boot_ok:
+                return {"ok": False, "message": boot_err or "Boot incompleto", "device_id": device_id}
+        return {
+            "ok": True,
+            "message": "Emulador ya conectado en adb.",
+            "device_id": device_id,
+            "reused": True,
+        }
+
+    try:
+        subprocess.Popen(
+            [emulator_tool.path, "-avd", avd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=sys.platform != "win32",
+        )
+    except Exception as exc:
+        return {"ok": False, "message": f"No se pudo iniciar el emulador: {exc}", "device_id": None}
+
+    device_id, wait_err = wait_for_emulator_device(timeout_sec=timeout_sec, adb_tool=adb_tool)
+    if not device_id:
+        return {"ok": False, "message": wait_err or "Emulador no detectado", "device_id": None}
+
+    if wait_boot:
+        boot_ok, boot_err = wait_for_boot(device_id, timeout_sec=timeout_sec, adb_tool=adb_tool)
+        if not boot_ok:
+            return {"ok": False, "message": boot_err or "Boot incompleto", "device_id": device_id}
+
+    return {
+        "ok": True,
+        "message": "Emulador listo.",
+        "device_id": device_id,
+        "reused": False,
+    }
+
+
+def stop_emulator(device_id: Optional[str] = None) -> Dict[str, Any]:
+    adb_tool = resolve_adb()
+    if not adb_tool.path:
+        return {"ok": False, "message": "adb no encontrado", "stopped": []}
+
+    targets: List[str] = []
+    if device_id and device_id.strip():
+        targets = [device_id.strip()]
+    else:
+        devices, _ = list_devices(adb_tool=adb_tool)
+        targets = [d.id for d in devices if d.kind == "emulator" and d.state == "device"]
+
+    if not targets:
+        return {"ok": True, "message": "No hay emuladores activos.", "stopped": []}
+
+    stopped: List[str] = []
+    errors: List[str] = []
+    for dev in targets:
+        try:
+            proc = _run_cmd([adb_tool.path, "-s", dev, "emu", "kill"], timeout=15)
+            if proc.returncode == 0:
+                stopped.append(dev)
+            else:
+                errors.append((proc.stderr or proc.stdout or "").strip() or f"emu kill falló para {dev}")
+        except Exception as exc:
+            errors.append(str(exc))
+
+    ok = bool(stopped) and not errors
+    msg = "Emulador detenido." if ok else ("; ".join(errors) if errors else "No se pudo detener el emulador.")
+    return {"ok": ok or bool(stopped), "message": msg, "stopped": stopped, "errors": errors}
+
+
+def assert_device_online(device_id: str) -> Optional[Tuple[str, str]]:
+    """Devuelve (message, details) si el dispositivo no está listo; None si OK."""
+    dev_id = (device_id or "").strip()
+    if not dev_id:
+        return ("Dispositivo requerido", "Indica un ID de adb devices (físico o emulador).")
+
+    adb_tool = resolve_adb()
+    if not adb_tool.path:
+        return (
+            "adb no encontrado",
+            "Instala Android SDK platform-tools o define ELIA_ADB_PATH / ANDROID_HOME.",
+        )
+
+    devices, err = list_devices(adb_tool=adb_tool)
+    if err:
+        return ("Error al listar dispositivos", err)
+
+    match = next((d for d in devices if d.id == dev_id), None)
+    if not match:
+        known = ", ".join(d.id for d in devices) or "(ninguno)"
+        return (
+            "Dispositivo no encontrado",
+            f"No aparece «{dev_id}» en adb devices.\n\nConectados: {known}",
+        )
+    if match.state != "device":
+        return (
+            "Dispositivo no listo",
+            f"«{dev_id}» está en estado «{match.state}». Autoriza depuración USB o espera a que el emulador termine de arrancar.",
+        )
+    if match.kind == "emulator" and not device_boot_completed(dev_id, adb_tool=adb_tool):
+        return (
+            "Emulador arrancando",
+            "Espera a que el emulador termine de iniciar (sys.boot_completed = 1) e inténtalo de nuevo.",
+        )
+    return None
+
+
+def collect_env_hints() -> Dict[str, Optional[str]]:
+    sdk, sdk_src = resolve_android_sdk()
+    adb = resolve_adb()
+    emulator = resolve_emulator()
+    return {
+        "elia_android_home": os.environ.get("ELIA_ANDROID_HOME"),
+        "android_home": os.environ.get("ANDROID_HOME"),
+        "android_sdk_root": os.environ.get("ANDROID_SDK_ROOT"),
+        "elia_adb_path": os.environ.get("ELIA_ADB_PATH"),
+        "elia_emulator_path": os.environ.get("ELIA_EMULATOR_PATH"),
+        "resolved_sdk": sdk,
+        "resolved_sdk_source": sdk_src,
+        "resolved_adb": adb.path,
+        "resolved_emulator": emulator.path,
+        "appium_url": "http://localhost:4723",
+    }
+
+
+def run_diagnostics() -> Dict[str, Any]:
+    sdk, sdk_src = resolve_android_sdk()
+    adb = resolve_adb()
+    emulator = resolve_emulator()
+    devices, devices_err = list_devices(adb_tool=adb)
+    avds, avds_err = list_avds(emulator_tool=emulator)
+    appium_ok = check_appium_server()
+    return {
+        "ok": bool(adb.path) and appium_ok and any(d.state == "device" for d in devices),
+        "platform": sys.platform,
+        "android_only": True,
+        "sdk": {"path": sdk, "source": sdk_src},
+        "tools": {
+            "adb": adb.to_dict(),
+            "emulator": emulator.to_dict(),
+        },
+        "appium": {"ok": appium_ok, "url": "http://localhost:4723"},
+        "devices": [d.to_dict() for d in devices],
+        "devices_error": devices_err,
+        "avds": avds,
+        "avds_error": avds_err,
+        "env": collect_env_hints(),
+    }
+
+
+def run_preflight() -> MobilePreflightResult:
+    env = collect_env_hints()
+    warnings: List[str] = []
+    errors: List[str] = []
+    items: List[Dict[str, Any]] = []
+
+    sdk, sdk_src = resolve_android_sdk()
+    sdk_ok = bool(sdk)
+    items.append(
+        {
+            "id": "android_sdk",
+            "label": "Android SDK",
+            "ok": sdk_ok,
+            "message": sdk or "No detectado",
+            "hint": "Define ANDROID_HOME, ELIA_ANDROID_HOME o instala Android Studio.",
+        }
+    )
+    if not sdk_ok:
+        errors.append("Android SDK no detectado.")
+
+    adb = resolve_adb()
+    items.append(
+        {
+            "id": "adb",
+            "label": "adb (platform-tools)",
+            "ok": bool(adb.path),
+            "message": adb.path or "No encontrado",
+            "hint": "Añade platform-tools al PATH o define ELIA_ADB_PATH.",
+        }
+    )
+    if not adb.path:
+        errors.append("adb no encontrado.")
+
+    emulator = resolve_emulator()
+    items.append(
+        {
+            "id": "emulator",
+            "label": "Android Emulator",
+            "ok": bool(emulator.path),
+            "message": emulator.path or "No encontrado",
+            "hint": "Instala el paquete Emulator en Android Studio SDK Manager.",
+        }
+    )
+    if not emulator.path:
+        warnings.append("Emulator no encontrado: solo podrás usar dispositivo físico.")
+
+    appium_ok = check_appium_server()
+    items.append(
+        {
+            "id": "appium",
+            "label": "Appium Server (:4723)",
+            "ok": appium_ok,
+            "message": "Accesible" if appium_ok else "No responde en localhost:4723",
+            "hint": "npm install -g appium && appium driver install uiautomator2 && appium",
+        }
+    )
+    if not appium_ok:
+        errors.append("Appium Server no accesible en localhost:4723.")
+
+    devices, devices_err = list_devices(adb_tool=adb)
+    online = [d for d in devices if d.state == "device"]
+    avds, avds_err = list_avds(emulator_tool=emulator)
+    device_ok = bool(online)
+    items.append(
+        {
+            "id": "device",
+            "label": "Dispositivo Android online",
+            "ok": device_ok,
+            "message": ", ".join(d.id for d in online) if online else (devices_err or "Ninguno"),
+            "hint": "Conecta USB/Wi‑Fi adb o inicia un AVD desde ELIA.",
+        }
+    )
+    if avds:
+        items.append(
+            {
+                "id": "avds",
+                "label": "AVDs disponibles",
+                "ok": True,
+                "message": ", ".join(avds[:5]) + ("…" if len(avds) > 5 else ""),
+                "hint": None,
+            }
+        )
+    elif avds_err:
+        warnings.append(avds_err)
+
+    if sdk_src == "localappdata":
+        warnings.append("SDK detectado en %LOCALAPPDATA%\\Android\\Sdk.")
+
+    ok = not errors
+    return MobilePreflightResult(ok=ok, items=items, warnings=warnings, errors=errors, env=env)
