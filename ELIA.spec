@@ -122,7 +122,7 @@ a = Analysis(
         ('Licence.txt',     '.'),
         ('readme.txt',      '.'),
     ) + llama_datas + excel_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
+    hiddenimports=['mss', 'cv2', 'numpy', 'multipart'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

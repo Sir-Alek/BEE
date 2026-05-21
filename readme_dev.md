@@ -26,6 +26,7 @@ pip install -r requirements.txt
 - **Excel → BDD** requiere `pandas`, `python-calamine` y `openpyxl` (incluidos en `requirements.txt`). Si ves `pandas no está instalado`, reinstala dependencias: `pip install -r requirements.txt`.
 - Activar después: `.venv\Scripts\activate` (Windows) o `source .venv/bin/activate` (Linux/macOS).
 - Ejecutar la app: `python main.py`
+- Usa siempre el **venv del repo** (`.venv\Scripts\activate`). Si ejecutas `python main.py` con el Python global de Windows, faltarán paquetes como `python-multipart` y la UI web no arrancará.
 
 ## Inteligencia local (Gemma) — política por defecto
 
@@ -92,7 +93,8 @@ python -m PyInstaller --noconfirm ELIA.spec
 
 ## Licencia offline (`core/elia_license.py`)
 
-- **Activación obligatoria:** sin clave válida no se ejecutan jobs (grabación, conversión, IA). La app arranca para permitir activar en Configuración → Licencia.
+- **Activación obligatoria:** sin licencia vigente no se ejecutan jobs (grabación, conversión, `doc_to_bdd`, conectores, IA). La app arranca para ver la pantalla principal y usar Configuración → **General** (tema), **Licencia** y **Acerca de**.
+- **Módulos:** `mobile_recording` y `legacy_recording` vienen **solo** de la clave activa (flags `M`/`L`). `doc_to_bdd` requiere licencia vigente. Las claves de módulo individuales no tienen efecto en producción.
 - **Huella de equipo:** `get_machine_fingerprint()` usa hardware estable (Windows: `wmic` baseboard/cpu/csproduct + MAC); **no** usa el nombre del equipo, para sobrevivir a reinstalar Windows.
 - **Estado:** `%LOCALAPPDATA%\ELIA\license_state.json` + respaldos de comodidad firmados (HMAC) con la clave. Borrar el JSON restaura desde respaldo si existe; borrar todo exige volver a introducir la clave.
 - **Activación:** UI web, o `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar. Se **revalida HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
@@ -108,9 +110,34 @@ python -m PyInstaller --noconfirm ELIA.spec
 - **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones y **habilita todos los módulos** (móvil, legacy, doc_to_bdd). No usar en entregas.
 - Tras cambiar `elia_license.py` o `modules_config.py`, recompila Cython (`python setup_cython.py build_ext --inplace`) para que el `.pyd` no quede desactualizado.
 
-## Kill switch (desactivación local, sin red)
+## Anti-downgrade local (`core/install_manifest.json`)
 
-Según la implementación en `elia_license.py`, la aplicación puede negarse a arrancar si existen archivos locales concretos (por ejemplo en `%LOCALAPPDATA%\ELIA\` o junto al ejecutable). Consulta las rutas exactas en `kill_switch_active()` antes de documentar a clientes.
+- **Runtime (HMAC):** al arrancar, `main.py` lee `%LOCALAPPDATA%\ELIA\install_manifest.json` (firmado). Si `ELIA_VERSION` es menor que `max_version` registrada, la app sale con código 3.
+- **Instalador (semver):** `ELIA_Setup.iss` compara `{#MyAppVersion}` con `max_version` del manifest antes de instalar; aborta si el setup es más viejo.
+- **Upgrade in-place:** `UsePreviousAppDir=yes` — instalar encima conserva licencia y datos en `Documents\ELIA`.
+- **Desarrollo:** `ELIA_ALLOW_DOWNGRADE=1` permite ejecutar una versión inferior (no usar en entregas).
+- El manifest se eleva en cada arranque exitoso con versión igual o superior (`record_version_if_newer`).
+
+## Revocación y kill switch (soporte interno / desarrollo)
+
+**Revocación suave** (app arranca; jobs bloqueados):
+
+```text
+python scripts/revoke_license.py
+python scripts/revoke_license.py --keep-backups
+ELIA_REVOKE_ON_START=1 python main.py
+```
+
+**Kill switch duro** (app no arranca — `exit 2`). Crear uno de estos archivos:
+
+| Ruta |
+|------|
+| `%LOCALAPPDATA%\ELIA\KILL` |
+| `%LOCALAPPDATA%\ELIA\elia_revoked.flag` |
+| `{carpeta de ELIA.exe}\elia.kill` |
+| `{carpeta de ELIA.exe}\ELIA_KILL` |
+
+Quitar el archivo para rehabilitar (salvo licencia caducada, que requiere nueva clave).
 
 ## Datos de usuario y proyectos
 

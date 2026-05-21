@@ -159,6 +159,16 @@ def _require_localhost(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Forbidden: localhost only")
 
 
+def _require_active_license() -> None:
+    from core import elia_license
+
+    if not elia_license.can_run_jobs():
+        raise HTTPException(
+            status_code=403,
+            detail="Licencia: activación requerida o caducada. Introduce la clave en Configuración → Licencia.",
+        )
+
+
 def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     app = FastAPI(title="ELIA Web UI (local)")
     jm = job_manager or JobManager()
@@ -204,7 +214,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         }
 
     @app.get("/api/ai/status")
-    def ai_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def ai_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         """Compatibilidad: devuelve runtime; preferir /api/ai/capabilities."""
         try:
             from core import gemma_inference
@@ -214,20 +227,28 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             return {"error": str(e)}
 
     @app.get("/api/ai/capabilities")
-    def ai_capabilities(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def ai_capabilities(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.ai_policy import get_ai_status_payload
 
         return get_ai_status_payload()
 
     @app.get("/api/ai/preferences")
-    def ai_preferences_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def ai_preferences_get(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.ai_policy import get_ai_status_payload
 
         return get_ai_status_payload()
 
     @app.put("/api/ai/preferences")
     def ai_preferences_put(
-        req: AiPreferencesRequest, _: None = Depends(_require_localhost)
+        req: AiPreferencesRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         from core.ai_policy import get_ai_status_payload, save_preferences
 
@@ -259,7 +280,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return list_modules()
 
     @app.get("/api/recorder/preflight")
-    def recorder_preflight(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def recorder_preflight(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         """Comprueba Google Chrome antes de iniciar puppeteer_recorder (Windows)."""
         from core.ui_automation.chrome_resolver import resolve_chrome_for_recording
 
@@ -286,7 +310,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"ok": False, "message": "Clave no válida para esta máquina."}
 
     @app.get("/api/elia/connectors")
-    def elia_connectors_get(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def elia_connectors_get(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.req_intelligence.connectors_profiles_store import load_document
 
         doc = load_document()
@@ -298,7 +325,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail=f"connectors store invalid: {e}") from e
 
     @app.put("/api/elia/connectors")
-    def elia_connectors_put(body: ConnectorsDocument, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def elia_connectors_put(
+        body: ConnectorsDocument,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.req_intelligence.connectors_profiles_store import save_document
 
         try:
@@ -308,7 +339,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/elia/connectors/test")
-    def elia_connectors_test(body: EliaConnectorTestRequest, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def elia_connectors_test(
+        body: EliaConnectorTestRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         import core.req_intelligence.integrations_service as elia_service
 
         try:
@@ -325,14 +360,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/api/jobs/convert")
-    def create_job(req: ConvertRequest, _: None = Depends(_require_localhost)) -> Dict[str, str]:
-        from core import elia_license
-
-        if not elia_license.can_run_jobs():
-            raise HTTPException(
-                status_code=403,
-                detail="Licencia: activación requerida o caducada. Introduce la clave en Configuración → Licencia.",
-            )
+    def create_job(
+        req: ConvertRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, str]:
         job_id = jm.create_job(mode=req.mode)
 
         elia_inline = bool(req.elia_use_inline_connectors)
@@ -884,14 +916,23 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"job_id": job_id}
 
     @app.get("/api/jobs/{job_id}")
-    def get_job(job_id: str, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def get_job(
+        job_id: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         try:
             return jm.get_job_summary(job_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="job not found")
 
     @app.get("/api/jobs/{job_id}/events")
-    def get_job_events(job_id: str, limit: int = 200, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def get_job_events(
+        job_id: str,
+        limit: int = 200,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         try:
             return {"job_id": job_id, "events": jm.get_job_events(job_id, limit=limit)}
         except KeyError:
@@ -903,6 +944,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         prompt_id: str,
         req: PromptResponseRequest,
         _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         try:
             jm.answer_prompt(job_id, prompt_id=prompt_id, answer=req.answer)
@@ -911,7 +953,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/jobs/{job_id}/cancel")
-    def cancel_job(job_id: str, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def cancel_job(
+        job_id: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         jm.cancel_job(job_id)
         return {"ok": True}
 
@@ -922,6 +968,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     async def upload_docs(
         files: List[UploadFile] = File(...),
         _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         import shutil
         from core.elia_paths import uploads_tmp_dir
@@ -945,7 +992,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"ok": True, "files": saved}
 
     @app.get("/api/req/scenarios")
-    def get_scenarios(project: Optional[str] = None, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def get_scenarios(
+        project: Optional[str] = None,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.req_intelligence.feature_scanner import scan_project_scenarios
         from core.elia_paths import behave_projects_dir, doc_features_dir
 
@@ -984,7 +1035,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {"scenarios": results}
 
     @app.get("/api/req/recordings")
-    def get_recordings(project: Optional[str] = None, _: None = Depends(_require_localhost)) -> Dict[str, Any]:
+    def get_recordings(
+        project: Optional[str] = None,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
         from core.elia_paths import behave_projects_dir
         from core.req_intelligence.recording_scanner import scan_all_recordings
 

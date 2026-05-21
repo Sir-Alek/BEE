@@ -141,6 +141,15 @@ class TestEliaLicense(unittest.TestCase):
                 fp_b = lic.get_machine_fingerprint()
         self.assertEqual(fp_a, fp_b)
 
+    def test_revoke_license_local_clears_state(self) -> None:
+        backup = Path(self._tmp.name) / "backup.db"
+        with self._patch_state(), self._patch_fp(), self._patch_backups(backup):
+            self.assertTrue(lic.activate_with_key(self._key_v2_perm))
+            lic.revoke_license_local(clear_backups=True)
+            st = lic.get_license_status()
+            self.assertEqual(st.reason, "not_activated")
+            self.assertFalse(lic.can_run_jobs())
+
 
 if __name__ == "__main__":
     unittest.main()

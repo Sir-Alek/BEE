@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ELIA"
-#define MyAppVersion "0.5.3"
+#define MyAppVersion "0.6.1"
 #define MyAppPublisher "</Sir_Alek>"
 #define MyAppURL ""
 #define MyAppExeName "ELIA.exe"
@@ -21,7 +21,7 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
-UsePreviousAppDir=no
+UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 ; Remove the following line to run in administrative install mode (install for all users.)
 PrivilegesRequired=lowest
@@ -61,6 +61,92 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Filename: "{cmd}"; Parameters: "/C taskkill /f /im ELIA.exe 2>nul"; Flags: runhidden
 
 [Code]
+function ParseVersionPart(const S: String; var Pos: Integer): Integer;
+var
+  Part: String;
+begin
+  Part := '';
+  while (Pos <= Length(S)) and (S[Pos] >= '0') and (S[Pos] <= '9') do
+  begin
+    Part := Part + S[Pos];
+    Pos := Pos + 1;
+  end;
+  if Part = '' then
+    Result := 0
+  else
+    Result := StrToIntDef(Part, 0);
+  if (Pos <= Length(S)) and (S[Pos] = '.') then
+    Pos := Pos + 1;
+end;
+
+function CompareVersion(const A, B: String): Integer;
+var
+  I, MajA, MinA, PatA, MajB, MinB, PatB: Integer;
+begin
+  I := 1;
+  MajA := ParseVersionPart(A, I);
+  MinA := ParseVersionPart(A, I);
+  PatA := ParseVersionPart(A, I);
+  I := 1;
+  MajB := ParseVersionPart(B, I);
+  MinB := ParseVersionPart(B, I);
+  PatB := ParseVersionPart(B, I);
+  if (MajA < MajB) or ((MajA = MajB) and (MinA < MinB)) or
+     ((MajA = MajB) and (MinA = MinB) and (PatA < PatB)) then
+    Result := -1
+  else if (MajA > MajB) or ((MajA = MajB) and (MinA > MinB)) or
+          ((MajA = MajB) and (MinA = MinB) and (PatA > PatB)) then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function ReadMaxVersionFromManifest: String;
+var
+  Path, Content, Tag: String;
+  PStart, PEnd: Integer;
+begin
+  Result := '';
+  Path := ExpandConstant('{localappdata}\ELIA\install_manifest.json');
+  if not FileExists(Path) then
+    Exit;
+  if not LoadStringFromFile(Path, Content) then
+    Exit;
+  Tag := '"max_version"';
+  PStart := Pos(Tag, Content);
+  if PStart = 0 then
+    Exit;
+  PStart := PStart + Length(Tag);
+  while (PStart <= Length(Content)) and (Content[PStart] <> '"') do
+    PStart := PStart + 1;
+  if PStart > Length(Content) then
+    Exit;
+  PStart := PStart + 1;
+  PEnd := PStart;
+  while (PEnd <= Length(Content)) and (Content[PEnd] <> '"') do
+    PEnd := PEnd + 1;
+  Result := Copy(Content, PStart, PEnd - PStart);
+end;
+
+function InitializeSetup: Boolean;
+var
+  MaxVer: String;
+begin
+  Result := True;
+  MaxVer := ReadMaxVersionFromManifest;
+  if MaxVer = '' then
+    Exit;
+  if CompareVersion('{#MyAppVersion}', MaxVer) < 0 then
+  begin
+    MsgBox(
+      'Esta instalación (v{#MyAppVersion}) es anterior a la versión ya registrada en este equipo (v' +
+      MaxVer + ').' + #13#10 + #13#10 +
+      'No se permite instalar una versión inferior de ELIA. Usa el instalador más reciente.',
+      mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
 // Función para ejecutar comandos de permisos (solo para Windows)
 procedure SetFolderPermissions(const FolderPath: string);
 var

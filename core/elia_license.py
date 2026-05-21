@@ -651,6 +651,14 @@ def can_run_jobs() -> bool:
     return st.ok and st.reason not in ("not_activated", "license_expired", "killed")
 
 
+def is_license_operational() -> bool:
+    """Licencia vigente: activada y no caducada (incluye modo dev ELIA_SKIP_LICENSE)."""
+    st = get_license_status()
+    if st.reason == "skip":
+        return True
+    return st.ok and st.reason == "activated"
+
+
 def get_license_status() -> LicenseStatus:
     if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
         return LicenseStatus(
@@ -733,6 +741,8 @@ def get_license_status() -> LicenseStatus:
 
 def ensure_license_or_exit() -> None:
     """Al inicio: bloquea solo ante kill switch; la UI permite activar sin clave."""
+    if (os.environ.get("ELIA_REVOKE_ON_START") or "").strip().lower() in ("1", "true", "yes"):
+        revoke_license_local(clear_backups=True)
     try_activate_from_env()
     st = get_license_status()
     if st.reason == "killed":
@@ -747,3 +757,30 @@ def try_activate_from_env() -> bool:
     if verify_activation_key(key):
         return activate_with_key(key)
     return False
+
+
+def revoke_license_local(*, clear_backups: bool = True) -> None:
+    """
+    Revocación suave (soporte interno / pruebas): borra activación local.
+    La app sigue arrancando; jobs quedan bloqueados hasta nueva clave.
+    """
+    fp = get_machine_fingerprint()
+    p = _state_path()
+    try:
+        if p.is_file():
+            p.unlink()
+    except OSError:
+        _save_state({})
+
+    if clear_backups:
+        for path in _get_hidden_backup_paths():
+            try:
+                if path.is_file():
+                    path.unlink()
+            except OSError:
+                continue
+            except Exception:
+                continue
+
+    _clear_licensed_modules()
+    del fp  # fingerprint unchanged; kept for callers that log after revoke

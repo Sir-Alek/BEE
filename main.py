@@ -1019,9 +1019,41 @@ def _require_license_for_jobs() -> None:
         )
 
 
+def _ensure_web_ui_dependencies() -> None:
+    """FastAPI File/Form requiere python-multipart (Doc-to-BDD upload)."""
+    try:
+        import multipart  # noqa: F401
+    except ImportError:
+        root = os.path.dirname(os.path.abspath(__file__))
+        venv_py = os.path.join(root, ".venv", "Scripts", "python.exe")
+        msg = (
+            'Falta el paquete "python-multipart" en este intérprete de Python.\n'
+            "Activa el venv del proyecto e instala dependencias:\n"
+            "  .venv\\Scripts\\activate\n"
+            "  pip install -r requirements.txt\n"
+        )
+        if os.path.isfile(venv_py):
+            msg += f"\nO arranca ELIA con el Python del venv:\n  {venv_py} main.py\n"
+        print(msg, file=sys.stderr)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     from core import elia_license
     from core._version import ELIA_DEVELOPER, ELIA_VERSION
+    from core.install_manifest import (
+        DowngradeBlockedError,
+        assert_not_downgrade,
+        downgrade_blocked_message,
+        record_version_if_newer,
+    )
+
+    try:
+        assert_not_downgrade(ELIA_VERSION)
+        record_version_if_newer(ELIA_VERSION)
+    except DowngradeBlockedError:
+        print(downgrade_blocked_message(ELIA_VERSION), file=sys.stderr)
+        sys.exit(3)
 
     elia_license.ensure_license_or_exit()
     print(f"""
@@ -1041,6 +1073,7 @@ if __name__ == "__main__":
         Un hilo daemon monitorea la señal de salida del frontend y, cuando la recibe,
         para Uvicorn. Al retornar server.run(), el proceso termina con os._exit(0).
         """
+        _ensure_web_ui_dependencies()
         import json
         import urllib.error
         import urllib.request

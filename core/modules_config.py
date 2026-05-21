@@ -1,47 +1,31 @@
 """
-Building Blocks — motor de módulos por licencia.
+Building Blocks — módulos atados estrictamente a la licencia activa.
 
-Cada módulo adicional (mobile_recording, legacy_recording, doc_to_bdd) se activa
-escribiendo un modules.json en el directorio de estado local de ELIA.
+Sin licencia vigente (caducada, no activada o revocada): todos los módulos false,
+incluido doc_to_bdd.
 
-Estructura de modules.json:
-  {
-    "mobile_recording": false,
-    "legacy_recording": false,
-    "doc_to_bdd": true
-  }
+Con licencia vigente:
+  - doc_to_bdd: true (producto base)
+  - mobile_recording / legacy_recording: flags M/L de la clave activa
 
-En desarrollo, ELIA_SKIP_LICENSE=1 omite la licencia y habilita todos los módulos
-(incluidos móvil y legacy). También: ELIA_MODULE_<NAME>=1 para forzar uno concreto.
+Desarrollo:
+  - ELIA_SKIP_LICENSE=1 → todos los módulos true
+  - ELIA_MODULE_<NAME>=1|0 → override puntual
 
-Los módulos móvil/legacy pueden activarse con la clave de licencia (flags M/L)
-o con claves de módulo individuales (enable_module).
+Las claves de módulo individuales (enable_module) no tienen efecto en producción.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
 import os
 import sys
 from pathlib import Path
 from typing import Dict
 
-# Módulos disponibles con su estado por defecto.
-# doc_to_bdd viene habilitado por defecto porque forma parte de la licencia base.
-_DEFAULTS: Dict[str, bool] = {
+_MODULE_NAMES: Dict[str, bool] = {
     "mobile_recording": False,
     "legacy_recording": False,
-    "doc_to_bdd": True,
+    "doc_to_bdd": False,
 }
-
-# Secreto para validar claves de activación de módulos individuales.
-# Debe coincidir con el generador de claves del backoffice.
-_MODULE_SEED = b"ELIA-MODULE-v1-REPLACE-IN-RELEASE-BUILD"
-
-
-def _secret_key() -> bytes:
-    return hashlib.sha256(_MODULE_SEED).digest()
 
 
 def _state_dir() -> Path:
@@ -55,33 +39,11 @@ def _state_dir() -> Path:
 
 
 def modules_config_path() -> Path:
+    """Ruta legacy (modules.json ya no define entitlements en producción)."""
     return _state_dir() / "modules.json"
 
 
-def _load_modules() -> Dict[str, bool]:
-    p = modules_config_path()
-    data: Dict[str, bool] = dict(_DEFAULTS)
-    if p.is_file():
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            if isinstance(raw, dict):
-                for k, v in raw.items():
-                    if k in _DEFAULTS:
-                        data[k] = bool(v)
-        except Exception:
-            pass
-    return data
-
-
-def _save_modules(data: Dict[str, bool]) -> None:
-    p = modules_config_path()
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-
 def _env_override(name: str) -> bool | None:
-    """Devuelve True/False si hay variable de entorno, None si no."""
     env_key = f"ELIA_MODULE_{name.upper()}"
     val = (os.environ.get(env_key) or "").strip().lower()
     if val in ("1", "true", "yes"):
@@ -89,98 +51,66 @@ def _env_override(name: str) -> bool | None:
     if val in ("0", "false", "no"):
         return False
     if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
-        # Desarrollo: licencia omitida → todos los módulos (móvil, legacy, doc_to_bdd).
         return True
     return None
 
 
-def _license_override(name: str) -> bool | None:
-    """Estado concedido por licencia activa (solo móvil/legacy)."""
-    if name not in ("mobile_recording", "legacy_recording"):
-        return None
+def _modules_from_license() -> Dict[str, bool]:
     try:
-        from core.elia_license import get_active_license_modules
+        from core.elia_license import get_active_license_modules, is_license_operational
 
-        mods = get_active_license_modules()
-        if mods is None:
-            return None
-        return bool(mods.get(name))
+        if not is_license_operational():
+            return dict(_MODULE_NAMES)
+        lic = get_active_license_modules()
+        if lic is None:
+            return dict(_MODULE_NAMES)
+        return {
+            "mobile_recording": bool(lic.get("mobile_recording")),
+            "legacy_recording": bool(lic.get("legacy_recording")),
+            "doc_to_bdd": True,
+        }
     except Exception:
-        return None
+        return dict(_MODULE_NAMES)
 
 
 def apply_licensed_modules(*, mobile: bool, legacy: bool) -> None:
-    """Persiste módulos concedidos al activar una clave de licencia."""
-    data = _load_modules()
-    data["mobile_recording"] = bool(mobile)
-    data["legacy_recording"] = bool(legacy)
-    _save_modules(data)
+    """Compatibilidad: entitlements vienen de la clave activa, no de modules.json."""
+    del mobile, legacy
 
 
 def is_module_enabled(name: str) -> bool:
-    """Devuelve True si el módulo está habilitado (env > licencia > modules.json > default)."""
+    if name not in _MODULE_NAMES:
+        return False
     override = _env_override(name)
     if override is not None:
         return override
-    lic = _license_override(name)
-    if lic is not None:
-        return lic
-    data = _load_modules()
-    return data.get(name, _DEFAULTS.get(name, False))
+    return bool(_modules_from_license().get(name, False))
 
 
 def list_modules() -> Dict[str, bool]:
-    """Devuelve el estado de todos los módulos respetando env, licencia y modules.json."""
-    data = _load_modules()
+    resolved = _modules_from_license()
     result: Dict[str, bool] = {}
-    for name in _DEFAULTS:
+    for name in _MODULE_NAMES:
         override = _env_override(name)
         if override is not None:
             result[name] = override
-            continue
-        lic = _license_override(name)
-        if lic is not None:
-            result[name] = lic
-            continue
-        result[name] = data.get(name, _DEFAULTS.get(name, False))
+        else:
+            result[name] = bool(resolved.get(name, False))
     return result
 
 
-def _expected_module_key(module_name: str, machine_fp: str) -> str:
-    """Clave HMAC para activar un módulo específico en una máquina concreta."""
-    msg = f"{module_name}|{machine_fp}|MODULE".encode("ascii", errors="replace")
-    return hmac.new(_secret_key(), msg, hashlib.sha256).hexdigest()
-
-
-def verify_module_key(module_name: str, key: str, machine_fp: str | None = None) -> bool:
-    """Verifica una clave de activación de módulo (acepta clave completa o primeros 32 hex)."""
-    from core.elia_license import get_machine_fingerprint
-    key = (key or "").strip().replace(" ", "").replace("-", "")
-    if len(key) < 32:
-        return False
-    fp = machine_fp or get_machine_fingerprint()
-    expected = _expected_module_key(module_name, fp)
-    if key.lower() == expected.lower():
-        return True
-    if len(key) >= 32 and expected.lower().startswith(key.lower()[:32]):
-        return True
+def enable_module(module_name: str, key: str) -> bool:
+    """Sin efecto en producción (entitlements solo vía licencia principal)."""
+    del module_name, key
     return False
 
 
-def enable_module(module_name: str, key: str) -> bool:
-    """Activa un módulo si la clave es válida. Devuelve True si se activó."""
-    if module_name not in _DEFAULTS:
-        return False
-    if not verify_module_key(module_name, key):
-        return False
-    data = _load_modules()
-    data[module_name] = True
-    _save_modules(data)
-    return True
-
-
 def disable_module(module_name: str) -> None:
-    """Deshabilita un módulo (operación de administración)."""
-    data = _load_modules()
-    data[module_name] = False
-    _save_modules(data)
+    """Sin efecto en producción."""
+    del module_name
+
+
+def verify_module_key(module_name: str, key: str, machine_fp: str | None = None) -> bool:
+    """Deprecated: claves individuales deshabilitadas en producción."""
+    del module_name, key, machine_fp
+    return False

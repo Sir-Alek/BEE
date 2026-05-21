@@ -32,6 +32,7 @@ import type {
 } from "./types";
 import { ELIA_CONNECTORS_LS_KEY, emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "./connectorDefaults";
 import { themeQuerySuffix, useEliaTheme } from "./eliaTheme";
+import { parseLicenseDisplayBlocks } from "./licenseTextFormat";
 
 type JobStatus = {
   job_id: string;
@@ -89,6 +90,13 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
   { id: "license", label: "Licencia" },
   { id: "about", label: "Acerca de" },
 ];
+
+const SETTINGS_TABS_WITHOUT_LICENSE: SettingsTabId[] = ["general", "license", "about"];
+
+function settingsTabsForLicense(canRunJobs: boolean) {
+  if (canRunJobs) return SETTINGS_TABS;
+  return SETTINGS_TABS.filter((t) => SETTINGS_TABS_WITHOUT_LICENSE.includes(t.id));
+}
 
 const ELIA_LOGO_ICON_STYLE: React.CSSProperties = {
   height: 52,
@@ -282,6 +290,8 @@ export default function App() {
   // Building Blocks — módulos por licencia
   const [modules, setModules] = useState<ModulesStatus | null>(null);
   const [showLockModal, setShowLockModal] = useState<string | null>(null);
+  const canRunJobs = license?.can_run_jobs ?? false;
+  const visibleSettingsTabs = settingsTabsForLicense(canRunJobs);
 
   // UI Automation — selector de plataforma
   const [platform, setPlatform] = useState<"web" | "mobile" | "legacy">("web");
@@ -449,6 +459,23 @@ export default function App() {
     }
   }, [settingsOpen]);
 
+  useEffect(() => {
+    if (canRunJobs) return;
+    if (!SETTINGS_TABS_WITHOUT_LICENSE.includes(settingsTab)) {
+      setSettingsTab("license");
+    }
+  }, [canRunJobs, settingsTab]);
+
+  useEffect(() => {
+    if (canRunJobs) return;
+    setAutoLinkToScenario(false);
+    setAutoLinkScenarioRef("");
+    setLinkRecordings(false);
+    setLinkMapping({});
+    setRecordingMapping({});
+    setLoadedDocs([]);
+  }, [canRunJobs]);
+
   // Cargar estado de módulos (Building Blocks)
   useEffect(() => {
     if (!isHomeSurface) return;
@@ -462,10 +489,10 @@ export default function App() {
       }
     })();
     return () => { alive = false; };
-  }, [isHomeSurface]);
+  }, [isHomeSurface, canRunJobs]);
 
   useEffect(() => {
-    if (!isHomeSurface || homeTab !== "ui" || platform !== "web") return;
+    if (!isHomeSurface || homeTab !== "ui" || platform !== "web" || !canRunJobs) return;
     let alive = true;
     setRecorderPreflightLoading(true);
     void (async () => {
@@ -492,7 +519,7 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [isHomeSurface, homeTab, platform]);
+  }, [isHomeSurface, homeTab, platform, canRunJobs]);
 
   // Close home tab = close whole app (backend). sendBeacon/fetch + main.py polling /api/app/should-exit.
   useEffect(() => {
@@ -956,7 +983,7 @@ export default function App() {
                 background: c.neutralBg,
               }}
             >
-              {SETTINGS_TABS.map((t) => (
+              {visibleSettingsTabs.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -1786,24 +1813,88 @@ export default function App() {
                     Desarrollador: {aboutInfo.developer}
                   </div>
                   <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>Licencia de uso</div>
-                  <pre
+                  <div
                     style={{
-                      margin: 0,
-                      padding: 12,
+                      padding: "14px 16px",
                       borderRadius: 10,
                       border: `1px solid ${c.border}`,
                       background: c.inputBg,
                       color: c.text,
-                      fontSize: 11,
-                      lineHeight: 1.45,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
                       maxHeight: "min(42vh, 360px)",
                       overflow: "auto",
                     }}
                   >
-                    {aboutInfo.license_text || "(Licence.txt no disponible)"}
-                  </pre>
+                    {aboutInfo.license_text ? (
+                      parseLicenseDisplayBlocks(aboutInfo.license_text).map((block, i) => {
+                        if (block.kind === "title") {
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                fontWeight: 800,
+                                fontSize: 13,
+                                lineHeight: 1.45,
+                                marginBottom: 10,
+                                letterSpacing: "0.01em",
+                              }}
+                            >
+                              {block.text}
+                            </div>
+                          );
+                        }
+                        if (block.kind === "heading") {
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 12,
+                                lineHeight: 1.45,
+                                marginTop: i > 0 ? 14 : 0,
+                                marginBottom: 6,
+                              }}
+                            >
+                              {block.text}
+                            </div>
+                          );
+                        }
+                        if (block.kind === "list") {
+                          return (
+                            <ul
+                              key={i}
+                              style={{
+                                margin: "0 0 12px",
+                                paddingLeft: 20,
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              {block.items.map((item, j) => (
+                                <li key={j} style={{ marginBottom: 8 }}>
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        }
+                        return (
+                          <p
+                            key={i}
+                            style={{
+                              margin: "0 0 12px",
+                              fontSize: 12,
+                              lineHeight: 1.65,
+                              textAlign: "justify",
+                            }}
+                          >
+                            {block.text}
+                          </p>
+                        );
+                      })
+                    ) : (
+                      <div style={{ fontSize: 12, color: c.muted }}>(Licence.txt no disponible)</div>
+                    )}
+                  </div>
                   <div style={{ fontSize: 11, color: c.muted, marginTop: 10 }}>
                     Build UI: {ELIA_WEB_UI_BUILD}
                   </div>
@@ -2086,6 +2177,13 @@ export default function App() {
                   </div>
                 )}
 
+                <div
+                  style={{
+                    opacity: canRunJobs ? 1 : 0.55,
+                    pointerEvents: canRunJobs ? "auto" : "none",
+                  }}
+                >
+
                 {/* Segmented Control — selector de plataforma */}
                 <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                   {(["web", "mobile", "legacy"] as const).map((p) => {
@@ -2260,7 +2358,9 @@ export default function App() {
                       <input
                         type="checkbox"
                         checked={autoLinkToScenario}
+                        disabled={!canRunJobs}
                         onChange={async (e) => {
+                          if (!canRunJobs) return;
                           const checked = e.target.checked;
                           setAutoLinkToScenario(checked);
                           if (checked) {
@@ -2286,6 +2386,7 @@ export default function App() {
                     {autoLinkToScenario && (
                       <select
                         value={autoLinkScenarioRef}
+                        disabled={!canRunJobs}
                         onChange={(e) => setAutoLinkScenarioRef(e.target.value)}
                         style={{
                           marginTop: 8,
@@ -2381,6 +2482,7 @@ export default function App() {
                   </button>
                   )}
                 </div>
+                </div>
               </>
             )}
 
@@ -2391,6 +2493,8 @@ export default function App() {
                   border: `1px solid ${c.border}`,
                   borderRadius: 14,
                   padding: 14,
+                  opacity: canRunJobs ? 1 : 0.55,
+                  pointerEvents: canRunJobs ? "auto" : "none",
                 }}
               >
                 <div style={{ fontWeight: 800, color: c.text, marginBottom: 6 }}>Inteligencia de Requerimientos</div>
@@ -2506,7 +2610,9 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={linkRecordings}
+                    disabled={!canRunJobs}
                     onChange={async (e) => {
+                      if (!canRunJobs) return;
                       const checked = e.target.checked;
                       setLinkRecordings(checked);
                       if (checked) {
