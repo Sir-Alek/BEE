@@ -3,8 +3,9 @@ Licencia offline: activación obligatoria por clave + kill switch local.
 
 Sin servidor externo: estado en disco local, HMAC con secreto embebido (cambiar en builds de release).
 
-Seguridad: no se confía en ``activated`` del JSON; en cada consulta se revalida ``saved_activation_key``
-contra la huella de hardware de la máquina.
+Seguridad: no se confía en ``activated`` ni en ``activated_ts`` del JSON; en cada consulta se
+revalida ``saved_activation_key`` (HMAC + huella). Claves v2 incluyen ``issue_ts`` en la cadena;
+la caducidad se calcula solo desde ese timestamp firmado, no desde el disco.
 
 Respaldo oculto (comodidad): si el usuario borra ``license_state.json``, se puede restaurar la clave
 desde copias firmadas; borrar todo solo desactiva la app hasta volver a introducir la clave.
@@ -53,7 +54,13 @@ DURATION_LABELS: Dict[str, str] = {
 
 _LICENSE_SEED = b"ELIA-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
 
-_KEY_PREFIX_RE = re.compile(
+# v2: ELIA-15D-0-1779324449-{hmac64} — issue_ts forma parte del HMAC (zero trust en caducidad).
+_KEY_PREFIX_V2_RE = re.compile(
+    r"^ELIA-(?P<dur>15D|30D|365D|PERM)-(?P<mods>[0ML]+)-(?P<issue_ts>\d{9,12})-(?P<sig>[0-9a-f]{64})$",
+    re.IGNORECASE,
+)
+# v1 legado: ELIA-15D-0-{hmac64} — caducidad aún lee activated_ts del JSON (deprecado).
+_KEY_PREFIX_V1_RE = re.compile(
     r"^ELIA-(?P<dur>15D|30D|365D|PERM)-(?P<mods>[0ML]+)-(?P<sig>[0-9a-f]{64})$",
     re.IGNORECASE,
 )
@@ -178,14 +185,21 @@ def _parse_mods_token(token: str) -> Tuple[bool, bool]:
     return ("M" in t, "L" in t)
 
 
-def _license_message(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
+def _license_message_v1(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
     if duration == "FULL":
         return machine_fp.encode("ascii") + b"|FULL"
     flags = _mods_token(mobile, legacy)
     return f"{machine_fp}|{duration}|{flags}".encode("ascii")
 
 
-def _expected_activation_key(
+def _license_message_v2(
+    machine_fp: str, duration: str, mobile: bool, legacy: bool, issue_ts: int
+) -> bytes:
+    flags = _mods_token(mobile, legacy)
+    return f"{machine_fp}|{duration}|{flags}|{issue_ts}".encode("ascii")
+
+
+def _expected_signature_v1(
     machine_fp: str,
     duration: str,
     mobile: bool = False,
@@ -193,9 +207,34 @@ def _expected_activation_key(
 ) -> str:
     return hmac.new(
         _secret_key(),
-        _license_message(machine_fp, duration, mobile, legacy),
+        _license_message_v1(machine_fp, duration, mobile, legacy),
         hashlib.sha256,
     ).hexdigest()
+
+
+def _expected_signature_v2(
+    machine_fp: str,
+    duration: str,
+    issue_ts: int,
+    mobile: bool = False,
+    legacy: bool = False,
+) -> str:
+    return hmac.new(
+        _secret_key(),
+        _license_message_v2(machine_fp, duration, mobile, legacy, issue_ts),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _valid_issue_ts(issue_ts: int) -> bool:
+    now = time.time()
+    if issue_ts <= 0:
+        return False
+    if issue_ts > now + 300:
+        return False
+    if issue_ts < now - 20 * 365 * 86400:
+        return False
+    return True
 
 
 def build_activation_key(
@@ -204,14 +243,41 @@ def build_activation_key(
     *,
     mobile: bool = False,
     legacy: bool = False,
+    issue_ts: Optional[int] = None,
 ) -> str:
+    """
+    Genera clave v2: ELIA-{dur}-{mods}-{issue_ts}-{hmac64}.
+    issue_ts por defecto = tiempo actual (segundos UNIX).
+    """
     dur = duration.upper()
     if dur not in DURATION_SECONDS:
         raise ValueError(f"Duración no válida: {duration}")
     fp = machine_fp.strip().lower()
     if len(fp) != 32:
         raise ValueError("La huella debe tener 32 caracteres hex.")
-    sig = _expected_activation_key(fp, dur, mobile, legacy)
+    ts = int(issue_ts if issue_ts is not None else time.time())
+    if not _valid_issue_ts(ts):
+        raise ValueError(f"issue_ts no válido: {ts}")
+    sig = _expected_signature_v2(fp, dur, ts, mobile, legacy)
+    mods = _mods_token(mobile, legacy)
+    return f"ELIA-{dur}-{mods}-{ts}-{sig}"
+
+
+def build_activation_key_v1_legacy(
+    machine_fp: str,
+    duration: str = DURATION_PERM,
+    *,
+    mobile: bool = False,
+    legacy: bool = False,
+) -> str:
+    """Formato v1 sin issue_ts (solo tests / claves antiguas)."""
+    dur = duration.upper()
+    if dur not in DURATION_SECONDS:
+        raise ValueError(f"Duración no válida: {duration}")
+    fp = machine_fp.strip().lower()
+    if len(fp) != 32:
+        raise ValueError("La huella debe tener 32 caracteres hex.")
+    sig = _expected_signature_v1(fp, dur, mobile, legacy)
     mods = _mods_token(mobile, legacy)
     return f"ELIA-{dur}-{mods}-{sig}"
 
@@ -221,6 +287,7 @@ class ParsedLicenseKey:
     duration: str
     mobile: bool
     legacy: bool
+    issue_ts: Optional[int] = None
 
 
 def _sig_matches(provided: str, expected: str) -> bool:
@@ -234,32 +301,53 @@ def _sig_matches(provided: str, expected: str) -> bool:
 def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey]:
     raw = (key or "").strip().replace(" ", "")
 
-    m = _KEY_PREFIX_RE.match(raw)
-    if m:
-        dur = m.group("dur").upper()
-        mobile, legacy = _parse_mods_token(m.group("mods"))
-        sig = m.group("sig")
-        expected = _expected_activation_key(machine_fp, dur, mobile, legacy)
+    m2 = _KEY_PREFIX_V2_RE.match(raw)
+    if m2:
+        dur = m2.group("dur").upper()
+        mobile, legacy = _parse_mods_token(m2.group("mods"))
+        try:
+            issue_ts = int(m2.group("issue_ts"))
+        except ValueError:
+            return None
+        if not _valid_issue_ts(issue_ts):
+            return None
+        sig = m2.group("sig")
+        expected = _expected_signature_v2(machine_fp, dur, issue_ts, mobile, legacy)
         if _sig_matches(sig, expected):
-            return ParsedLicenseKey(duration=dur, mobile=mobile, legacy=legacy)
+            return ParsedLicenseKey(
+                duration=dur, mobile=mobile, legacy=legacy, issue_ts=issue_ts
+            )
+        return None
+
+    m1 = _KEY_PREFIX_V1_RE.match(raw)
+    if m1:
+        dur = m1.group("dur").upper()
+        mobile, legacy = _parse_mods_token(m1.group("mods"))
+        sig = m1.group("sig")
+        expected = _expected_signature_v1(machine_fp, dur, mobile, legacy)
+        if _sig_matches(sig, expected):
+            return ParsedLicenseKey(duration=dur, mobile=mobile, legacy=legacy, issue_ts=None)
         return None
 
     hex_only = raw.replace("-", "")
     if len(hex_only) < 32:
         return None
 
-    expected_full = _expected_activation_key(machine_fp, "FULL", False, False)
+    expected_full = _expected_signature_v1(machine_fp, "FULL", False, False)
     if _sig_matches(hex_only, expected_full):
-        return ParsedLicenseKey(duration=DURATION_PERM, mobile=False, legacy=False)
+        return ParsedLicenseKey(duration=DURATION_PERM, mobile=False, legacy=False, issue_ts=None)
 
     if len(hex_only) == 64:
         for dur in DURATION_SECONDS:
             for mobile in (False, True):
                 for legacy in (False, True):
-                    expected = _expected_activation_key(machine_fp, dur, mobile, legacy)
+                    expected = _expected_signature_v1(machine_fp, dur, mobile, legacy)
                     if hex_only.lower() == expected.lower():
                         return ParsedLicenseKey(
-                            duration=dur, mobile=mobile, legacy=legacy
+                            duration=dur,
+                            mobile=mobile,
+                            legacy=legacy,
+                            issue_ts=None,
                         )
     return None
 
@@ -489,9 +577,12 @@ def _resolve_license_from_state(
     parsed = parse_activation_key(_normalize_stored_key(str(saved_key)), machine_fp)
     if parsed is None:
         return None
-    activated_ts = float(state.get("activated_ts") or 0.0)
-    if activated_ts <= 0:
-        activated_ts = time.time()
+    if parsed.issue_ts is not None:
+        activated_ts = float(parsed.issue_ts)
+    else:
+        activated_ts = float(state.get("activated_ts") or 0.0)
+        if activated_ts <= 0:
+            activated_ts = time.time()
     sec = DURATION_SECONDS.get(parsed.duration)
     exp_ts = (activated_ts + sec) if sec is not None else None
     return parsed, activated_ts, exp_ts
@@ -517,17 +608,18 @@ def activate_with_key(key: str) -> bool:
     if parsed is None:
         return False
     state = _load_state()
-    now = time.time()
     key_norm = _normalize_stored_key(key)
+    issue_ts = float(parsed.issue_ts) if parsed.issue_ts is not None else time.time()
+    sec = DURATION_SECONDS.get(parsed.duration)
     state["saved_activation_key"] = key_norm
     state["activated"] = True
-    state["activated_ts"] = now
+    state["activated_ts"] = issue_ts
+    state["issue_ts"] = parsed.issue_ts
     state["duration_code"] = parsed.duration
-    sec = DURATION_SECONDS.get(parsed.duration)
-    state["expires_at"] = (now + sec) if sec is not None else None
+    state["expires_at"] = (issue_ts + sec) if sec is not None else None
     state["licensed_modules"] = _licensed_modules_dict(parsed)
     _save_state(state)
-    _sync_activation_backups(fp, key_norm, now)
+    _sync_activation_backups(fp, key_norm, issue_ts)
     _sync_licensed_modules(parsed.mobile, parsed.legacy)
     return True
 

@@ -18,8 +18,11 @@ Módulos opcionales:
   --mobile   incluye grabación móvil (flag M en la clave)
   --legacy   incluye grabación legacy (flag L en la clave)
 
+Formato de clave (v2): ELIA-{dur}-{mods}-{issue_ts}-{hmac64}
+  issue_ts = momento de emisión (segundos UNIX), firmado dentro del HMAC.
+
 La huella la obtiene el usuario desde la UI o con:
-  python -c "from core.elia_license import get_machine_fingerprint; print(get_machine_fingerprint())"
+  python scripts/show_machine_fingerprint.py
 
 IMPORTANTE: _LICENSE_SEED en elia_license.py debe coincidir entre generador y ejecutable.
 """
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,6 +112,12 @@ def main() -> int:
         action="store_true",
         help="Incluir módulo de grabación legacy (escritorio)",
     )
+    ap.add_argument(
+        "--issue-ts",
+        type=int,
+        default=None,
+        help="Timestamp UNIX de emisión (default: ahora). Solo pruebas/soporte.",
+    )
     args = ap.parse_args()
 
     fp = args.machine.strip().lower()
@@ -121,7 +131,13 @@ def main() -> int:
         print(e, file=sys.stderr)
         return 1
 
-    key = build_activation_key(fp, dur, mobile=args.mobile, legacy=args.legacy)
+    key = build_activation_key(
+        fp,
+        dur,
+        mobile=args.mobile,
+        legacy=args.legacy,
+        issue_ts=args.issue_ts,
+    )
     label = DURATION_LABELS.get(dur, dur)
     mods = []
     if args.mobile:
@@ -129,9 +145,10 @@ def main() -> int:
     if args.legacy:
         mods.append("legacy")
     mod_txt = ", ".join(mods) if mods else "ninguno"
+    issue_ts = args.issue_ts if args.issue_ts is not None else int(time.time())
 
     print(key)
-    print(f"# duración: {label} | módulos: {mod_txt}", file=sys.stderr)
+    print(f"# duración: {label} | módulos: {mod_txt} | issue_ts: {issue_ts}", file=sys.stderr)
     return 0
 
 

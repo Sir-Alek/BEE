@@ -96,9 +96,12 @@ python -m PyInstaller --noconfirm ELIA.spec
 - **Estado:** `%LOCALAPPDATA%\ELIA\license_state.json` + respaldos de comodidad firmados (HMAC) con la clave. Borrar el JSON restaura desde respaldo si existe; borrar todo exige volver a introducir la clave.
 - **Activación:** UI web, o `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar. Se **revalida HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
 - **Huella en el PC del usuario (soporte):** `python scripts/show_machine_fingerprint.py` (no requiere `ELIA_SKIP_LICENSE` ni licencia activa).
+- **Formato de clave v2:** `ELIA-{dur}-{mods}-{issue_ts}-{hmac64}` — el timestamp de emisión va en la clave y en el HMAC; la caducidad no depende de `activated_ts` en JSON.
+- **Claves v1** (`ELIA-{dur}-{mods}-{hmac64}` sin timestamp): legado; caducidad aún usa `activated_ts` del JSON. Reemitir con el generador actual.
 - **Generar clave** (`scripts/generate_license_key.py`; `_LICENSE_SEED` debe coincidir con el build):
-  - `python scripts/generate_license_key.py --machine <huella32hex>` — permanente
+  - `python scripts/generate_license_key.py --machine <huella32hex>` — emite v2 con `issue_ts` = ahora
   - `--duration 15d|30d|365d|perm` — temporal o permanente
+  - `--issue-ts <unix>` — solo pruebas (timestamp fijo)
   - `--mobile` / `--legacy` — incluir grabación móvil o legacy en la licencia
   - Ejemplo: `python scripts/generate_license_key.py --machine <huella> --duration 30d --mobile --legacy`
 - **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones y **habilita todos los módulos** (móvil, legacy, doc_to_bdd). No usar en entregas.
