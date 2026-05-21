@@ -74,11 +74,13 @@ La salida queda en `frontend/dist/` (la sirve FastAPI en modo web).
 Desde la raíz del repo (con el venv activado y herramientas de compilación instaladas según tu SO):
 
 ```
-python scripts/build_release.py --cython
+python scripts/build_release.py
 ```
 
-- `--cython` compila los módulos listados en `core/_cython_build_manifest.py` antes del empaquetado.
-- Sin `--cython`: ofuscación JS (si aplica) y PyInstaller según `ELIA.spec`.
+- Por defecto: **Cython** (todos los `.py` bajo `core/` salvo `__init__.py`) + ofuscación JS + PyInstaller + retirada de `.py` duplicados en `dist/ELIA/_internal/core/`.
+- El manifiesto se **autodescubre** en `core/_cython_build_manifest.py` (no hace falta listar módulos a mano).
+- `--no-cython`: solo para depuración local; el `.exe` llevará fuentes `.py` de core.
+- `--no-strip-py`: no borra `.py` del dist tras PyInstaller (depuración).
 - Revisa `scripts/build_release.py` para flags del ofuscador de `recorder.js`.
 
 Luego, si usas solo PyInstaller:
@@ -89,12 +91,14 @@ python -m PyInstaller --noconfirm ELIA.spec
 
 ## Licencia offline (`core/elia_license.py`)
 
-- **Demostración:** período limitado desde el primer arranque; estado en datos de usuario (p. ej. `%LOCALAPPDATA%\ELIA\` en Windows).
-- **Activación con clave:** Configuración (⚙) en la UI web, o variable de entorno `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar.
-- El estado en `%LOCALAPPDATA%\\ELIA\\license_state.json` guarda la clave (`saved_activation_key`) y se **revalida con HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
-- **Generar clave para una huella** (`scripts/generate_license_key.py`; el secreto `_LICENSE_SEED` debe coincidir con el build):
-  - `python scripts/generate_license_key.py --machine <huella32hex>` — permanente, sin módulos extra
-  - `--duration 15d` — 15 días (extensión demo); `30d` — 1 mes; `365d` — 1 año; `perm` — permanente
+- **Activación obligatoria:** sin clave válida no se ejecutan jobs (grabación, conversión, IA). La app arranca para permitir activar en Configuración → Licencia.
+- **Huella de equipo:** `get_machine_fingerprint()` usa hardware estable (Windows: `wmic` baseboard/cpu/csproduct + MAC); **no** usa el nombre del equipo, para sobrevivir a reinstalar Windows.
+- **Estado:** `%LOCALAPPDATA%\ELIA\license_state.json` + respaldos de comodidad firmados (HMAC) con la clave. Borrar el JSON restaura desde respaldo si existe; borrar todo exige volver a introducir la clave.
+- **Activación:** UI web, o `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar. Se **revalida HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
+- **Huella en el PC del usuario (soporte):** `python scripts/show_machine_fingerprint.py` (no requiere `ELIA_SKIP_LICENSE` ni licencia activa).
+- **Generar clave** (`scripts/generate_license_key.py`; `_LICENSE_SEED` debe coincidir con el build):
+  - `python scripts/generate_license_key.py --machine <huella32hex>` — permanente
+  - `--duration 15d|30d|365d|perm` — temporal o permanente
   - `--mobile` / `--legacy` — incluir grabación móvil o legacy en la licencia
   - Ejemplo: `python scripts/generate_license_key.py --machine <huella> --duration 30d --mobile --legacy`
 - **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones y **habilita todos los módulos** (móvil, legacy, doc_to_bdd). No usar en entregas.

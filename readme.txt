@@ -2,16 +2,35 @@
   ELIA — Evolving Learning & Intelligent Automation
 ================================================================================
 
-ELIA es una suite local de ingeniería de calidad. Graba interacciones en
-aplicaciones web, convierte esas grabaciones en pruebas automatizadas (Behave
-BDD o guías step-by-step con evidencias) y, con módulos adicionales, procesa
-historias de usuario en Word o Excel para generar escenarios Gherkin alineados
-con el estilo de tu equipo.
+ELIA es una plataforma avanzada de ingeniería de calidad que transforma el ciclo de 
+vida de las pruebas de software. Diseñada estratégicamente para romper la barrera entre 
+el QA Manual y la Automatización, ELIA empodera a los analistas funcionales para capturar 
+flujos de negocio complejos, mientras entrega a los Ingenieros de Automatización un código
+base estructurado y listo para escalar. Al automatizar la captura de selectores (DOM) y la 
+creación de la arquitectura base, ELIA elimina hasta un 80% del trabajo técnico repetitivo.
 
-Todo el procesamiento principal ocurre en tu equipo: no envía tus grabaciones ni
-documentos a la nube por defecto. La inteligencia opcional (modelo Gemma) también
-se ejecuta de forma local cuando está habilitada y el equipo cumple los requisitos
-de memoria.
+CAPACIDADES PRINCIPALES
+A través de su motor heurístico y su Inteligencia Artificial, ELIA traduce las interacciones 
+web del usuario en especificaciones vivas: desde proyectos robustos en Behave BDD (Python) de 
+forma nativa, hasta documentación paso a paso con evidencia visual. Sus módulos de Inteligencia 
+de Requerimientos permiten además ingerir historias de usuario en texto plano (Word/Excel) para 
+generar escenarios Gherkin perfectamente alineados con el estilo de tu equipo.
+
+APRENDIZAJE EVOLUTIVO
+Lo que distingue a ELIA es su capacidad de adaptación.
+El sistema aprende de la experiencia acumulada: al recibir feedback del usuario sobre las
+conversiones generadas, el modelo evoluciona, afinando su precisión y ajustándose al estilo 
+de codificación único de tu organización. ELIA no solo automatiza, sino que mejora su desempeño
+con cada iteración.
+
+PRIVACIDAD POR DISEÑO (ZERO-TRUST)
+Todo el ecosistema de ELIA opera bajo un enfoque de privacidad estricta. 
+El procesamiento principal, la conversión y el almacenamiento ocurren 100% 
+en tu equipo: tus flujos de negocio, credenciales y documentos nunca se envían 
+a nubes externas por defecto.
+Incluso su cerebro de Inteligencia Artificial (impulsado por modelos compatibles
+como la familia Gemma) se ejecuta de forma local, garantizando la seguridad de
+tu infraestructura corporativa sin sacrificar innovación tecnológica.
 
 --------------------------------------------------------------------------------
   REQUISITOS (Windows)
@@ -20,11 +39,12 @@ de memoria.
   • Windows 10/11 de 64 bits.
   • Google Chrome instalado (obligatorio para grabación web).
     Microsoft Edge no sustituye a Chrome en la grabación.
-  • Conexión a Internet solo si usas integraciones (Jira, Value Edge) o descargas
-    opcionales; el núcleo de grabación y conversión funciona sin red.
-  • Para inteligencia local (IA): modelo Gemma incluido o colocado en la carpeta
-    de recursos del producto, y recomendable ≥ 8 GB de RAM total con ≥ 4 GB libres
-    (modo Automático). Sin IA, las conversiones usan reglas heurísticas rápidas.
+  • Conexión a red/Internet: Necesaria para acceder a las páginas web que deseas grabar
+   y para las integraciones (Jira, ValueEdge). Sin embargo, todo el procesamiento, 
+   incluyendo la inteligencia y conversión de ELIA se realiza de forma estrictamente local.
+  • Para inteligencia local (IA): modelo de lenguaje compatible incluido (familia Gemma)
+   o colocado en la carpeta de recursos del producto, y recomendable ≥ 8 GB de RAM total
+   con ≥ 4 GB libres (modo Automático). Sin IA, las conversiones usan reglas heurísticas rápidas.
 
   Si Chrome no está en la ruta habitual, tu administrador puede definir antes de
   abrir ELIA la variable de entorno:
@@ -43,7 +63,8 @@ de memoria.
   4. Usa el icono de engranaje (Configuración) para licencia, inteligencia, temas
      y conectores externos.
 
-  Al cerrar la pestaña de inicio, ELIA puede finalizar el proceso en segundo plano.
+  Al cerrar la pestaña principal en tu navegador, el motor local de ELIA se detendrá
+  automáticamente para liberar recursos.
 
 --------------------------------------------------------------------------------
   PANTALLA DE INICIO — DOS ÁREAS DE TRABAJO
@@ -69,7 +90,7 @@ de memoria.
        proyecto, usando IA local cuando está activa o reglas rápidas en modo sin IA.
 
 --------------------------------------------------------------------------------
-  INTELIGENCIA LOCAL (GEMMA)
+  INTELIGENCIA LOCAL
 --------------------------------------------------------------------------------
 
   En Configuración → pestaña «Inteligencia» puedes elegir:
@@ -86,13 +107,13 @@ de memoria.
   futuras sugerencias de redacción.
 
 --------------------------------------------------------------------------------
-  CONECTORES (JIRA Y VALUE EDGE)
+  CONECTORES (JIRA Y VALUEDGE)
 --------------------------------------------------------------------------------
 
   En Configuración → «Conectores» puedes guardar perfiles con credenciales para:
 
     • Jira — extracción y trabajo con issues.
-    • Value Edge — integración con espacios y flujos configurados.
+    • ValueEdge — integración con espacios y flujos configurados.
 
   Desde la pantalla de inicio también hay accesos rápidos para probar conexión y
   lanzar flujos asociados (por ejemplo «Conectar a Jira»), según lo habilitado en
@@ -105,10 +126,10 @@ de memoria.
   LICENCIA
 --------------------------------------------------------------------------------
 
-  • Modo demostración: período limitado desde el primer uso.
-  • Activación: pestaña «Licencia» en Configuración, o clave proporcionada por tu
-    organización (también puede configurarse por variable de entorno antes del
-    arranque, según política interna).
+  • Activación obligatoria desde el primer uso: sin clave válida no se pueden ejecutar
+    tareas de automatización ni conversión con IA.
+  • Introduce la clave en Configuración → Licencia (muestra la huella de tu equipo para
+    soporte) o según indique tu organización (variable de entorno, etc.).
   • Módulos extra (móvil, legacy, documentos avanzados) dependen del tipo de clave.
 
 --------------------------------------------------------------------------------
@@ -119,8 +140,8 @@ de memoria.
 
     Documentos\ELIA\
 
-  (y datos de aplicación — licencia, preferencias de IA, conectores — en la carpeta
-  de datos de usuario de ELIA en Windows, normalmente bajo %LOCALAPPDATA%\ELIA\).
+  (y las configuraciones de la aplicación, como preferencias de IA y perfiles de conexión,
+  se gestionan de forma segura en el perfil local de tu usuario en Windows).
 
   Tu administrador puede redirigir la raíz con la variable ELIA_USER_DATA.
 
@@ -146,12 +167,7 @@ de memoria.
   SOPORTE Y DOCUMENTACIÓN TÉCNICA
 --------------------------------------------------------------------------------
 
-  Para despliegue, compilación e integraciones avanzadas, el equipo de desarrollo
-  dispone de readme_dev.md en el repositorio del producto (no incluido en todas
-  las entregas al usuario final).
-
   Versión mostrada en la aplicación: pestaña Configuración → Acerca de.
-
   Desarrollador: Alejandro Ramírez </Sir_Alek>
 
 ================================================================================

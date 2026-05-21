@@ -218,7 +218,6 @@ export async function putAiPreferences(mode: AiMode): Promise<AiCapabilitiesResp
 export type LicenseStatusResponse = {
   ok: boolean;
   reason: string;
-  demo_days_left: number | null;
   activated: boolean;
   machine_fingerprint: string;
   message: string;

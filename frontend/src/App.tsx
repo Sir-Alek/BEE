@@ -115,7 +115,6 @@ const HOME_ERROR_DISMISS_MS = 8_000;
 type LicenseState = {
   can_run_jobs: boolean;
   message: string;
-  demo_days_left: number | null;
   activated: boolean;
   machine_fingerprint: string;
   reason?: string;
@@ -127,7 +126,6 @@ function licenseFromApi(l: LicenseStatusResponse): LicenseState {
   return {
     can_run_jobs: l.can_run_jobs,
     message: l.message,
-    demo_days_left: l.demo_days_left,
     activated: l.activated,
     machine_fingerprint: l.machine_fingerprint,
     reason: l.reason,
@@ -153,8 +151,11 @@ function formatLicenseStatusLabel(license: LicenseState): string {
     return "Inactiva — instalación deshabilitada.";
   }
   if (!license.can_run_jobs) {
-    if (license.reason === "demo_expired" || license.reason === "license_expired") {
-      return "Inactiva — periodo o licencia caducados.";
+    if (license.reason === "not_activated") {
+      return "Sin activar — introduce la clave de licencia.";
+    }
+    if (license.reason === "license_expired") {
+      return "Inactiva — licencia caducada.";
     }
     return license.message;
   }
@@ -165,42 +166,45 @@ function formatLicenseStatusLabel(license: LicenseState): string {
     const days = Math.max(0, (license.expires_at * 1000 - Date.now()) / 86400000);
     return `Licencia temporal: expira el ${formatLicenseExpiryDate(license.expires_at)} (≈ ${Math.ceil(days)} día(s)).`;
   }
-  if (license.demo_days_left != null) {
-    return `Modo demostración: quedan aprox. ${license.demo_days_left.toFixed(1)} día(s).`;
-  }
   return license.message;
 }
 
-/** Banner en pantalla principal solo si requiere atención del usuario. */
-function licenseNeedsBanner(license: LicenseState): boolean {
-  if (!license.can_run_jobs) {
-    return true;
+/** Aviso de activación (solo sin licencia activada). */
+function licenseNeedsActivationBanner(license: LicenseState): boolean {
+  return license.reason === "not_activated";
+}
+
+/** Aviso de caducidad próxima (licencia temporal activa). */
+function licenseNeedsExpiryBanner(license: LicenseState): boolean {
+  if (!license.activated || license.expires_at == null) {
+    return false;
   }
-  if (!license.activated && license.demo_days_left != null && license.demo_days_left <= 3) {
-    return true;
-  }
-  if (license.expires_at != null) {
-    const daysLeft = (license.expires_at * 1000 - Date.now()) / 86400000;
-    if (daysLeft <= 7) {
+  const daysLeft = (license.expires_at * 1000 - Date.now()) / 86400000;
+  return daysLeft <= 7;
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
       return true;
+    } catch {
+      /* fallback */
     }
   }
-  return false;
-}
-
-function licenseBannerText(license: LicenseState): string {
-  if (!license.can_run_jobs) {
-    return license.message;
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
   }
-  if (!license.activated && license.demo_days_left != null && license.demo_days_left <= 3) {
-    const d = Math.max(1, Math.ceil(license.demo_days_left));
-    return `Tu periodo de demostración termina en ${d} día(s). Activa una licencia para seguir usando ELIA.`;
-  }
-  if (license.expires_at != null) {
-    const days = Math.max(0, Math.ceil((license.expires_at * 1000 - Date.now()) / 86400000));
-    return `Tu licencia expira el ${formatLicenseExpiryDate(license.expires_at)} (${days} día(s) restantes).`;
-  }
-  return license.message;
 }
 
 function goHomeInThisTab(): void {
@@ -262,6 +266,7 @@ export default function App() {
   const [license, setLicense] = useState<LicenseState | null>(null);
   const [activationKey, setActivationKey] = useState("");
   const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
+  const [fpCopyAck, setFpCopyAck] = useState(false);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
@@ -534,7 +539,7 @@ export default function App() {
     setErrorText(null);
     setHomeHint(null);
     if (license && !license.can_run_jobs) {
-      setErrorText("Periodo de demostración finalizado. Activa una licencia en Configuración (⚙).");
+      setErrorText("Licencia requerida. Activa ELIA en Configuración (⚙) → Licencia.");
       return;
     }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
@@ -1125,9 +1130,61 @@ export default function App() {
                     <span style={{ fontWeight: 600 }}>Estado actual: </span>
                     {formatLicenseStatusLabel(license)}
                   </div>
-                  {!license.activated && (
-                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, wordBreak: "break-all" }}>
-                      Huella de máquina (soporte): <code style={{ userSelect: "all", fontWeight: 600 }}>{license.machine_fingerprint}</code>
+                  {!license.activated && license.reason === "not_activated" && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: c.text,
+                        marginBottom: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.licWarnBorder}`,
+                        background: c.licWarnBg,
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        Para activar ELIA, envía este código a soporte.
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>Huella de máquina:</span>
+                        <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
+                          {license.machine_fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await copyTextToClipboard(license.machine_fingerprint);
+                              if (ok) {
+                                setFpCopyAck(true);
+                                window.setTimeout(() => setFpCopyAck(false), 2000);
+                              } else {
+                                setLicenseActivateMsg("No se pudo copiar. Selecciona el código manualmente.");
+                              }
+                            })();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${c.btnGhostBorder}`,
+                            background: c.btnGhostBg,
+                            color: c.text,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {fpCopyAck ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
                     </div>
                   )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
@@ -1837,12 +1894,12 @@ export default function App() {
               </div>
             )}
 
-            {license && licenseNeedsBanner(license) && (
+            {license && licenseNeedsActivationBanner(license) && (
               <div
                 role="alert"
                 style={{
-                  background: license.can_run_jobs ? c.hintBg : c.licWarnBg,
-                  border: `1px solid ${license.can_run_jobs ? c.hintBorder : c.licWarnBorder}`,
+                  background: c.licWarnBg,
+                  border: `1px solid ${c.licWarnBorder}`,
                   color: c.text,
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -1855,11 +1912,14 @@ export default function App() {
                   justifyContent: "space-between",
                 }}
               >
-                <span>{licenseBannerText(license)}</span>
+                <span>
+                  ELIA requiere una clave de activación. Configuración → Licencia (huella de máquina necesaria).
+                </span>
                 <button
                   type="button"
                   onClick={() => {
                     setLicenseActivateMsg(null);
+                    setSettingsTab("license");
                     setSettingsOpen(true);
                   }}
                   style={{
@@ -1876,6 +1936,24 @@ export default function App() {
                 >
                   Configuración →
                 </button>
+              </div>
+            )}
+
+            {license && licenseNeedsExpiryBanner(license) && license.expires_at != null && (
+              <div
+                role="alert"
+                style={{
+                  background: c.hintBg,
+                  border: `1px solid ${c.hintBorder}`,
+                  color: c.text,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  marginBottom: 14,
+                  fontSize: 14,
+                }}
+              >
+                Tu licencia expira el {formatLicenseExpiryDate(license.expires_at)} (
+                {Math.max(0, Math.ceil((license.expires_at * 1000 - Date.now()) / 86400000))} día(s) restantes).
               </div>
             )}
 

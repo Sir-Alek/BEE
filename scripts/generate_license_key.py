@@ -9,7 +9,7 @@ Uso (desde la raíz del repo):
   python scripts/generate_license_key.py --machine <huella> --duration perm
 
 Duraciones:
-  15d   — 15 días (extensión de demo)
+  15d   — 15 días
   30d   — 1 mes
   365d  — 1 año
   perm  — permanente (por defecto)

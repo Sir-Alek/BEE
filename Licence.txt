@@ -1,21 +1,30 @@
-LICENCIA DE AUTOR RESTRINGIDA (LAR) v1.0  
+LICENCIA DE AUTOR RESTRINGIDA (LAR) v1.1
 
 Copyright (c) 2026 Alejandro Ramírez </Sir_Alek>
 
-Queda prohibido:  
-- Cualquier tipo de modificación y/o alteración a cualquier parte del código fuente, sin autorización escrita del autor. 
-- Distribuir el código o derivados a terceros sin autorización escrita del autor.  
-- Usar el código para desarrollar productos comerciales externos.  
+Queda estrictamente prohibido:
+- Cualquier tipo de ingeniería inversa, descompilación, modificación y/o alteración
+  a cualquier parte del código fuente o binario, sin autorización escrita del autor.
+- Distribuir, sublicenciar o transferir el software (o derivados) a terceros sin 
+  autorización escrita del autor.
+- Usar el software o su código base para desarrollar productos comerciales externos
+  o competitivos.
 
-Permisos otorgados:  
-- Uso interno ilimitado.  
+Permisos otorgados:
+- Uso interno exclusivo para la entidad o usuario que ha recibido una licencia de
+  activación legítima, sujeto a los límites de dicha licencia (por equipo o usuario).
+- Código generado: Los archivos de salida (ej. scripts de prueba, reportes y escenarios BDD)
+  generados por el uso normal del software pertenecen enteramente al usuario, quien tiene libertad
+  total de uso y modificación sobre dichos archivos.
 
-El aviso de copyright debe mantenerse en todas las copias. 
+El aviso de copyright debe mantenerse en todas las copias del software.
+Este producto puede contener componentes de terceros (incluyendo modelos
+ de Inteligencia Artificial y librerías Open Source) sujetos a sus propios términos de licencia.
 
-EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
-IMPLÍCITA, INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIALIZACIÓN, IDONEIDAD
-PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO LOS AUTORES O
-TITULARES DEL COPYRIGHT SERÁN RESPONSABLES DE NINGUNA RECLAMACIÓN, DAÑOS U OTRAS
-RESPONSABILIDADES, YA SEA EN UNA ACCIÓN DE CONTRATO, AGRAVIO O CUALQUIER OTRO
-MOTIVO, QUE SURJA DE O EN CONEXIÓN CON EL SOFTWARE O EL USO U OTRO TIPO DE
-ACCIONES EN EL SOFTWARE.
+EXENCIÓN DE RESPONSABILIDAD:
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O IMPLÍCITA, 
+INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIALIZACIÓN, IDONEIDAD PARA UN PROPÓSITO 
+PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO EL AUTOR O TITULAR DEL COPYRIGHT SERÁ RESPONSABLE 
+DE NINGUNA RECLAMACIÓN, DAÑO U OTRA RESPONSABILIDAD, YA SEA EN UNA ACCIÓN DE CONTRATO, 
+AGRAVIO O CUALQUIER OTRO MOTIVO, QUE SURJA DE O EN CONEXIÓN CON EL SOFTWARE, EL CÓDIGO GENERADO 
+POR ESTE, O EL USO U OTRO TIPO DE ACCIONES EN EL SOFTWARE.

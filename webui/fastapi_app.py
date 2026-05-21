@@ -245,7 +245,6 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {
             "ok": st.ok,
             "reason": st.reason,
-            "demo_days_left": st.demo_days_left,
             "activated": st.activated,
             "machine_fingerprint": st.machine_fingerprint,
             "message": st.message,
@@ -281,7 +280,6 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 "reason": st.reason,
                 "activated": st.activated,
                 "can_run_jobs": elia_license.can_run_jobs(),
-                "demo_days_left": st.demo_days_left,
                 "expires_at": st.expires_at,
                 "duration_code": st.duration_code,
             }
@@ -333,7 +331,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if not elia_license.can_run_jobs():
             raise HTTPException(
                 status_code=403,
-                detail="Licencia: periodo de demostración finalizado o no activa. Activa con clave en la pantalla de inicio.",
+                detail="Licencia: activación requerida o caducada. Introduce la clave en Configuración → Licencia.",
             )
         job_id = jm.create_job(mode=req.mode)
 

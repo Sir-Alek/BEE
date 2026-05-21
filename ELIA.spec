@@ -62,7 +62,20 @@ def _datas_if_exists(*entries):
 # Si hay .pyd, no empaquetar el mismo módulo como .py en el archivo (preferir nativo).
 _cython_excludes = []
 if cython_binaries:
-    _cython_excludes = [p.replace("\\", "/").removesuffix(".py").replace("/", ".") for p in CYTHON_REL_PATHS]
+    _cython_excludes = [
+        p.replace("\\", "/").removesuffix(".py").replace("/", ".")
+        for p in CYTHON_REL_PATHS
+    ]
+_cython_excludes.append("core._cython_build_manifest")
+
+# hiddenimports derivados del manifiesto (evita desincronizar con build_release).
+_cython_hidden = set()
+for _rel in CYTHON_REL_PATHS:
+    _mod = _rel.replace("\\", "/").removesuffix(".py").replace("/", ".")
+    _cython_hidden.add(_mod)
+    _parts = _mod.split(".")
+    for _i in range(2, len(_parts)):
+        _cython_hidden.add(".".join(_parts[:_i]))
 
 # Web UI deps are imported conditionally and need help for PyInstaller.
 web_hidden = []
@@ -72,45 +85,7 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
-integrations_hidden = [
-    # core raíz — módulos Cython compilados directamente en core/
-    "core.elia_paths",
-    "core.elia_license",
-    "core.elia_memory",
-    "core.modules_config",
-    # core/ui_automation/ — módulos Cython compilados
-    "core.ui_automation",
-    "core.ui_automation.puppeteer_script_converter",
-    "core.ui_automation.step_by_step_converter",
-    "core.ui_automation.flow_analyzer",
-    "core.ui_automation.locator_healer",
-    "core.ui_automation.node_wrapper",
-    "core.ui_automation.recorder_focus",
-    "core.ui_automation.video_recorder",
-    "core.ui_automation.mobile_recorder",
-    "core.ui_automation.legacy_recorder",
-    "core.ui_automation.recording_to_behave_converter",
-    "core.ui_automation.mobile_dom_parser",
-    "core.ui_automation.recording_flow_analyzer",
-    "core.ui_automation.recording_linkage",
-    # core/req_intelligence/ — módulos Cython compilados
-    "core.req_intelligence",
-    "core.req_intelligence.jira_extractor",
-    "core.req_intelligence.value_edge_extractor",
-    "core.req_intelligence.gherkin_converter",
-    "core.req_intelligence.integrations_config_loader",
-    "core.req_intelligence.connectors_profiles_store",
-    "core.req_intelligence.integrations_service",
-    "core.req_intelligence.doc_ingestion",
-    "core.req_intelligence.bdd_doc_converter",
-    "core.req_intelligence.feature_scanner",
-    "core.req_intelligence.recording_scanner",
-    "core.ui_automation.linked_steps_regenerator",
-    # NOTA: los alias retrocompatibles (core.jira_extractor, core.flow_analyzer, etc.)
-    # son proxies lazy registrados en sys.modules por core/__init__.py en tiempo de
-    # ejecución. NO son archivos .pyd reales; PyInstaller no puede encontrarlos
-    # estáticamente, por lo que NO deben listarse aquí.
-]
+integrations_hidden = sorted(_cython_hidden)
 
 crypto_hidden = []
 try:
@@ -147,7 +122,7 @@ a = Analysis(
         ('Licence.txt',     '.'),
         ('readme.txt',      '.'),
     ) + llama_datas + excel_datas + js_obf,
-    hiddenimports=['mss', 'cv2', 'numpy', 'core.elia_license'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
+    hiddenimports=['mss', 'cv2', 'numpy'] + web_hidden + llama_hidden + excel_hidden + integrations_hidden + crypto_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

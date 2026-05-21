@@ -1,1 +1,0 @@
-# Obsoleto: las dependencias de build (Cython, setuptools) están en requirements.txt de la raíz.

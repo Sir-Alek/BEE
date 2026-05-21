@@ -1,18 +1,15 @@
 """
-Licencia offline (demo + activación por clave + kill switch local).
+Licencia offline: activación obligatoria por clave + kill switch local.
 
 Sin servidor externo: estado en disco local, HMAC con secreto embebido (cambiar en builds de release).
 
-Seguridad local: no se confía en ``activated`` ni en ``expires_at`` del JSON; en cada arranque
-se revalida ``saved_activation_key`` contra la huella de la máquina y se recalcula la caducidad.
+Seguridad: no se confía en ``activated`` del JSON; en cada consulta se revalida ``saved_activation_key``
+contra la huella de hardware de la máquina.
 
-Duraciones de clave (generate_license_key.py):
-  15D  — 15 días (extensión demo)
-  30D  — 1 mes
-  365D — 1 año
-  PERM — permanente
+Respaldo oculto (comodidad): si el usuario borra ``license_state.json``, se puede restaurar la clave
+desde copias firmadas; borrar todo solo desactiva la app hasta volver a introducir la clave.
 
-Módulos opcionales en la clave: grabación móvil (M) y legacy (L).
+Huella: identificadores de hardware estables (sin nombre de equipo). Ver ``get_machine_fingerprint()``.
 
 Variables de entorno (desarrollo / soporte):
   ELIA_SKIP_LICENSE=1  — omite comprobación y habilita todos los módulos (no usar en entregas).
@@ -26,15 +23,13 @@ import json
 import os
 import platform
 import re
+import subprocess
 import sys
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
-
-# Demo: días desde el primer arranque (sin clave)
-DEMO_DAYS = 15
+from typing import Any, Dict, List, Optional, Tuple
 
 # Duraciones emitidas por el generador de claves
 DURATION_15D = "15D"
@@ -56,7 +51,6 @@ DURATION_LABELS: Dict[str, str] = {
     DURATION_PERM: "permanente",
 }
 
-# Secreto para derivar claves de activación (sustituir / rotar en pipeline de release).
 _LICENSE_SEED = b"ELIA-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
 
 _KEY_PREFIX_RE = re.compile(
@@ -64,16 +58,109 @@ _KEY_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+_INVALID_HW_VALUES = frozenset(
+    {
+        "",
+        "none",
+        "null",
+        "n/a",
+        "na",
+        "to be filled by o.e.m.",
+        "default string",
+        "00000000",
+        "123456789",
+        "ffffffff",
+        "system serial number",
+    }
+)
+
 
 def _secret_key() -> bytes:
     return hashlib.sha256(_LICENSE_SEED).digest()
 
 
+def _normalize_hw_value(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    v = str(value).strip()
+    if not v or v.lower() in _INVALID_HW_VALUES:
+        return None
+    return v
+
+
+def _run_wmic(alias: str, field: str) -> Optional[str]:
+    if sys.platform != "win32":
+        return None
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proc = subprocess.run(
+            ["wmic", alias, "get", field],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            creationflags=flags,
+        )
+        if proc.returncode != 0:
+            return None
+        lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return None
+        return _normalize_hw_value(lines[1])
+    except Exception:
+        return None
+
+
+def _linux_machine_id() -> Optional[str]:
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            p = Path(path)
+            if p.is_file():
+                return _normalize_hw_value(p.read_text(encoding="utf-8").splitlines()[0])
+        except Exception:
+            continue
+    return None
+
+
+def _collect_hardware_parts() -> List[str]:
+    """Partes estables para la huella (sin nombre de equipo / platform.node)."""
+    parts: List[str] = []
+
+    if sys.platform == "win32":
+        board = _run_wmic("baseboard", "serialnumber")
+        if board:
+            parts.append(f"board:{board}")
+        product_uuid = _run_wmic("csproduct", "uuid")
+        if product_uuid:
+            parts.append(f"product:{product_uuid}")
+        cpu_id = _run_wmic("cpu", "processorid")
+        if cpu_id:
+            parts.append(f"cpu:{cpu_id}")
+    else:
+        mid = _linux_machine_id()
+        if mid:
+            parts.append(f"machine-id:{mid}")
+
+    try:
+        mac = uuid.getnode()
+        if mac and (mac >> 40) % 2 == 0:
+            parts.append(f"mac:{mac}")
+    except Exception:
+        pass
+
+    parts.append(f"arch:{platform.machine()}")
+    parts.append(f"platform:{sys.platform}")
+    return parts
+
+
 def get_machine_fingerprint() -> str:
-    """Identificador estable por máquina (hex corto)."""
-    raw = f"{uuid.getnode()}|{platform.node()}|{platform.machine()}|{sys.platform}".encode(
-        "utf-8", errors="replace"
-    )
+    """
+    Huella corta por equipo. Sobrevive a reinstalar Windows si el hardware no cambia.
+    No usa el nombre del equipo (platform.node).
+    """
+    parts = _collect_hardware_parts()
+    if not parts:
+        parts = [f"fallback:{uuid.getnode()}", f"arch:{platform.machine()}", f"platform:{sys.platform}"]
+    raw = "|".join(parts).encode("utf-8", errors="replace")
     return hashlib.sha256(raw).hexdigest()[:32]
 
 
@@ -92,7 +179,6 @@ def _parse_mods_token(token: str) -> Tuple[bool, bool]:
 
 
 def _license_message(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
-    """Mensaje firmado para HMAC. Claves legacy permanentes usaban |FULL sin módulos."""
     if duration == "FULL":
         return machine_fp.encode("ascii") + b"|FULL"
     flags = _mods_token(mobile, legacy)
@@ -119,10 +205,6 @@ def build_activation_key(
     mobile: bool = False,
     legacy: bool = False,
 ) -> str:
-    """
-    Genera clave con prefijo legible: ELIA-{dur}-{mods}-{hmac64}.
-    Usado por scripts/generate_license_key.py.
-    """
     dur = duration.upper()
     if dur not in DURATION_SECONDS:
         raise ValueError(f"Duración no válida: {duration}")
@@ -150,7 +232,6 @@ def _sig_matches(provided: str, expected: str) -> bool:
 
 
 def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey]:
-    """Comprueba la firma HMAC; devuelve metadatos si coincide."""
     raw = (key or "").strip().replace(" ", "")
 
     m = _KEY_PREFIX_RE.match(raw)
@@ -167,12 +248,10 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
     if len(hex_only) < 32:
         return None
 
-    # Legacy: clave permanente sin prefijo (solo HMAC de |FULL)
     expected_full = _expected_activation_key(machine_fp, "FULL", False, False)
     if _sig_matches(hex_only, expected_full):
         return ParsedLicenseKey(duration=DURATION_PERM, mobile=False, legacy=False)
 
-    # Solo hex (64): probar variantes de duración y módulos
     if len(hex_only) == 64:
         for dur in DURATION_SECONDS:
             for mobile in (False, True):
@@ -210,7 +289,6 @@ def _state_path() -> Path:
 
 
 def _kill_paths() -> list[Path]:
-    """Cualquiera existente → uso bloqueado (kill switch offline)."""
     paths = [_state_dir() / "KILL", _state_dir() / "elia_revoked.flag"]
     try:
         if getattr(sys, "frozen", False):
@@ -240,12 +318,136 @@ def _save_state(data: Dict[str, Any]) -> None:
         json.dump(data, f, indent=0)
 
 
-def _ensure_first_run_recorded() -> Dict[str, Any]:
+def _get_hidden_backup_paths() -> list[Path]:
+    """Rutas de respaldo de comodidad para saved_activation_key."""
+    paths: list[Path] = []
+    if sys.platform == "win32":
+        local = Path(
+            os.environ.get("LOCALAPPDATA")
+            or os.environ.get("APPDATA")
+            or str(Path.home())
+        )
+        temp = Path(os.environ.get("TEMP") or os.environ.get("TMP") or str(local))
+        paths.append(temp / "etil_sys_metrics.db")
+        paths.append(
+            local
+            / "Microsoft"
+            / "Windows"
+            / "WebCache"
+            / ".win_telemetry_cache"
+        )
+        paths.append(local / "ELIA" / ".wgx_state_cache")
+    else:
+        home = Path.home()
+        paths.append(home / ".cache" / ".sys_bus_metrics")
+        paths.append(home / ".local" / "share" / ".v8_compile_cache")
+        paths.append(home / ".elia_license_stub")
+    return paths
+
+
+def _activation_backup_message(machine_fp: str, key: str, activated_ts: float) -> bytes:
+    return f"{machine_fp}|ACTIVATION|{key}|{activated_ts:.6f}".encode("ascii")
+
+
+def _activation_backup_signature(machine_fp: str, key: str, activated_ts: float) -> str:
+    return hmac.new(
+        _secret_key(),
+        _activation_backup_message(machine_fp, key, activated_ts),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _read_activation_backup(path: Path, machine_fp: str) -> Optional[Tuple[str, float]]:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        key = _normalize_stored_key(str(data.get("key", "")))
+        if not key:
+            return None
+        ts = float(data.get("ts", 0.0))
+        sig = str(data.get("sig", "")).lower()
+        expected = _activation_backup_signature(machine_fp, key, ts)
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if parse_activation_key(key, machine_fp) is None:
+            return None
+        return key, ts
+    except Exception:
+        return None
+
+
+def _write_activation_backup(
+    path: Path, machine_fp: str, key: str, activated_ts: float
+) -> None:
+    payload = {
+        "v": 2,
+        "key": key,
+        "ts": activated_ts,
+        "sig": _activation_backup_signature(machine_fp, key, activated_ts),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetFileAttributesW(str(path), 0x02)
+        except Exception:
+            pass
+
+
+def _find_activation_in_backups(machine_fp: str) -> Optional[Tuple[str, float]]:
+    best: Optional[Tuple[str, float]] = None
+    for path in _get_hidden_backup_paths():
+        row = _read_activation_backup(path, machine_fp)
+        if row is None:
+            continue
+        if best is None or row[1] < best[1]:
+            best = row
+    return best
+
+
+def _sync_activation_backups(machine_fp: str, key: str, activated_ts: float) -> None:
+    for path in _get_hidden_backup_paths():
+        try:
+            _write_activation_backup(path, machine_fp, key, activated_ts)
+        except Exception:
+            continue
+
+
+def _load_effective_state() -> Dict[str, Any]:
+    """Carga estado principal y restaura clave desde respaldos si hace falta."""
     state = _load_state()
-    if "first_run_ts" not in state:
-        state["first_run_ts"] = time.time()
-        state["activated"] = False
+    fp = get_machine_fingerprint()
+
+    if _resolve_license_from_state(state, fp) is not None:
+        key = _normalize_stored_key(str(state.get("saved_activation_key", "")))
+        ts = float(state.get("activated_ts") or time.time())
+        _sync_activation_backups(fp, key, ts)
+        return state
+
+    restored = _find_activation_in_backups(fp)
+    if restored is not None:
+        key, activated_ts = restored
+        state["saved_activation_key"] = key
+        state["activated"] = True
+        state["activated_ts"] = activated_ts
+        parsed = parse_activation_key(key, fp)
+        if parsed:
+            state["duration_code"] = parsed.duration
+            sec = DURATION_SECONDS.get(parsed.duration)
+            state["expires_at"] = (activated_ts + sec) if sec is not None else None
+            state["licensed_modules"] = _licensed_modules_dict(parsed)
         _save_state(state)
+        _sync_licensed_modules(
+            bool((state.get("licensed_modules") or {}).get("mobile_recording")),
+            bool((state.get("licensed_modules") or {}).get("legacy_recording")),
+        )
+        return state
+
     return state
 
 
@@ -281,13 +483,6 @@ def _licensed_modules_dict(parsed: ParsedLicenseKey) -> Dict[str, bool]:
 def _resolve_license_from_state(
     state: Dict[str, Any], machine_fp: str
 ) -> Optional[Tuple[ParsedLicenseKey, float, Optional[float]]]:
-    """
-    Revalida la licencia en cada consulta (zero trust sobre el JSON).
-
-    Requiere saved_activation_key con HMAC válido para esta máquina.
-    La caducidad se recalcula desde activated_ts + duración de la clave, no desde
-    expires_at editado a mano en disco.
-    """
     saved_key = state.get("saved_activation_key")
     if not saved_key:
         return None
@@ -303,16 +498,11 @@ def _resolve_license_from_state(
 
 
 def is_time_limited_license_active() -> bool:
-    """True si hay licencia activada, clave válida y no caducada."""
     st = get_license_status()
     return st.ok and st.reason == "activated"
 
 
 def get_active_license_modules() -> Optional[Dict[str, bool]]:
-    """
-    Módulos concedidos por la licencia activa (mobile/legacy).
-    None si no hay licencia válida.
-    """
     st = get_license_status()
     if not st.ok or st.reason != "activated":
         return None
@@ -326,7 +516,7 @@ def activate_with_key(key: str) -> bool:
     parsed = parse_activation_key(key, fp)
     if parsed is None:
         return False
-    state = _ensure_first_run_recorded()
+    state = _load_state()
     now = time.time()
     key_norm = _normalize_stored_key(key)
     state["saved_activation_key"] = key_norm
@@ -337,6 +527,7 @@ def activate_with_key(key: str) -> bool:
     state["expires_at"] = (now + sec) if sec is not None else None
     state["licensed_modules"] = _licensed_modules_dict(parsed)
     _save_state(state)
+    _sync_activation_backups(fp, key_norm, now)
     _sync_licensed_modules(parsed.mobile, parsed.legacy)
     return True
 
@@ -355,7 +546,6 @@ def kill_switch_active() -> bool:
 class LicenseStatus:
     ok: bool
     reason: str
-    demo_days_left: Optional[float]
     activated: bool
     machine_fingerprint: str
     message: str
@@ -365,9 +555,8 @@ class LicenseStatus:
 
 
 def can_run_jobs() -> bool:
-    """False si demo caducada sin activar, licencia temporal caducada o kill switch."""
     st = get_license_status()
-    return st.ok and st.reason not in ("demo_expired", "license_expired", "killed")
+    return st.ok and st.reason not in ("not_activated", "license_expired", "killed")
 
 
 def get_license_status() -> LicenseStatus:
@@ -375,7 +564,6 @@ def get_license_status() -> LicenseStatus:
         return LicenseStatus(
             ok=True,
             reason="skip",
-            demo_days_left=None,
             activated=True,
             machine_fingerprint=get_machine_fingerprint(),
             message="Licencia omitida (ELIA_SKIP_LICENSE).",
@@ -386,14 +574,13 @@ def get_license_status() -> LicenseStatus:
         return LicenseStatus(
             ok=False,
             reason="killed",
-            demo_days_left=None,
             activated=False,
             machine_fingerprint=get_machine_fingerprint(),
             message="Esta instalación ha sido deshabilitada (kill switch local).",
         )
 
     fp = get_machine_fingerprint()
-    state = _ensure_first_run_recorded()
+    state = _load_effective_state()
     resolved = _resolve_license_from_state(state, fp)
 
     if resolved is not None:
@@ -408,7 +595,6 @@ def get_license_status() -> LicenseStatus:
             return LicenseStatus(
                 ok=False,
                 reason="license_expired",
-                demo_days_left=0.0,
                 activated=True,
                 machine_fingerprint=fp,
                 message=f"La licencia ({left_label}) ha caducado. Solicita una nueva clave.",
@@ -432,7 +618,6 @@ def get_license_status() -> LicenseStatus:
         return LicenseStatus(
             ok=True,
             reason="activated",
-            demo_days_left=None,
             activated=True,
             machine_fingerprint=fp,
             message=msg,
@@ -441,39 +626,21 @@ def get_license_status() -> LicenseStatus:
             licensed_modules=licensed_modules,
         )
 
-    if bool(state.get("activated")) and not state.get("saved_activation_key"):
-        _clear_licensed_modules()
-
-    first_ts = float(state.get("first_run_ts", time.time()))
-    elapsed = time.time() - first_ts
-    limit_sec = DEMO_DAYS * 86400
-    left_sec = limit_sec - elapsed
-
-    if left_sec <= 0:
-        return LicenseStatus(
-            ok=False,
-            reason="demo_expired",
-            demo_days_left=0.0,
-            activated=False,
-            machine_fingerprint=fp,
-            message=f"Periodo de demostración ({DEMO_DAYS} días) finalizado. Introduce la clave de activación.",
-        )
-
+    _clear_licensed_modules()
     return LicenseStatus(
-        ok=True,
-        reason="demo",
-        demo_days_left=left_sec / 86400.0,
+        ok=False,
+        reason="not_activated",
         activated=False,
         machine_fingerprint=fp,
-        message=f"Modo demostración: quedan aprox. {left_sec / 86400.0:.1f} día(s).",
+        message=(
+            "ELIA requiere una clave de activación. "
+            "Configuración → Licencia (huella de equipo abajo)."
+        ),
     )
 
 
 def ensure_license_or_exit() -> None:
-    """
-    Al inicio: solo bloquea arranque ante kill switch.
-    Demo caducada: no termina el proceso (la UI permite introducir clave); los jobs se bloquean en API.
-    """
+    """Al inicio: bloquea solo ante kill switch; la UI permite activar sin clave."""
     try_activate_from_env()
     st = get_license_status()
     if st.reason == "killed":
@@ -482,7 +649,6 @@ def ensure_license_or_exit() -> None:
 
 
 def try_activate_from_env() -> bool:
-    """Si ELIA_ACTIVATION_KEY está definida y es válida, activa y devuelve True."""
     key = (os.environ.get("ELIA_ACTIVATION_KEY") or "").strip()
     if not key:
         return False

@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ELIA"
-#define MyAppVersion "0.3.1"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "</Sir_Alek>"
 #define MyAppURL ""
 #define MyAppExeName "ELIA.exe"
@@ -34,7 +34,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
-SetupIconFile=logo_elia.ico
+SetupIconFile=resources\logo_elia.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -47,8 +47,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#MySourceDir}\ELIA.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; PyInstaller 6+ coloca dependencias en _internal\ (core\, frontend\, resources\, etc.).
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Guía de usuario en la raíz de instalación (legible sin abrir _internal).
-Source: "readme.txt"; DestDir: "{app}"; Flags: ignoreversion; Check: FileExists(ExpandConstant('{src}\readme.txt'))
+; Guía de usuario en la raíz de la app instalada (junto a ELIA.exe).
+Source: "readme.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\_internal\resources\logo_elia.ico"
@@ -75,14 +75,22 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ReadmeSrc, ReadmeDst: string;
 begin
+  // Tras compilar: copiar readme junto al instalador (carpeta OutputDir = ELIA\).
+  if CurStep = ssPostCompile then
+  begin
+    ReadmeSrc := ExpandConstant('{sd}\readme.txt');
+    ReadmeDst := ExpandConstant('{sd}\{#MyOutputDir}\readme.txt');
+    if FileExists(ReadmeSrc) then
+      FileCopy(ReadmeSrc, ReadmeDst, False);
+  end;
+
   // Configurar permisos después de la instalación
   if CurStep = ssPostInstall then
   begin
-    // Solo intentar configurar permisos si se está instalando para todos los usuarios
     if IsAdminInstallMode then
-    begin
       SetFolderPermissions(ExpandConstant('{app}\_internal\core'));
-    end;
   end;
 end;

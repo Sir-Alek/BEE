@@ -1009,13 +1009,13 @@ class main:
 
              
 def _require_license_for_jobs() -> None:
-    """Bloquea conversiones/grabación si demo caducada sin activar (modo Tk)."""
+    """Bloquea conversiones/grabación sin licencia activa (modo Tk)."""
     from core import elia_license
 
     if not elia_license.can_run_jobs():
         raise RuntimeError(
-            "Periodo de demostración finalizado o licencia inactiva. "
-            "Activa la aplicación con la clave de activación (UI web: inicio) o variable ELIA_ACTIVATION_KEY."
+            "Licencia inactiva o caducada. "
+            "Activa ELIA en Configuración → Licencia o con ELIA_ACTIVATION_KEY."
         )
 
 
