@@ -267,6 +267,8 @@ export default function App() {
   const [activationKey, setActivationKey] = useState("");
   const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
   const [fpCopyAck, setFpCopyAck] = useState(false);
+  /** Huella en pestaña Licencia: solo visible tras pulsar «Obtener huella»; se oculta al cerrar Configuración. */
+  const [licenseFpVisible, setLicenseFpVisible] = useState(false);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
@@ -439,6 +441,13 @@ export default function App() {
     if (!settingsOpen || !isHomeSurface) return;
     void refreshLicense();
   }, [settingsOpen, isHomeSurface, refreshLicense]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      setLicenseFpVisible(false);
+      setFpCopyAck(false);
+    }
+  }, [settingsOpen]);
 
   // Cargar estado de módulos (Building Blocks)
   useEffect(() => {
@@ -1187,6 +1196,62 @@ export default function App() {
                       </div>
                     </div>
                   )}
+                  {license.activated && licenseFpVisible && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: c.text,
+                        marginBottom: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.border}`,
+                        background: c.surface,
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        Huella de máquina actual (para ampliar módulos u obtener otra clave en soporte):
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
+                          {license.machine_fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await copyTextToClipboard(license.machine_fingerprint);
+                              if (ok) {
+                                setFpCopyAck(true);
+                                window.setTimeout(() => setFpCopyAck(false), 2000);
+                              } else {
+                                setLicenseActivateMsg("No se pudo copiar. Selecciona el código manualmente.");
+                              }
+                            })();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${c.btnGhostBorder}`,
+                            background: c.btnGhostBg,
+                            color: c.text,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {fpCopyAck ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                     <input
                       type="text"
@@ -1215,6 +1280,8 @@ export default function App() {
                             if (r.ok) {
                               await refreshLicense();
                               setActivationKey("");
+                              setLicenseFpVisible(false);
+                              setFpCopyAck(false);
                               setLicenseActivateMsg("Licencia activada correctamente.");
                               const m = await getModulesStatus();
                               setModules(m);
@@ -1243,6 +1310,28 @@ export default function App() {
                   </div>
                   {licenseActivateMsg && (
                     <div style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
+                  )}
+                  {license.activated && !licenseFpVisible && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLicenseActivateMsg(null);
+                        void refreshLicense().then(() => setLicenseFpVisible(true));
+                      }}
+                      style={{
+                        marginTop: 10,
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Obtener huella de máquina
+                    </button>
                   )}
                 </>
               ) : (
