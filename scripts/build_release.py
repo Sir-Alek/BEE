@@ -29,7 +29,12 @@ CORE_UI = os.path.join(CORE, "ui_automation")
 OBFUSCATED_JS = os.path.join(CORE_UI, "recorder.obfuscated.js")
 SOURCE_RECORDER = os.path.join(CORE_UI, "recorder.js")
 
-from core._cython_build_manifest import CYTHON_REL_PATHS, NON_CYTHON_PY_FILENAMES
+from core._cython_build_manifest import (
+    CYTHON_REL_PATHS,
+    NON_CYTHON_PY_FILENAMES,
+    NON_CYTHON_RUNTIME_REL_PATHS,
+    verify_core_manifest_coverage,
+)
 
 # Solo estos .py pueden quedar en dist/ELIA/.../core (marcadores de paquete).
 _KEEP_PY_NAMES = frozenset({"__init__.py"})
@@ -157,6 +162,78 @@ def _dist_core_roots() -> list[str]:
     return roots
 
 
+def verify_manifest_covers_core(strict: bool = True) -> list[str]:
+    """Cada .py de core/ debe estar en CYTHON o en la lista de exclusión."""
+    missing = verify_core_manifest_coverage()
+    if missing and strict:
+        print("ERROR: Módulos core/ sin clasificar en el manifiesto:", file=sys.stderr)
+        for rel in missing:
+            print(f"   - {rel}", file=sys.stderr)
+        raise SystemExit(1)
+    return missing
+
+
+def _find_in_dist(rel_posix: str) -> list[str]:
+    """Busca un archivo relativo al repo dentro de dist/ELIA/ (core o _internal/core)."""
+    hits: list[str] = []
+    rel_os = rel_posix.replace("/", os.sep)
+    for core_root in _dist_core_roots():
+        candidate = os.path.join(core_root, os.path.relpath(rel_os, "core"))
+        if os.path.isfile(candidate):
+            hits.append(candidate)
+    return hits
+
+
+def verify_dist_bundle(strict: bool = True) -> None:
+    """
+    Tras PyInstaller + strip:
+      - Los módulos Cython no deben quedar como .py (solo .pyd/.so + __init__.py).
+      - Los módulos runtime excluidos de Cython deben conservar su .py.
+      - Cada módulo Cython debe tener extensión nativa en dist/.
+    """
+    roots = _dist_core_roots()
+    if not roots:
+        msg = "dist/ELIA/.../core no encontrado; ejecuta PyInstaller antes de verificar."
+        if strict:
+            print(f"ERROR: {msg}", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"AVISO: {msg}")
+        return
+
+    errors: list[str] = []
+
+    for rel_py in CYTHON_REL_PATHS:
+        for hit in _find_in_dist(rel_py):
+            errors.append(f"Quedó .py de módulo Cython en el bundle: {os.path.relpath(hit, ROOT)}")
+        rel_native = os.path.splitext(rel_py)[0]
+        native_hits: list[str] = []
+        for core_root in roots:
+            parent = os.path.join(core_root, os.path.relpath(rel_native, "core"))
+            parent_dir = os.path.dirname(parent)
+            base = os.path.basename(parent)
+            if not os.path.isdir(parent_dir):
+                continue
+            for fn in os.listdir(parent_dir):
+                stem, ext = os.path.splitext(fn)
+                if stem.split(".")[0] == base and ext.lower() in (".pyd", ".so"):
+                    native_hits.append(os.path.join(parent_dir, fn))
+        if not native_hits:
+            errors.append(f"Falta extensión nativa en dist/ para {rel_py}")
+
+    for rel_py in NON_CYTHON_RUNTIME_REL_PATHS:
+        if not _find_in_dist(rel_py):
+            errors.append(f"Falta .py runtime (no Cython) en dist/: {rel_py}")
+
+    if errors and strict:
+        print("ERROR: Verificación del bundle dist/ELIA:", file=sys.stderr)
+        for err in errors:
+            print(f"   - {err}", file=sys.stderr)
+        raise SystemExit(1)
+    elif errors:
+        for err in errors:
+            print(f"AVISO bundle: {err}")
+
+
 def strip_py_from_dist() -> None:
     """
     Elimina del bundle todos los .py de core/ que tengan extensión nativa compilada.
@@ -172,6 +249,8 @@ def strip_py_from_dist() -> None:
                 if not fn.endswith(".py"):
                     continue
                 if fn in _KEEP_PY_NAMES:
+                    continue
+                if fn in NON_CYTHON_PY_FILENAMES:
                     continue
                 py_path = os.path.join(dirpath, fn)
                 if fn == "_cython_build_manifest.py":
@@ -207,8 +286,14 @@ def strip_py_from_dist() -> None:
 
 
 def report_manifest() -> None:
-    print(f"Manifiesto Cython: {len(CYTHON_REL_PATHS)} módulo(s) en core/")
+    verify_manifest_covers_core(strict=True)
+    print(f"Manifiesto Cython: {len(CYTHON_REL_PATHS)} modulo(s) -> .pyd/.so en el exe")
     for rel in CYTHON_REL_PATHS:
+        print(f"  · {rel}")
+    print(
+        f"Runtime sin Cython: {len(NON_CYTHON_RUNTIME_REL_PATHS)} modulo(s) -> .py en el exe"
+    )
+    for rel in NON_CYTHON_RUNTIME_REL_PATHS:
         print(f"  · {rel}")
 
 
@@ -244,6 +329,7 @@ def main() -> int:
         run([sys.executable, "-m", "PyInstaller", "--noconfirm", "ELIA.spec"])
         if not args.no_strip_py and not args.no_cython:
             strip_py_from_dist()
+            verify_dist_bundle(strict=True)
         elif args.no_cython:
             print("AVISO: Sin strip: --no-cython activo.")
 

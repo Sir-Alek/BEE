@@ -14,7 +14,11 @@ sys.path.insert(0, _spec_root)
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
-from core._cython_build_manifest import CYTHON_REL_PATHS
+from core._cython_build_manifest import (
+    CYTHON_REL_PATHS,
+    NON_CYTHON_RUNTIME_REL_PATHS,
+    rel_path_to_module,
+)
 
 # Extensiones Cython (tras: python setup_cython.py build_ext --inplace)
 _cython_globs = sorted(
@@ -71,11 +75,14 @@ _cython_excludes.append("core._cython_build_manifest")
 # hiddenimports derivados del manifiesto (evita desincronizar con build_release).
 _cython_hidden = set()
 for _rel in CYTHON_REL_PATHS:
-    _mod = _rel.replace("\\", "/").removesuffix(".py").replace("/", ".")
+    _mod = rel_path_to_module(_rel)
     _cython_hidden.add(_mod)
     _parts = _mod.split(".")
     for _i in range(2, len(_parts)):
         _cython_hidden.add(".".join(_parts[:_i]))
+
+# Módulos excluidos de Cython: se empaquetan como .py (imports lazy en webui/fastapi_app).
+_non_cython_hidden = {rel_path_to_module(_rel) for _rel in NON_CYTHON_RUNTIME_REL_PATHS}
 
 # Web UI deps are imported conditionally and need help for PyInstaller.
 web_hidden = []
@@ -85,7 +92,7 @@ for pkg in ("fastapi", "uvicorn", "starlette", "pydantic", "httpx"):
     except Exception:
         web_hidden.append(pkg)
 
-integrations_hidden = sorted(_cython_hidden)
+integrations_hidden = sorted(_cython_hidden | _non_cython_hidden)
 
 crypto_hidden = []
 try:
