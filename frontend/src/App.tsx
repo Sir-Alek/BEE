@@ -420,6 +420,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   const [aboutInfo, setAboutInfo] = useState<AppAboutResponse | null>(null);
+  const [aboutChangelogOpen, setAboutChangelogOpen] = useState(false);
   const [connectorProfiles, setConnectorProfiles] = useState<EliaConnectorProfile[]>([]);
   const [reqConnectorProfileId, setReqConnectorProfileId] = useState("");
   const [settingsProfileId, setSettingsProfileId] = useState("");
@@ -561,7 +562,10 @@ export default function App() {
   }, [settingsOpen, settingsTab, isHomeSurface, refreshAiMemoryStatus]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
+    if (!settingsOpen) {
+      setAboutChangelogOpen(false);
+      return;
+    }
     let alive = true;
     void (async () => {
       try {
@@ -2422,9 +2426,129 @@ export default function App() {
                   <div style={{ fontSize: 14, marginBottom: 6 }}>
                     <b>{aboutInfo.app_name}</b> — {aboutInfo.tagline}
                   </div>
-                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 6 }}>
-                    Versión {aboutInfo.version}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "8px 12px",
+                      fontSize: 13,
+                      color: c.muted,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span>
+                      Versión: <span style={{ color: c.text }}>{aboutInfo.version_display}</span>
+                    </span>
+                    {aboutInfo.changelog.length > 0 && (
+                      <button
+                        type="button"
+                        data-testid="elia-changelog-toggle"
+                        aria-expanded={aboutChangelogOpen}
+                        onClick={() => setAboutChangelogOpen((open) => !open)}
+                        style={{
+                          border: `1px solid ${c.border}`,
+                          borderRadius: 999,
+                          padding: "2px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: c.muted,
+                          background: c.inputBg,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {aboutChangelogOpen ? "▾ Ver novedades" : "▸ Ver novedades"}
+                      </button>
+                    )}
                   </div>
+                  {aboutChangelogOpen && aboutInfo.changelog.length > 0 && (
+                    <div
+                      data-testid="elia-changelog-panel"
+                      style={{
+                        marginBottom: 12,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.border}`,
+                        background: c.inputBg,
+                        maxHeight: "min(36vh, 320px)",
+                        overflow: "auto",
+                      }}
+                    >
+                      {aboutInfo.changelog.map((entry, entryIndex) => {
+                        const isCurrent = entry.version === aboutInfo.version;
+                        const isLast = entryIndex === aboutInfo.changelog.length - 1;
+                        const sections: Array<{
+                          key: "added" | "fixed" | "changed";
+                          label: string;
+                          items: string[];
+                        }> = [
+                          { key: "added", label: "Añadido", items: entry.added },
+                          { key: "fixed", label: "Corregido", items: entry.fixed },
+                          { key: "changed", label: "Cambiado", items: entry.changed },
+                        ].filter((section) => section.items.length > 0);
+
+                        return (
+                          <div
+                            key={entry.version}
+                            data-testid={`elia-changelog-entry-${entry.version}`}
+                            style={{
+                              marginBottom: isLast ? 0 : 16,
+                              paddingBottom: isLast ? 0 : 16,
+                              borderBottom: isLast ? "none" : `1px solid ${c.border}`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                alignItems: "baseline",
+                                gap: "6px 10px",
+                                marginBottom: 8,
+                              }}
+                            >
+                              <span style={{ fontWeight: 800, fontSize: 13, color: c.text }}>
+                                {entry.version}
+                                {isCurrent ? " (actual)" : ""}
+                              </span>
+                              {entry.date && (
+                                <span style={{ fontSize: 11, color: c.muted }}>{entry.date}</span>
+                              )}
+                            </div>
+                            {sections.map((section) => (
+                              <div key={section.key} style={{ marginBottom: 10 }}>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: c.muted,
+                                    marginBottom: 4,
+                                    letterSpacing: "0.02em",
+                                  }}
+                                >
+                                  [{section.label}]
+                                </div>
+                                <ul
+                                  style={{
+                                    margin: 0,
+                                    paddingLeft: 18,
+                                    fontSize: 12,
+                                    lineHeight: 1.55,
+                                    color: c.text,
+                                  }}
+                                >
+                                  {section.items.map((item, i) => (
+                                    <li key={i} style={{ marginBottom: 4 }}>
+                                      {item}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div style={{ fontSize: 14, marginBottom: 12 }}>
                     Desarrollador: {aboutInfo.developer}
                   </div>

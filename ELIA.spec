@@ -141,6 +141,7 @@ a = Analysis(
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
         ('Licence.txt',     '.'),
+        ('CHANGELOG.md',    '.'),
         ('readme.txt',      '.'),
     ) + llama_datas + excel_datas + recording_datas + js_obf,
     hiddenimports=['mss', 'cv2', 'numpy', 'multipart'] + web_hidden + llama_hidden + excel_hidden + recording_hidden + integrations_hidden + crypto_hidden,

@@ -356,12 +356,22 @@ export async function getAiCapabilities(): Promise<AiCapabilitiesResponse> {
   return res.json();
 }
 
+export type ChangelogEntry = {
+  version: string;
+  date: string | null;
+  added: string[];
+  fixed: string[];
+  changed: string[];
+};
+
 export type AppAboutResponse = {
   app_name: string;
   version: string;
+  version_display: string;
   developer: string;
   tagline: string;
   license_text: string;
+  changelog: ChangelogEntry[];
 };
 
 export async function getAppAbout(): Promise<AppAboutResponse> {

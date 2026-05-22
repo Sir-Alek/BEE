@@ -25,6 +25,7 @@ _SKIP_FILENAMES = frozenset(
         "elia_memory.py",
         "elia_memory_crypto.py",
         "elia_paths.py",
+        "changelog.py",
     }
 )
 

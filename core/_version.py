@@ -7,3 +7,25 @@ un .pyd obsoleto de core.version no oculte bumps de ELIA_VERSION en desarrollo.
 ELIA_VERSION = "0.6.61"
 ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
 ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for segment in version.split("."):
+        digits = ""
+        for ch in segment:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def elia_version_display() -> str:
+    """Versión mostrada al usuario; incluye -beta hasta alcanzar 1.0.0."""
+    if _version_tuple(ELIA_VERSION) < (1, 0, 0):
+        return f"{ELIA_VERSION}-beta"
+    return ELIA_VERSION

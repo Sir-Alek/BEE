@@ -214,7 +214,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/app/about")
     def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION
+        from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
+        from core.changelog import load_changelog
 
         licence_path = os.path.join(base_dir, "Licence.txt")
         license_text = ""
@@ -227,9 +228,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         return {
             "app_name": "ELIA",
             "version": ELIA_VERSION,
+            "version_display": elia_version_display(),
             "developer": ELIA_DEVELOPER,
             "tagline": ELIA_TAGLINE,
             "license_text": license_text,
+            "changelog": load_changelog(base_dir),
         }
 
     @app.get("/api/ai/status")
