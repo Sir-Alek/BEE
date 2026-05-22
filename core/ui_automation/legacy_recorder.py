@@ -93,52 +93,20 @@ class LegacyRecorder:
 
         # 1. Seleccionar proyecto
         jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
-        projects = [
-            d for d in os.listdir(projects_dir)
-            if os.path.isdir(os.path.join(projects_dir, d))
-        ]
-        force_new = len(projects) == 0
-        project_path: Optional[str] = None
+        from webui.project_selection import prompt_project_path
 
-        if force_new:
-            ans = jm.create_prompt_and_wait(
-                job_id,
-                prompt=_mk_prompt("input_text", title="Nuevo Proyecto (Legacy)", message="Nombre del proyecto"),
-            )
-            if not ans:
-                jm.cancel_job(job_id)
-                return
-            project_name = re.sub(r"[^\w\-_.]", "_", str(ans).strip())
-            project_path = os.path.join(projects_dir, project_name)
-        else:
-            is_new = jm.create_prompt_and_wait(
-                job_id,
-                prompt=_mk_prompt("yes_no", title="Selección de Proyecto", message="¿Es un proyecto nuevo?"),
-            )
-            if is_new:
-                ans = jm.create_prompt_and_wait(
-                    job_id,
-                    prompt=_mk_prompt("input_text", title="Nuevo Proyecto (Legacy)", message="Nombre del proyecto"),
-                )
-                if not ans:
-                    jm.cancel_job(job_id)
-                    return
-                project_name = re.sub(r"[^\w\-_.]", "_", str(ans).strip())
-                project_path = os.path.join(projects_dir, project_name)
-            else:
-                pick = jm.create_prompt_and_wait(
-                    job_id,
-                    prompt=_mk_prompt(
-                        "pick_project",
-                        title="Proyecto existente",
-                        message="Selecciona el proyecto",
-                        options=[{"value": p, "label": p} for p in projects],
-                    ),
-                )
-                if not pick:
-                    jm.cancel_job(job_id)
-                    return
-                project_path = os.path.join(projects_dir, str(pick))
+        project_path = prompt_project_path(
+            jm,
+            job_id,
+            projects_dir=projects_dir,
+            new_project_title="Nuevo Proyecto (Legacy)",
+            new_project_message="Nombre del proyecto",
+            existing_title="Proyecto existente",
+            existing_message="Selecciona el proyecto",
+        )
+        if not project_path:
+            jm.cancel_job(job_id)
+            return
 
         os.makedirs(project_path, exist_ok=True)
         os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
@@ -160,6 +128,21 @@ class LegacyRecorder:
             return
         rec_name = re.sub(r"[^\w\-_.]", "_", str(rec_name_ans).strip()) or "legacy_recording"
         output_file = os.path.join(project_path, "scripts", f"{rec_name}.json")
+
+        from core.ui_automation.recording_video import (
+            ask_record_video,
+            build_video_path,
+            start_window_video_recorder,
+        )
+
+        grabar_video = ask_record_video(
+            jm,
+            job_id,
+            _mk_prompt,
+            message="¿Deseas grabar video de la ventana de la aplicación?",
+        )
+        video_path: Optional[str] = build_video_path(project_path) if grabar_video else None
+        video_recorder = None
 
         # 3. Lanzar ejecutable si se proporcionó
         proc: Optional[subprocess.Popen] = None
@@ -188,6 +171,26 @@ class LegacyRecorder:
                     "ELIA · Legacy",
                     f"Ventana '{window_name}' no encontrada. La grabación continuará con captura global de pantalla.",
                 )
+
+        if grabar_video and video_path:
+            from core.ui_automation.window_capture import find_legacy_app_hwnd
+
+            hwnd = find_legacy_app_hwnd(window_name) if window_name else None
+            if hwnd is None and win is not None:
+                from core.ui_automation.window_capture import resolve_hwnd
+
+                hwnd = resolve_hwnd(win)
+            video_recorder, video_err = start_window_video_recorder(
+                video_path,
+                hwnd,
+                max_duration_sec=300,
+            )
+            if video_err:
+                adapter.info("ELIA · Legacy", f"Video no iniciado: {video_err}")
+                video_path = None
+                video_recorder = None
+            else:
+                jm.update_progress(job_id, {"stage": "Grabando video de la ventana…"})
 
         # 5. Iniciar grabación con PyAutoGUI + pynput
         jm.update_progress(job_id, {"stage": "Grabando… presiona ESC o pulsa «Finalizar grabación» en ELIA", "recording": True})
@@ -278,7 +281,18 @@ class LegacyRecorder:
             except Exception:
                 pass
 
+        if video_recorder:
+            try:
+                video_recorder.stop()
+                time.sleep(0.5)
+            except Exception:
+                pass
+
         # 7. Guardar resultado
+        generated_files = [("grabación", output_file)]
+        if video_path and os.path.isfile(video_path) and os.path.getsize(video_path) > 0:
+            generated_files.append(("video", video_path))
+
         result: Dict[str, Any] = {
             "platform": "legacy",
             "window_name": window_name,
@@ -296,8 +310,12 @@ class LegacyRecorder:
             f"Grabación completada.\n\nEventos capturados: {len(recorded_events)}",
             result=conversion_result(
                 project_dir=project_path,
-                files=[("grabación", output_file)],
+                files=generated_files,
             ),
         )
-        jm.add_event(job_id, "legacy_recorder", {"output_file": output_file, "events": len(recorded_events)})
+        progress: Dict[str, Any] = {"output_file": output_file, "events": len(recorded_events)}
+        if video_path and os.path.isfile(video_path):
+            progress["video_path"] = video_path
+        jm.update_progress(job_id, progress)
+        jm.add_event(job_id, "legacy_recorder", progress)
         jm.mark_done(job_id)

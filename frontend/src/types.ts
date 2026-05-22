@@ -10,6 +10,21 @@ export type ConversionResultPayload = {
   generated_files?: GeneratedFileEntry[];
 };
 
+/** Metadatos opcionales del backend para controles del prompt (regresar, sugerencias, etc.). */
+export type PromptControlPayload = {
+  allow_back?: boolean;
+  suggested?: string;
+};
+
+export function promptAllowsBack(payload: unknown): boolean {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      "allow_back" in payload &&
+      (payload as PromptControlPayload).allow_back,
+  );
+}
+
 export type ActivePrompt =
   | {
       prompt_id: string;
@@ -18,6 +33,7 @@ export type ActivePrompt =
       message: string;
       options: { value: string; label: string }[];
       actions: null;
+      payload?: PromptControlPayload | null;
     }
   | {
       prompt_id: string;
@@ -26,6 +42,7 @@ export type ActivePrompt =
       message: string;
       options: { value: string; label: string }[];
       actions: null;
+      payload?: PromptControlPayload | null;
     }
   | {
       prompt_id: string;
@@ -58,6 +75,7 @@ export type ActivePrompt =
       message: string;
       options: null;
       actions: null;
+      payload?: PromptControlPayload | null;
     }
   | {
       prompt_id: string;
@@ -86,11 +104,32 @@ export type ActivePrompt =
     }
   | {
       prompt_id: string;
-      type: string;
+      type: "pick_conversion_mode";
       title: string;
       message: string;
-      options: any;
-      actions: any;
+      options: { value: string; label: string }[];
+      actions: null;
+    }
+  | {
+      prompt_id: string;
+      type: "pick_scripts_multi";
+      title: string;
+      message: string;
+      options: null;
+      actions: { type: string; description: string; original_line: string }[];
+    }
+  | {
+      prompt_id: string;
+      type: "grouped_feature_review";
+      title: string;
+      message: string;
+      payload?: {
+        feature_text?: string;
+        script_names?: string[];
+        background_count?: number;
+      };
+      options: null;
+      actions: null;
     };
 
 export type EliaJiraCreds = {

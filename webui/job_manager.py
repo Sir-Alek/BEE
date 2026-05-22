@@ -6,6 +6,9 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+# Respuesta especial del UI para volver al paso anterior del flujo de prompts.
+PROMPT_ANSWER_BACK = "__elia_back__"
+
 
 class JobCancelledError(Exception):
     pass

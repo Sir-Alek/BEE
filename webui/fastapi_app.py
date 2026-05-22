@@ -113,6 +113,10 @@ class MobileEmulatorStopRequest(BaseModel):
     device_id: Optional[str] = None
 
 
+class MobileAppiumStartRequest(BaseModel):
+    timeout_sec: int = Field(default=60, ge=10, le=180)
+
+
 def _repo_root() -> str:
     """
     Devuelve la raíz del proyecto / directorio del bundle.
@@ -318,6 +322,18 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "android_only": True,
         }
 
+    @app.get("/api/mobile/foreground-app")
+    def mobile_foreground_app(
+        device_id: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import detect_foreground_package
+
+        result = detect_foreground_package(device_id)
+        result["android_only"] = True
+        return result
+
     @app.get("/api/mobile/diagnostics")
     def mobile_diagnostics(
         _: None = Depends(_require_localhost),
@@ -369,6 +385,34 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         from core.ui_automation.mobile_android import stop_emulator
 
         return stop_emulator(req.device_id)
+
+    @app.get("/api/mobile/appium/status")
+    def mobile_appium_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import get_appium_status
+
+        return get_appium_status()
+
+    @app.post("/api/mobile/appium/start")
+    def mobile_appium_start(
+        req: MobileAppiumStartRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import start_appium_server
+
+        return start_appium_server(timeout_sec=float(req.timeout_sec))
+
+    @app.post("/api/mobile/appium/stop")
+    def mobile_appium_stop(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_android import stop_appium_server
+
+        return stop_appium_server(only_if_started_by_elia=True)
 
     @app.post("/api/license/activate")
     def license_activate(
@@ -563,87 +607,30 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         return getattr(sys, "frozen", False)
 
                     # --- Seleccionar/crear proyecto (prompts web)
-                    projects = [d for d in os.listdir(projects_dir) if os.path.isdir(os.path.join(projects_dir, d))]
-                    force_new = len(projects) == 0
-
-                    project_path: Optional[str] = None
-
                     jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
 
-                    if force_new:
-                        ans = jm.create_prompt_and_wait(
-                            job_id,
-                            prompt=mk_prompt(
-                                "input_text",
-                                title="Nuevo Proyecto",
-                                message="Nombre del proyecto (ej: MiProyecto)",
-                            ),
-                        )
-                        if ans is None:
-                            jm.cancel_job(job_id)
-                            return
-                        project_name = str(ans).strip()
-                        if not project_name:
-                            jm.cancel_job(job_id)
-                            return
-                        project_path = os.path.join(projects_dir, project_name)
-                        os.makedirs(project_path, exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
-                    else:
-                        is_new = jm.create_prompt_and_wait(
-                            job_id,
-                            prompt=mk_prompt(
-                                "yes_no",
-                                title="Selección de Proyecto",
-                                message="¿Es un proyecto nuevo?",
-                            ),
-                        )
-                        if is_new:
-                            ans = jm.create_prompt_and_wait(
-                                job_id,
-                                prompt=mk_prompt(
-                                    "input_text",
-                                    title="Nuevo Proyecto",
-                                    message="Nombre del proyecto (ej: MiProyecto)",
-                                ),
-                            )
-                            if ans is None:
-                                jm.cancel_job(job_id)
-                                return
-                            project_name = str(ans).strip()
-                            if not project_name:
-                                jm.cancel_job(job_id)
-                                return
-                            project_path = os.path.join(projects_dir, project_name)
-                            os.makedirs(project_path, exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
-                        else:
-                            chosen = jm.create_prompt_and_wait(
-                                job_id,
-                                prompt=mk_prompt(
-                                    "pick_project",
-                                    title="Seleccionar Proyecto Existente",
-                                    message="Selecciona un proyecto:",
-                                    options=[{"value": p, "label": p} for p in projects],
-                                ),
-                            )
-                            if chosen is None:
-                                jm.cancel_job(job_id)
-                                return
-                            project_name = str(chosen)
-                            project_path = os.path.join(projects_dir, project_name)
+                    from webui.project_selection import prompt_project_path
 
+                    project_path = prompt_project_path(
+                        jm,
+                        job_id,
+                        projects_dir=projects_dir,
+                        new_project_title="Nuevo Proyecto",
+                        new_project_message="Nombre del proyecto (ej: MiProyecto)",
+                        existing_title="Seleccionar Proyecto Existente",
+                        existing_message="Selecciona un proyecto:",
+                        sanitize_project_name=False,
+                    )
                     if not project_path:
                         jm.cancel_job(job_id)
                         return
+
+                    os.makedirs(project_path, exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
 
                     # --- Nombre del archivo de grabación
                     jm.update_progress(job_id, {"stage": "Nombre de grabación"})

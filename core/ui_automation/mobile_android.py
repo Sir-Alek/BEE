@@ -11,9 +11,14 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+
+_appium_proc: Optional[subprocess.Popen] = None
+_appium_started_by_elia: bool = False
+_appium_lock = threading.Lock()
 
 
 @dataclass
@@ -167,6 +172,221 @@ def check_appium_server(host: str = "localhost", port: int = 4723) -> bool:
         return resp.status == 200
     except Exception:
         return False
+
+
+def appium_endpoint() -> Tuple[str, int]:
+    host = (os.environ.get("ELIA_APPIUM_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    port_raw = (os.environ.get("ELIA_APPIUM_PORT") or "4723").strip()
+    try:
+        port = int(port_raw)
+    except ValueError:
+        port = 4723
+    return host, port
+
+
+def appium_url(host: Optional[str] = None, port: Optional[int] = None) -> str:
+    h, p = appium_endpoint()
+    return f"http://{host or h}:{port if port is not None else p}"
+
+
+def resolve_appium() -> AndroidTool:
+    candidates: List[Tuple[str, str]] = []
+    env_path = (os.environ.get("ELIA_APPIUM_PATH") or "").strip()
+    if env_path:
+        candidates.append((env_path, "env"))
+    which = shutil.which("appium")
+    if which:
+        candidates.append((which, "path"))
+    if sys.platform == "win32":
+        appdata = (os.environ.get("APPDATA") or "").strip()
+        pf = (os.environ.get("ProgramFiles") or "").strip()
+        for path in (
+            os.path.join(appdata, "npm", "appium.cmd") if appdata else "",
+            os.path.join(pf, "nodejs", "appium.cmd") if pf else "",
+        ):
+            if path and os.path.isfile(path):
+                candidates.append((path, "npm"))
+    seen: set[str] = set()
+    path: Optional[str] = None
+    source: Optional[str] = None
+    for cand, src in candidates:
+        if cand in seen:
+            continue
+        seen.add(cand)
+        if os.path.isfile(cand):
+            path, source = cand, src
+            break
+    version = None
+    if path:
+        try:
+            proc = _run_cmd([path, "--version"], timeout=15)
+            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+            if out:
+                version = out.splitlines()[0]
+        except Exception:
+            pass
+    return AndroidTool(name="appium", path=path, source=source, version=version)
+
+
+def get_appium_status() -> Dict[str, Any]:
+    host, port = appium_endpoint()
+    url = appium_url(host, port)
+    tool = resolve_appium()
+    running = check_appium_server(host, port)
+    managed = bool(_appium_started_by_elia and _appium_proc and _appium_proc.poll() is None)
+    return {
+        "ok": running or bool(tool.path),
+        "running": running,
+        "installed": bool(tool.path),
+        "managed_by_elia": managed,
+        "url": url,
+        "host": host,
+        "port": port,
+        "path": tool.path,
+        "source": tool.source,
+        "version": tool.version,
+        "android_only": True,
+    }
+
+
+def start_appium_server(*, timeout_sec: float = 60.0) -> Dict[str, Any]:
+    host, port = appium_endpoint()
+    url = appium_url(host, port)
+    if check_appium_server(host, port):
+        return {
+            "ok": True,
+            "running": True,
+            "message": "Appium ya está en ejecución.",
+            "url": url,
+            "reused": True,
+            "managed_by_elia": False,
+        }
+
+    tool = resolve_appium()
+    if not tool.path:
+        return {
+            "ok": False,
+            "running": False,
+            "message": "Appium no encontrado.",
+            "url": url,
+            "hint": "Instálalo con: npm install -g appium && appium driver install uiautomator2",
+        }
+
+    with _appium_lock:
+        global _appium_proc, _appium_started_by_elia
+        if _appium_proc and _appium_proc.poll() is None and check_appium_server(host, port):
+            return {
+                "ok": True,
+                "running": True,
+                "message": "Appium ya está en ejecución.",
+                "url": url,
+                "reused": True,
+                "managed_by_elia": _appium_started_by_elia,
+            }
+
+        argv = [tool.path, "--address", host, "--port", str(port)]
+        try:
+            _appium_proc = subprocess.Popen(
+                argv,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=sys.platform != "win32",
+                creationflags=_subprocess_flags(),
+            )
+            _appium_started_by_elia = True
+        except Exception as exc:
+            _appium_proc = None
+            _appium_started_by_elia = False
+            return {
+                "ok": False,
+                "running": False,
+                "message": f"No se pudo iniciar Appium: {exc}",
+                "url": url,
+            }
+
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            if check_appium_server(host, port):
+                return {
+                    "ok": True,
+                    "running": True,
+                    "message": "Appium iniciado.",
+                    "url": url,
+                    "pid": _appium_proc.pid,
+                    "managed_by_elia": True,
+                }
+            if _appium_proc.poll() is not None:
+                _appium_started_by_elia = False
+                return {
+                    "ok": False,
+                    "running": False,
+                    "message": "Appium terminó al arrancar. Revisa que Node.js y el driver uiautomator2 estén instalados.",
+                    "url": url,
+                }
+            time.sleep(0.5)
+
+        return {
+            "ok": False,
+            "running": False,
+            "message": "Tiempo de espera agotado: Appium no respondió en /status.",
+            "url": url,
+        }
+
+
+def stop_appium_server(*, only_if_started_by_elia: bool = True) -> Dict[str, Any]:
+    global _appium_proc, _appium_started_by_elia
+    host, port = appium_endpoint()
+    url = appium_url(host, port)
+
+    with _appium_lock:
+        if only_if_started_by_elia and not _appium_started_by_elia:
+            return {
+                "ok": True,
+                "running": check_appium_server(host, port),
+                "message": "Appium no fue iniciado por ELIA; no se detuvo.",
+                "url": url,
+            }
+        proc = _appium_proc
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=8)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        _appium_proc = None
+        _appium_started_by_elia = False
+
+    return {
+        "ok": True,
+        "running": check_appium_server(host, port),
+        "message": "Appium detenido." if not check_appium_server(host, port) else "Appium sigue activo (otro proceso).",
+        "url": url,
+    }
+
+
+def ensure_appium_running(*, auto_start: bool = True, timeout_sec: float = 60.0) -> Dict[str, Any]:
+    host, port = appium_endpoint()
+    if check_appium_server(host, port):
+        return {
+            "ok": True,
+            "running": True,
+            "message": "Appium accesible.",
+            "url": appium_url(host, port),
+            "reused": True,
+        }
+    if not auto_start:
+        tool = resolve_appium()
+        return {
+            "ok": False,
+            "running": False,
+            "message": "Appium no responde en localhost:4723.",
+            "url": appium_url(host, port),
+            "installed": bool(tool.path),
+        }
+    return start_appium_server(timeout_sec=timeout_sec)
 
 
 def parse_adb_devices_output(text: str) -> List[MobileDevice]:
@@ -411,6 +631,148 @@ def assert_device_online(device_id: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+_LAUNCHER_PACKAGES = frozenset(
+    {
+        "com.android.launcher",
+        "com.android.launcher3",
+        "com.google.android.apps.nexuslauncher",
+        "com.sec.android.app.launcher",
+        "com.miui.home",
+        "com.huawei.android.launcher",
+        "com.oppo.launcher",
+        "com.bbk.launcher2",
+    }
+)
+
+
+def _is_launcher_or_system_shell(package: str) -> bool:
+    pkg = (package or "").strip().lower()
+    if not pkg:
+        return True
+    if pkg in _LAUNCHER_PACKAGES:
+        return True
+    if pkg.startswith("com.android.systemui"):
+        return True
+    return False
+
+
+def _parse_focus_candidates(text: str) -> List[Tuple[str, str]]:
+    """Extrae pares (package, activity) de salidas dumpsys (varias versiones Android)."""
+    candidates: List[Tuple[str, str]] = []
+    patterns = (
+        r"topResumedActivity=ActivityRecord\{[^ ]+ u\d+ ([^\s/]+)/([^\s}\]]+)",
+        r"mResumedActivity: ActivityRecord\{[^ ]+ u\d+ ([^\s/]+)/([^\s}\]]+)",
+        r"ResumedActivity: ActivityRecord\{[^ ]+ u\d+ ([^\s/]+)/([^\s}\]]+)",
+        r"mFocusedApp=ActivityRecord\{[^ ]+ u\d+ ([^\s/]+)/([^\s}\]]+)",
+        r"mCurrentFocus=Window\{[^ ]+ u\d+ ([^\s/]+)/([^\s}\]]+)",
+    )
+    for pat in patterns:
+        for match in re.finditer(pat, text or ""):
+            pkg = match.group(1).strip()
+            act = match.group(2).strip()
+            if pkg and act:
+                candidates.append((pkg, act))
+    return candidates
+
+
+def _pick_foreground_candidate(candidates: List[Tuple[str, str]]) -> Optional[Tuple[str, str]]:
+    for pkg, act in candidates:
+        if not _is_launcher_or_system_shell(pkg):
+            return pkg, act
+    return candidates[0] if candidates else None
+
+
+def detect_foreground_package(device_id: str) -> Dict[str, Any]:
+    """
+    Detecta la app en primer plano vía adb dumpsys.
+    Devuelve {ok, package, activity, error, source}.
+    """
+    dev_id = (device_id or "").strip()
+    if not dev_id:
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": "Indica el dispositivo adb.",
+            "source": None,
+        }
+
+    device_err = assert_device_online(dev_id)
+    if device_err:
+        msg, details = device_err
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": f"{msg}. {details}" if details else msg,
+            "source": None,
+        }
+
+    adb_tool = resolve_adb()
+    if not adb_tool.path:
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": "adb no encontrado.",
+            "source": None,
+        }
+
+    adb_base = [adb_tool.path, "-s", dev_id, "shell"]
+    blobs: List[str] = []
+    for args in (["dumpsys", "activity", "activities"], ["dumpsys", "window"]):
+        try:
+            proc = _run_cmd(adb_base + args, timeout=20)
+            chunk = (proc.stdout or "") + (proc.stderr or "")
+            if chunk.strip():
+                blobs.append(chunk)
+        except Exception:
+            continue
+
+    if not blobs:
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": "No se pudo leer dumpsys del dispositivo.",
+            "source": None,
+        }
+
+    picked = _pick_foreground_candidate(_parse_focus_candidates("\n".join(blobs)))
+    if not picked:
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": (
+                "No se detectó ninguna app en primer plano. "
+                "Abre la app en el móvil (no la pantalla de inicio) o indica el paquete manualmente."
+            ),
+            "source": None,
+        }
+
+    pkg, act = picked
+    if _is_launcher_or_system_shell(pkg):
+        return {
+            "ok": False,
+            "package": None,
+            "activity": None,
+            "error": (
+                f"Solo se detectó el launcher ({pkg}). "
+                "Abre la app que quieres grabar y vuelve a intentarlo."
+            ),
+            "source": "launcher",
+        }
+
+    return {
+        "ok": True,
+        "package": pkg,
+        "activity": act,
+        "error": None,
+        "source": "dumpsys",
+    }
+
+
 def collect_env_hints() -> Dict[str, Optional[str]]:
     sdk, sdk_src = resolve_android_sdk()
     adb = resolve_adb()
@@ -425,7 +787,8 @@ def collect_env_hints() -> Dict[str, Optional[str]]:
         "resolved_sdk_source": sdk_src,
         "resolved_adb": adb.path,
         "resolved_emulator": emulator.path,
-        "appium_url": "http://localhost:4723",
+        "elia_appium_path": os.environ.get("ELIA_APPIUM_PATH"),
+        "appium_url": appium_url(),
     }
 
 
@@ -435,17 +798,24 @@ def run_diagnostics() -> Dict[str, Any]:
     emulator = resolve_emulator()
     devices, devices_err = list_devices(adb_tool=adb)
     avds, avds_err = list_avds(emulator_tool=emulator)
-    appium_ok = check_appium_server()
+    appium_tool = resolve_appium()
+    host, port = appium_endpoint()
+    appium_running = check_appium_server(host, port)
     return {
-        "ok": bool(adb.path) and appium_ok and any(d.state == "device" for d in devices),
+        "ok": bool(adb.path) and appium_running and any(d.state == "device" for d in devices),
         "platform": sys.platform,
         "android_only": True,
         "sdk": {"path": sdk, "source": sdk_src},
         "tools": {
             "adb": adb.to_dict(),
             "emulator": emulator.to_dict(),
+            "appium": appium_tool.to_dict(),
         },
-        "appium": {"ok": appium_ok, "url": "http://localhost:4723"},
+        "appium": {
+            "ok": appium_running,
+            "installed": bool(appium_tool.path),
+            "url": appium_url(host, port),
+        },
         "devices": [d.to_dict() for d in devices],
         "devices_error": devices_err,
         "avds": avds,
@@ -498,20 +868,37 @@ def run_preflight() -> MobilePreflightResult:
         }
     )
     if not emulator.path:
-        warnings.append("Emulator no encontrado: solo podrás usar dispositivo físico.")
+        warnings.append(
+            "No se detectó Android Emulator: solo podrás usar dispositivo físico. "
+            "Instala Android Emulator o define ANDROID_HOME."
+        )
 
-    appium_ok = check_appium_server()
+    appium_tool = resolve_appium()
+    host, port = appium_endpoint()
+    appium_running = check_appium_server(host, port)
     items.append(
         {
             "id": "appium",
             "label": "Appium Server (:4723)",
-            "ok": appium_ok,
-            "message": "Accesible" if appium_ok else "No responde en localhost:4723",
-            "hint": "npm install -g appium && appium driver install uiautomator2 && appium",
+            "ok": appium_running,
+            "message": (
+                "Accesible"
+                if appium_running
+                else (appium_tool.path or "No responde en :4723")
+            ),
+            "hint": (
+                "Pulsa «Iniciar Appium» en esta pantalla."
+                if appium_tool.path and not appium_running
+                else "npm install -g appium && appium driver install uiautomator2"
+            ),
+            "installed": bool(appium_tool.path),
+            "running": appium_running,
         }
     )
-    if not appium_ok:
-        errors.append("Appium Server no accesible en localhost:4723.")
+    if not appium_tool.path:
+        errors.append("Appium no instalado o no encontrado en PATH.")
+    elif not appium_running:
+        warnings.append("Appium instalado pero no responde en :4723. Inícialo desde ELIA o manualmente.")
 
     devices, devices_err = list_devices(adb_tool=adb)
     online = [d for d in devices if d.state == "device"]
@@ -536,7 +923,7 @@ def run_preflight() -> MobilePreflightResult:
                 "hint": None,
             }
         )
-    elif avds_err:
+    elif avds_err and emulator.path:
         warnings.append(avds_err)
 
     if sdk_src == "localappdata":

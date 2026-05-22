@@ -9,26 +9,39 @@ import {
   getJob,
   getLicenseStatus,
   getMobileAvds,
+  getMobileAppiumStatus,
   getMobileDevices,
+  getMobileForegroundApp,
   getMobilePreflight,
   getModulesStatus,
   getRecorderPreflight,
   getScenarios,
   getRecordings,
   type LicenseStatusResponse,
+  type MobileAppiumStatusResponse,
   type MobileDeviceInfo,
   type MobilePreflightResponse,
   type RecorderPreflightResponse,
   type AiCapabilitiesResponse,
   type AiMode,
   putEliaConnectors,
+  PROMPT_ANSWER_BACK,
   sendPromptResponse,
   startConvertJob,
+  startMobileAppium,
   startMobileEmulator,
+  stopMobileAppium,
   stopRecording,
   testEliaConnector,
   uploadDocs,
 } from "./api";
+import {
+  formatPreflightItemMessage,
+  friendlyAvdsError,
+  mobilePreflightSummary,
+  normalizeMobileWarnings,
+  shouldAutoOpenMobileEnv,
+} from "./mobileEnvUi";
 import type {
   ActivePrompt,
   ConversionResultPayload,
@@ -39,6 +52,7 @@ import type {
   RecordingRef,
   ScenarioRef,
 } from "./types";
+import { promptAllowsBack } from "./types";
 import { ELIA_CONNECTORS_LS_KEY, emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "./connectorDefaults";
 import { themeQuerySuffix, useEliaTheme } from "./eliaTheme";
 import { parseLicenseDisplayBlocks } from "./licenseTextFormat";
@@ -426,8 +440,13 @@ export default function App() {
   const [selectedAvd, setSelectedAvd] = useState("");
   const [mobilePreflight, setMobilePreflight] = useState<MobilePreflightResponse | null>(null);
   const [mobilePreflightLoading, setMobilePreflightLoading] = useState(false);
+  const [mobileEnvOpen, setMobileEnvOpen] = useState(false);
   const [emulatorStarting, setEmulatorStarting] = useState(false);
   const [emulatorMessage, setEmulatorMessage] = useState<string | null>(null);
+  const [mobileFieldError, setMobileFieldError] = useState<string | null>(null);
+  const [detectingForegroundApp, setDetectingForegroundApp] = useState(false);
+  const [appiumStatus, setAppiumStatus] = useState<MobileAppiumStatusResponse | null>(null);
+  const [appiumStarting, setAppiumStarting] = useState(false);
   const [appPackage, setAppPackage] = useState("");
   const [appActivity, setAppActivity] = useState("");
   const [windowName, setWindowName] = useState("");
@@ -695,6 +714,24 @@ export default function App() {
     }
   }, []);
 
+  const refreshMobilePreflight = useCallback(async () => {
+    try {
+      const pf = await getMobilePreflight();
+      setMobilePreflight(pf);
+    } catch {
+      // ignore; handled on tab load
+    }
+  }, []);
+
+  const refreshAppiumStatus = useCallback(async () => {
+    try {
+      const st = await getMobileAppiumStatus();
+      setAppiumStatus(st);
+    } catch {
+      setAppiumStatus(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isHomeSurface || homeTab !== "ui" || platform !== "mobile" || !canRunJobs) return;
     let alive = true;
@@ -721,10 +758,17 @@ export default function App() {
     })();
     void refreshMobileDevices();
     void refreshMobileAvds();
+    void refreshAppiumStatus();
     return () => {
       alive = false;
     };
-  }, [isHomeSurface, homeTab, platform, canRunJobs, refreshMobileDevices, refreshMobileAvds]);
+  }, [isHomeSurface, homeTab, platform, canRunJobs, refreshMobileDevices, refreshMobileAvds, refreshAppiumStatus]);
+
+  useEffect(() => {
+    if (shouldAutoOpenMobileEnv(mobilePreflight)) {
+      setMobileEnvOpen(true);
+    }
+  }, [mobilePreflight]);
 
   useEffect(() => {
     if (platform !== "mobile") return;
@@ -786,7 +830,77 @@ export default function App() {
     };
   }, [isHomeSurface]);
 
-  const startJob = (
+  const scrollToUserMessage = useCallback((testId: string) => {
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-testid="${testId}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, []);
+
+  const showHomeError = useCallback(
+    (message: string, opts?: { mobileInline?: boolean }) => {
+      setErrorText(message);
+      if (opts?.mobileInline) {
+        setMobileFieldError(message);
+        scrollToUserMessage("elia-mobile-form-error");
+      } else {
+        scrollToUserMessage("elia-error-alert");
+      }
+    },
+    [scrollToUserMessage],
+  );
+
+  const detectForegroundApp = useCallback(async (): Promise<{ package: string; activity: string } | null> => {
+    if (!deviceId.trim()) {
+      showHomeError("Selecciona un dispositivo adb antes de detectar la app.", { mobileInline: true });
+      return null;
+    }
+    setDetectingForegroundApp(true);
+    setMobileFieldError(null);
+    try {
+      const fg = await getMobileForegroundApp(deviceId.trim());
+      if (fg.ok && fg.package) {
+        setAppPackage(fg.package);
+        if (fg.activity) setAppActivity(fg.activity);
+        setHomeHint(`App detectada en el móvil: ${fg.package}`);
+        return { package: fg.package, activity: fg.activity ?? "" };
+      }
+      showHomeError(
+        fg.error ||
+          "No se detectó ninguna app en primer plano. Abre la app en el móvil (no el launcher) e inténtalo de nuevo.",
+        { mobileInline: true },
+      );
+      return null;
+    } catch (e) {
+      showHomeError(
+        e instanceof Error ? e.message : "No se pudo detectar la app en primer plano.",
+        { mobileInline: true },
+      );
+      return null;
+    } finally {
+      setDetectingForegroundApp(false);
+    }
+  }, [deviceId, showHomeError]);
+
+  const handleStartAppium = useCallback(async () => {
+    setAppiumStarting(true);
+    setMobileFieldError(null);
+    try {
+      const res = await startMobileAppium(60);
+      await refreshAppiumStatus();
+      await refreshMobilePreflight();
+      if (res.ok && res.running) {
+        setHomeHint(res.message || "Appium listo.");
+      } else {
+        showHomeError(res.message || "No se pudo iniciar Appium.", { mobileInline: true });
+      }
+    } catch (e) {
+      showHomeError(e instanceof Error ? e.message : "Error al iniciar Appium.", { mobileInline: true });
+    } finally {
+      setAppiumStarting(false);
+    }
+  }, [refreshAppiumStatus, refreshMobilePreflight, showHomeError]);
+
+  const startJob = async (
     mode:
       | "puppeteer_recorder"
       | "puppeteer_to_behave"
@@ -803,52 +917,63 @@ export default function App() {
   ) => {
     setErrorText(null);
     setHomeHint(null);
+    setMobileFieldError(null);
     if (license && !license.can_run_jobs) {
-      setErrorText("Licencia requerida. Activa ELIA en Configuración (⚙) → Licencia.");
+      showHomeError("Licencia requerida. Activa ELIA en Configuración (⚙) → Licencia.");
       return;
     }
     if (mode === "puppeteer_recorder" && !urlValue.trim()) {
-      setErrorText("URL requerida para 'Grabar Interacciones'.");
+      showHomeError("URL requerida para 'Grabar Interacciones'.");
       return;
     }
     if (mode === "puppeteer_recorder" && recorderPreflight && !recorderPreflight.ok) {
-      setErrorText(
+      showHomeError(
         recorderPreflight.errors.length
           ? recorderPreflight.errors.join(" ")
           : "Google Chrome es obligatorio para grabar. Instálelo o defina ELIA_CHROME_PATH.",
       );
       return;
     }
+
+    let mobilePkg = appPackage.trim();
+    let mobileAct = appActivity.trim();
+
     if (mode === "mobile_recorder") {
       if (!deviceId.trim()) {
-        setErrorText(
+        showHomeError(
           deviceMode === "emulator"
             ? "Inicia un emulador o selecciona uno visible en adb devices."
             : "Conecta un dispositivo Android o selecciónalo en la lista adb.",
+          { mobileInline: true },
         );
         return;
       }
       if (mobilePreflight && !mobilePreflight.ok) {
-        setErrorText(
+        showHomeError(
           mobilePreflight.errors.length
             ? mobilePreflight.errors.join(" ")
             : "Revisa el entorno móvil (adb, Appium, dispositivo) antes de grabar.",
+          { mobileInline: true },
         );
         return;
       }
-      if (!apkPath.trim() && !appPackage.trim()) {
-        setErrorText(
-          "Indica el paquete Android (app ya instalada) o la ruta del APK en este PC.",
-        );
+      if (!apkPath.trim() && !mobilePkg) {
+        const detected = await detectForegroundApp();
+        if (detected?.package) {
+          mobilePkg = detected.package;
+          mobileAct = detected.activity || mobileAct;
+        }
+      }
+      if (!apkPath.trim() && !mobilePkg) {
         return;
       }
     }
     if (mode === "legacy_recorder" && !windowName.trim() && !exePath.trim()) {
-      setErrorText("Introduce el nombre de ventana o la ruta del ejecutable para la grabación legacy.");
+      showHomeError("Introduce el nombre de ventana o la ruta del ejecutable para la grabación legacy.");
       return;
     }
     if (mode === "doc_to_bdd" && loadedDocs.length === 0) {
-      setErrorText("Carga al menos un documento (.docx o .xlsx) antes de convertir.");
+      showHomeError("Carga al menos un documento (.docx o .xlsx) antes de convertir.");
       return;
     }
 
@@ -857,23 +982,26 @@ export default function App() {
       mode === "elia_value_edge_smoke" ||
       mode === "elia_gherkin_batch";
     if (eliaNeedsProfile && connectorProfiles.length === 0) {
-      setErrorText("Primero crea un perfil de conectores en Configuración (⚙).");
+      showHomeError("Primero crea un perfil de conectores en Configuración (⚙).");
       return;
     }
     const selProf = connectorProfiles.find((x) => x.id === reqConnectorProfileId);
     if ((mode === "elia_jira_smoke" || mode === "elia_value_edge_smoke") && !selProf) {
-      setErrorText("Selecciona un perfil de conectores en la pestaña «Inteligencia de Requerimientos».");
+      showHomeError("Selecciona un perfil de conectores en la pestaña «Inteligencia de Requerimientos».");
       return;
     }
 
     const newTab = openJobUrlInNewTabPrepared();
     if (!newTab) {
-      setErrorText(
+      showHomeError(
         "El navegador bloqueó la ventana emergente. Permite ventanas emergentes para 127.0.0.1 e inténtalo de nuevo. " +
           "Sin eso, el flujo podría abrirse en esta misma pestaña y reemplazar el inicio.",
       );
       return;
     }
+
+    const pkgForJob = mobilePkg;
+    const actForJob = mobileAct;
 
     void (async () => {
       try {
@@ -922,8 +1050,8 @@ export default function App() {
                 platform: "mobile",
                 apk_path: apkPath.trim(),
                 device_id: deviceId.trim(),
-                app_package: appPackage.trim(),
-                app_activity: appActivity.trim(),
+                app_package: pkgForJob,
+                app_activity: actForJob,
               }
             : {}),
           ...(mode === "legacy_recorder" ? { platform: "legacy", window_name: windowName.trim(), exe_path: exePath.trim() } : {}),
@@ -2579,39 +2707,148 @@ export default function App() {
                         ))}
                       </div>
                     )}
-                    {!mobilePreflightLoading && mobilePreflight?.ok && mobilePreflight.warnings.length > 0 && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: c.text,
-                          background: c.warnBg,
-                          border: `1px solid ${c.warnBorder}`,
-                          borderRadius: 10,
-                          padding: "10px 12px",
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {mobilePreflight.warnings.join(" ")}
-                      </div>
-                    )}
-                    {!mobilePreflightLoading && mobilePreflight && (
+                    {!mobilePreflightLoading &&
+                      mobilePreflight?.ok &&
+                      normalizeMobileWarnings(mobilePreflight.warnings).length > 0 && (
+                        <div
+                          data-testid="elia-mobile-preflight-warnings"
+                          style={{
+                            fontSize: 12,
+                            color: c.text,
+                            background: c.warnBg,
+                            border: `1px solid ${c.warnBorder}`,
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {normalizeMobileWarnings(mobilePreflight.warnings).map((line, i) => (
+                            <div key={i}>{line}</div>
+                          ))}
+                        </div>
+                      )}
+                    {!mobilePreflightLoading && mobilePreflight && mobilePreflight.items.length > 0 && (
                       <div
                         data-testid="elia-mobile-preflight-checklist"
                         style={{
-                          fontSize: 11,
-                          color: c.muted,
-                          lineHeight: 1.5,
-                          padding: "8px 10px",
                           borderRadius: 10,
                           border: `1px solid ${c.inputBorder}`,
                           background: c.inputBg,
+                          overflow: "hidden",
                         }}
                       >
-                        {mobilePreflight.items.map((item) => (
-                          <div key={item.id}>
-                            {item.ok ? "✓" : "✗"} {item.label}: {item.message}
+                        <button
+                          type="button"
+                          data-testid="elia-mobile-env-toggle"
+                          onClick={() => setMobileEnvOpen((open) => !open)}
+                          aria-expanded={mobileEnvOpen}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "10px 12px",
+                            border: "none",
+                            background: "transparent",
+                            color: c.text,
+                            cursor: "pointer",
+                            textAlign: "left",
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span style={{ fontSize: 11, color: c.muted, width: 14 }}>
+                            {mobileEnvOpen ? "▾" : "▸"}
+                          </span>
+                          <span>Diagnóstico de conexión</span>
+                          <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: c.muted }}>
+                            {(() => {
+                              const { ok, total } = mobilePreflightSummary(mobilePreflight.items);
+                              return `${ok}/${total} requisitos cumplidos`;
+                            })()}
+                          </span>
+                        </button>
+                        {mobileEnvOpen && (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: c.muted,
+                              lineHeight: 1.5,
+                              padding: "0 12px 10px 34px",
+                              borderTop: `1px solid ${c.inputBorder}`,
+                            }}
+                          >
+                            {mobilePreflight.items.map((item) => (
+                              <div key={item.id}>
+                                {item.ok ? "✓" : "✗"} {item.label}: {formatPreflightItemMessage(item)}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                      </div>
+                    )}
+
+                    {appiumStatus && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <div style={{ fontSize: 12, color: c.muted, flex: "1 1 200px" }}>
+                          Appium {appiumStatus.url}:{" "}
+                          {appiumStatus.running
+                            ? "en ejecución"
+                            : appiumStatus.installed
+                              ? "detenido (instalado)"
+                              : "no instalado"}
+                          {appiumStatus.managed_by_elia ? " · iniciado por ELIA" : ""}
+                        </div>
+                        {!appiumStatus.running && appiumStatus.installed && (
+                          <button
+                            type="button"
+                            data-testid="elia-mobile-start-appium"
+                            disabled={appiumStarting}
+                            onClick={() => void handleStartAppium()}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: appiumStarting ? c.buttonDisabledBg : c.primary,
+                              color: c.primaryFg,
+                              cursor: appiumStarting ? "wait" : "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            {appiumStarting ? "Iniciando Appium…" : "Iniciar Appium"}
+                          </button>
+                        )}
+                        {appiumStatus.running && appiumStatus.managed_by_elia && (
+                          <button
+                            type="button"
+                            data-testid="elia-mobile-stop-appium"
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  await stopMobileAppium();
+                                  await refreshAppiumStatus();
+                                  await refreshMobilePreflight();
+                                } catch (e) {
+                                  showHomeError(
+                                    e instanceof Error ? e.message : "No se pudo detener Appium.",
+                                    { mobileInline: true },
+                                  );
+                                }
+                              })();
+                            }}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 10,
+                              border: `1px solid ${c.inputBorder}`,
+                              background: c.inputBg,
+                              color: c.text,
+                              cursor: "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            Detener Appium (ELIA)
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -2781,7 +3018,9 @@ export default function App() {
                             AVDs
                           </button>
                         </div>
-                        {mobileAvdsError && <div style={{ fontSize: 11, color: c.errorTitle }}>{mobileAvdsError}</div>}
+                        {friendlyAvdsError(mobileAvdsError) && (
+                          <div style={{ fontSize: 11, color: c.errorTitle }}>{friendlyAvdsError(mobileAvdsError)}</div>
+                        )}
                         {emulatorMessage && (
                           <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>{emulatorMessage}</div>
                         )}
@@ -2835,16 +3074,57 @@ export default function App() {
                     <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
                       App ya instalada en el móvil
                     </div>
-                    <input
-                      value={appPackage}
-                      onChange={(e) => setAppPackage(e.target.value)}
-                      placeholder="Paquete Android (ej: com.empresa.miapp)"
-                      style={{
-                        padding: "10px 12px", borderRadius: 10,
-                        border: `1px solid ${c.inputBorder}`, background: c.inputBg,
-                        color: c.text, outline: "none", fontSize: 14,
-                      }}
-                    />
+                    {mobileFieldError && (
+                      <div
+                        data-testid="elia-mobile-form-error"
+                        role="alert"
+                        style={{
+                          fontSize: 12,
+                          color: c.text,
+                          background: c.licWarnBg,
+                          border: `1px solid ${c.licWarnBorder}`,
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {mobileFieldError}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <input
+                        data-testid="elia-mobile-app-package"
+                        value={appPackage}
+                        onChange={(e) => {
+                          setAppPackage(e.target.value);
+                          if (mobileFieldError) setMobileFieldError(null);
+                        }}
+                        placeholder="Paquete Android (ej: com.empresa.miapp) — opcional si detectas la app abierta"
+                        style={{
+                          flex: "1 1 220px",
+                          padding: "10px 12px", borderRadius: 10,
+                          border: `1px solid ${c.inputBorder}`, background: c.inputBg,
+                          color: c.text, outline: "none", fontSize: 14,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        data-testid="elia-mobile-detect-app"
+                        disabled={detectingForegroundApp || !deviceId.trim()}
+                        onClick={() => void detectForegroundApp()}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${c.inputBorder}`,
+                          background: c.inputBg,
+                          color: c.text,
+                          cursor: detectingForegroundApp || !deviceId.trim() ? "wait" : "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        {detectingForegroundApp ? "Detectando…" : "Detectar app abierta"}
+                      </button>
+                    </div>
                     <input
                       value={appActivity}
                       onChange={(e) => setAppActivity(e.target.value)}
@@ -2856,10 +3136,10 @@ export default function App() {
                       }}
                     />
                     <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
+                      Si dejas el paquete vacío, ELIA intentará detectar la app en primer plano al pulsar Grabar.
+                      También puedes usar «Detectar app abierta» con la app visible en el móvil (no la pantalla de inicio).
                       Si dejas la actividad vacía, ELIA intenta detectarla con{" "}
                       <code style={{ fontSize: 11 }}>adb shell cmd package resolve-activity</code>.
-                      Lista paquetes:{" "}
-                      <code style={{ fontSize: 11 }}>adb shell pm list packages</code>
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
                       O instalar desde APK en este PC
@@ -2875,10 +3155,10 @@ export default function App() {
                       }}
                     />
                     <div style={{ fontSize: 12, color: c.muted }}>
-                      Requiere Appium en localhost:4723, Android SDK y{" "}
+                      ELIA puede iniciar Appium automáticamente al grabar si está instalado. Requiere Android SDK y{" "}
                       <code style={{ fontSize: 11 }}>adb</code> en el PATH. Variables opcionales:{" "}
-                      <code style={{ fontSize: 11 }}>ELIA_ANDROID_HOME</code>,{" "}
-                      <code style={{ fontSize: 11 }}>ELIA_ADB_PATH</code>.
+                      <code style={{ fontSize: 11 }}>ELIA_APPIUM_PATH</code>,{" "}
+                      <code style={{ fontSize: 11 }}>ELIA_ANDROID_HOME</code>.
                     </div>
                   </div>
                 )}
@@ -3002,9 +3282,9 @@ export default function App() {
                         (mobilePreflightLoading || (mobilePreflight != null && !mobilePreflight.ok)))
                     }
                     onClick={() => {
-                      if (platform === "web") startJob("puppeteer_recorder");
-                      else if (platform === "mobile") startJob("mobile_recorder");
-                      else startJob("legacy_recorder");
+                      if (platform === "web") void startJob("puppeteer_recorder");
+                      else if (platform === "mobile") void startJob("mobile_recorder");
+                      else void startJob("legacy_recorder");
                     }}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
@@ -3034,9 +3314,9 @@ export default function App() {
                       (platform === "legacy" && !modules?.legacy_recording)
                     }
                     onClick={() => {
-                      if (platform === "web") startJob("puppeteer_to_behave");
-                      else if (platform === "mobile") startJob("mobile_to_behave");
-                      else startJob("legacy_to_behave");
+                      if (platform === "web") void startJob("puppeteer_to_behave");
+                      else if (platform === "mobile") void startJob("mobile_to_behave");
+                      else void startJob("legacy_to_behave");
                     }}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
@@ -3051,7 +3331,7 @@ export default function App() {
                   {platform === "web" && (
                   <button
                     disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("puppeteer_to_step_by_step")}
+                    onClick={() => void startJob("puppeteer_to_step_by_step")}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
                       background: c.btnGhostBg, color: c.text,
@@ -3295,7 +3575,7 @@ export default function App() {
                   <button
                     data-testid="elia-btn-doc-bdd"
                     disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("doc_to_bdd")}
+                    onClick={() => void startJob("doc_to_bdd")}
                     style={{
                       padding: "10px 20px", borderRadius: 10,
                       background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
@@ -3335,7 +3615,7 @@ export default function App() {
                   </select>
                   <button
                     disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_jira_smoke")}
+                    onClick={() => void startJob("elia_jira_smoke")}
                     style={{
                       padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
                       color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
@@ -3345,7 +3625,7 @@ export default function App() {
                   >Conectar a Jira</button>
                   <button
                     disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_value_edge_smoke")}
+                    onClick={() => void startJob("elia_value_edge_smoke")}
                     style={{
                       padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
                       color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
@@ -3355,7 +3635,7 @@ export default function App() {
                   >Extraer de ValueEdge</button>
                   <button
                     disabled={license ? !license.can_run_jobs : false}
-                    onClick={() => startJob("elia_gherkin_batch")}
+                    onClick={() => void startJob("elia_gherkin_batch")}
                     style={{
                       padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
                       color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
@@ -3508,26 +3788,52 @@ export default function App() {
             )}
 
             {(activePrompt.type === "pick_project" || activePrompt.type === "pick_script") && (
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {(activePrompt.options as { value: string; label: string }[]).map((opt) => (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {(activePrompt.options as { value: string; label: string }[]).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: opt.value });
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {promptAllowsBack(activePrompt.payload) && (
                   <button
-                    key={opt.value}
+                    type="button"
                     onClick={async () => {
                       if (!jobId) return;
-                      await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: opt.value });
+                      await sendPromptResponse({
+                        jobId,
+                        promptId: activePrompt.prompt_id,
+                        answer: PROMPT_ANSWER_BACK,
+                      });
                     }}
                     style={{
-                      padding: "10px 12px",
+                      alignSelf: "flex-start",
+                      padding: "10px 14px",
                       borderRadius: 10,
-                      border: `1px solid ${c.btnGhostBorder}`,
                       background: c.btnGhostBg,
                       color: c.text,
+                      border: `1px solid ${c.btnGhostBorder}`,
                       cursor: "pointer",
                     }}
                   >
-                    {opt.label}
+                    Regresar
                   </button>
-                ))}
+                )}
               </div>
             )}
 
@@ -4004,7 +4310,7 @@ export default function App() {
                     fontSize: 14,
                   }}
                 />
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
                     onClick={async () => {
                       if (!jobId) return;
@@ -4022,6 +4328,29 @@ export default function App() {
                   >
                     Guardar
                   </button>
+                  {promptAllowsBack(activePrompt.payload) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!jobId) return;
+                        await sendPromptResponse({
+                          jobId,
+                          promptId: activePrompt.prompt_id,
+                          answer: PROMPT_ANSWER_BACK,
+                        });
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Regresar
+                    </button>
+                  )}
                   <button
                     onClick={async () => {
                       if (!jobId) return;

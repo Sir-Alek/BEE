@@ -624,88 +624,28 @@ class main:
                     if not os.path.exists(self.projects_dir):
                         os.makedirs(self.projects_dir, exist_ok=True)
 
-                    projects = [
-                        d
-                        for d in os.listdir(self.projects_dir)
-                        if os.path.isdir(os.path.join(self.projects_dir, d))
-                    ]
+                    from webui.project_selection import prompt_project_path
 
-                    force_new = len(projects) == 0
-                    if force_new:
-                        ans = jm.create_prompt_and_wait(
-                            job_id,
-                            prompt=mk_prompt(
-                                type="input_text",
-                                title="Nuevo Proyecto",
-                                message="Nombre del proyecto (ej: MiProyecto)",
-                            ),
-                        )
-                        if ans is None:
-                            jm.cancel_job(job_id)
-                            return
-                        project_name = str(ans).strip()
-                        if not project_name:
-                            jm.cancel_job(job_id)
-                            return
-                        project_path = os.path.join(self.projects_dir, project_name)
-                        os.makedirs(project_path, exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
-                        os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
-                    else:
-                        is_new = jm.create_prompt_and_wait(
-                            job_id,
-                            prompt=mk_prompt(
-                                type="yes_no",
-                                title="Selección de Proyecto",
-                                message="¿Es un proyecto nuevo?",
-                            ),
-                        )
-
-                        if is_new:
-                            ans = jm.create_prompt_and_wait(
-                                job_id,
-                                prompt=mk_prompt(
-                                    type="input_text",
-                                    title="Nuevo Proyecto",
-                                    message="Nombre del proyecto (ej: MiProyecto)",
-                                ),
-                            )
-                            if ans is None:
-                                jm.cancel_job(job_id)
-                                return
-                            project_name = str(ans).strip()
-                            if not project_name:
-                                jm.cancel_job(job_id)
-                                return
-                            project_path = os.path.join(self.projects_dir, project_name)
-                            os.makedirs(project_path, exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
-                            os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
-                        else:
-                            chosen = jm.create_prompt_and_wait(
-                                job_id,
-                                prompt=mk_prompt(
-                                    type="pick_project",
-                                    title="Seleccionar Proyecto Existente",
-                                    message="Selecciona un proyecto:",
-                                    options=[{"value": p, "label": p} for p in projects],
-                                ),
-                            )
-                            if chosen is None:
-                                jm.cancel_job(job_id)
-                                return
-                            project_name = str(chosen)
-                            project_path = os.path.join(self.projects_dir, project_name)
-
+                    project_path = prompt_project_path(
+                        jm,
+                        job_id,
+                        projects_dir=self.projects_dir,
+                        new_project_title="Nuevo Proyecto",
+                        new_project_message="Nombre del proyecto (ej: MiProyecto)",
+                        existing_title="Seleccionar Proyecto Existente",
+                        existing_message="Selecciona un proyecto:",
+                        sanitize_project_name=False,
+                    )
                     if not project_path:
                         jm.cancel_job(job_id)
                         return
+
+                    os.makedirs(project_path, exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "features"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "features", "steps"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "pages"), exist_ok=True)
+                    os.makedirs(os.path.join(project_path, "resources", "data"), exist_ok=True)
 
                     # Paso 2: Nombre de archivo (.js)
                     jm.update_progress(job_id, {"stage": "Nombre de grabación"})

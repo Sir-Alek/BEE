@@ -58,26 +58,109 @@ class TestAssertDeviceOnline(unittest.TestCase):
 
 class TestPreflight(unittest.TestCase):
     @patch.object(ma, "check_appium_server", return_value=False)
+    @patch.object(ma, "resolve_appium")
     @patch.object(ma, "list_avds", return_value=(["Pixel_7"], None))
     @patch.object(ma, "list_devices", return_value=([], None))
     @patch.object(ma, "resolve_emulator")
     @patch.object(ma, "resolve_adb")
     @patch.object(ma, "resolve_android_sdk")
-    def test_preflight_fails_without_appium(
+    def test_preflight_fails_without_appium_installed(
         self,
         mock_sdk,
         mock_adb,
         mock_emulator,
         _list_dev,
         _list_avd,
+        mock_resolve_appium,
         _appium,
     ) -> None:
         mock_sdk.return_value = (r"C:\Android\Sdk", "android_home")
         mock_adb.return_value = ma.AndroidTool(name="adb", path=r"C:\adb.exe")
         mock_emulator.return_value = ma.AndroidTool(name="emulator", path=r"C:\emu.exe")
+        mock_resolve_appium.return_value = ma.AndroidTool(name="appium", path=None)
         result = ma.run_preflight()
         self.assertFalse(result.ok)
-        self.assertTrue(any("Appium" in e for e in result.errors))
+        self.assertTrue(any("Appium no instalado" in e for e in result.errors))
+
+    @patch.object(ma, "check_appium_server", return_value=False)
+    @patch.object(ma, "resolve_appium")
+    @patch.object(ma, "list_avds", return_value=(["Pixel_7"], None))
+    @patch.object(ma, "list_devices", return_value=([], None))
+    @patch.object(ma, "resolve_emulator")
+    @patch.object(ma, "resolve_adb")
+    @patch.object(ma, "resolve_android_sdk")
+    def test_preflight_ok_when_appium_installed_but_stopped(
+        self,
+        mock_sdk,
+        mock_adb,
+        mock_emulator,
+        _list_dev,
+        _list_avd,
+        mock_resolve_appium,
+        _appium,
+    ) -> None:
+        mock_sdk.return_value = (r"C:\Android\Sdk", "android_home")
+        mock_adb.return_value = ma.AndroidTool(name="adb", path=r"C:\adb.exe")
+        mock_emulator.return_value = ma.AndroidTool(name="emulator", path=r"C:\emu.exe")
+        mock_resolve_appium.return_value = ma.AndroidTool(name="appium", path=r"C:\appium.cmd")
+        result = ma.run_preflight()
+        self.assertTrue(result.ok)
+        self.assertTrue(any("instalado pero no responde" in w for w in result.warnings))
+
+    @patch.object(ma, "check_appium_server", return_value=True)
+    @patch.object(ma, "resolve_appium")
+    @patch.object(ma, "list_avds", return_value=([], "emulator no encontrado. Instala Android Emulator o define ANDROID_HOME."))
+    @patch.object(ma, "list_devices", return_value=([], None))
+    @patch.object(ma, "resolve_emulator")
+    @patch.object(ma, "resolve_adb")
+    @patch.object(ma, "resolve_android_sdk")
+    def test_preflight_emulator_missing_warning_is_unified(
+        self,
+        mock_sdk,
+        mock_adb,
+        mock_emulator,
+        _list_dev,
+        _list_avd,
+        mock_resolve_appium,
+        _appium,
+    ) -> None:
+        mock_sdk.return_value = (r"C:\Android\Sdk", "android_home")
+        mock_adb.return_value = ma.AndroidTool(name="adb", path=r"C:\adb.exe")
+        mock_emulator.return_value = ma.AndroidTool(name="emulator", path=None)
+        mock_resolve_appium.return_value = ma.AndroidTool(name="appium", path=r"C:\appium.cmd")
+        result = ma.run_preflight()
+        self.assertTrue(result.ok)
+        emulator_warnings = [w for w in result.warnings if "Android Emulator" in w]
+        self.assertEqual(len(emulator_warnings), 1)
+        self.assertIn("No se detectó Android Emulator", emulator_warnings[0])
+
+
+class TestAppiumServer(unittest.TestCase):
+    @patch.object(ma, "check_appium_server", return_value=True)
+    def test_start_appium_reuses_running_server(self, _check) -> None:
+        res = ma.start_appium_server()
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["reused"])
+
+
+class TestDetectForegroundPackage(unittest.TestCase):
+    def test_parse_top_resumed_activity(self) -> None:
+        text = (
+            "topResumedActivity=ActivityRecord{abc u0 com.sec.android.app.popupcalculator/.CalcActivity t123}"
+        )
+        picked = ma._pick_foreground_candidate(ma._parse_focus_candidates(text))
+        assert picked is not None
+        self.assertEqual(picked[0], "com.sec.android.app.popupcalculator")
+        self.assertEqual(picked[1], ".CalcActivity")
+
+    def test_skips_launcher_when_app_also_present(self) -> None:
+        text = (
+            "topResumedActivity=ActivityRecord{a u0 com.sec.android.app.launcher/.Launcher t1}\n"
+            "mResumedActivity: ActivityRecord{b u0 com.example.app/.MainActivity t2}"
+        )
+        picked = ma._pick_foreground_candidate(ma._parse_focus_candidates(text))
+        assert picked is not None
+        self.assertEqual(picked[0], "com.example.app")
 
 
 if __name__ == "__main__":

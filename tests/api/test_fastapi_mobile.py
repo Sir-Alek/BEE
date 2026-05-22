@@ -40,6 +40,23 @@ class TestFastApiMobile(ApiTestCase):
             code, body = api.get_json("/api/mobile/devices")
         self.assert_forbidden_license(code, body)
 
+    @patch("core.ui_automation.mobile_android.get_appium_status")
+    def test_mobile_appium_status_endpoint(self, mock_status) -> None:
+        mock_status.return_value = {
+            "ok": True,
+            "running": True,
+            "installed": True,
+            "managed_by_elia": False,
+            "url": "http://127.0.0.1:4723",
+            "host": "127.0.0.1",
+            "port": 4723,
+            "android_only": True,
+        }
+        with elia_test_app() as (api, _jm):
+            code, body = api.get_json("/api/mobile/appium/status")
+        self.assert_status(code, 200, body)
+        self.assertTrue(body.get("running"))
+
 
 if __name__ == "__main__":
     unittest.main()

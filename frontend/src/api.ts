@@ -10,6 +10,9 @@ import type {
 
 export type { LoadedDoc, ModulesStatus, RecordingRef, ScenarioRef };
 
+/** Respuesta especial para volver al paso anterior de un flujo de prompts. */
+export const PROMPT_ANSWER_BACK = "__elia_back__";
+
 export type JobStateResponse = {
   job_id: string;
   mode: string;
@@ -163,6 +166,29 @@ export type MobileEmulatorStartResponse = {
   hint?: string;
 };
 
+export type MobileForegroundAppResponse = {
+  ok: boolean;
+  package: string | null;
+  activity: string | null;
+  error?: string | null;
+  source?: string | null;
+  android_only: boolean;
+};
+
+export type MobileAppiumStatusResponse = {
+  ok: boolean;
+  running: boolean;
+  installed: boolean;
+  managed_by_elia: boolean;
+  url: string;
+  host: string;
+  port: number;
+  path?: string | null;
+  source?: string | null;
+  version?: string | null;
+  android_only: boolean;
+};
+
 export async function getMobileDevices(): Promise<MobileDevicesResponse> {
   const res = await fetch("/api/mobile/devices");
   if (!res.ok) throw new Error(`Failed to fetch mobile devices: ${res.status}`);
@@ -179,6 +205,47 @@ export async function getMobilePreflight(): Promise<MobilePreflightResponse> {
   const res = await fetch("/api/mobile/preflight");
   if (!res.ok) throw new Error(`Failed to fetch mobile preflight: ${res.status}`);
   return res.json();
+}
+
+export async function getMobileForegroundApp(deviceId: string): Promise<MobileForegroundAppResponse> {
+  const res = await fetch(
+    `/api/mobile/foreground-app?device_id=${encodeURIComponent(deviceId)}`,
+  );
+  if (!res.ok) throw new Error(`No se pudo detectar la app en primer plano: ${res.status}`);
+  return res.json();
+}
+
+export async function getMobileAppiumStatus(): Promise<MobileAppiumStatusResponse> {
+  const res = await fetch("/api/mobile/appium/status");
+  if (!res.ok) throw new Error(`No se pudo consultar Appium: ${res.status}`);
+  return res.json();
+}
+
+export async function startMobileAppium(timeoutSec = 60): Promise<{
+  ok: boolean;
+  running: boolean;
+  message: string;
+  url?: string;
+  managed_by_elia?: boolean;
+  hint?: string;
+}> {
+  const res = await fetch("/api/mobile/appium/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ timeout_sec: timeoutSec }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof (data as any)?.detail === "string" ? (data as any).detail : "No se pudo iniciar Appium");
+  }
+  return data;
+}
+
+export async function stopMobileAppium(): Promise<{ ok: boolean; running: boolean; message: string }> {
+  const res = await fetch("/api/mobile/appium/stop", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("No se pudo detener Appium");
+  return data;
 }
 
 export async function startMobileEmulator(params: {

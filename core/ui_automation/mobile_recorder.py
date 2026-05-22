@@ -243,69 +243,43 @@ class MobileRecorder:
             return
 
         jm.update_progress(job_id, {"stage": "Verificando Appium Server…"})
-        if not _check_appium_server():
+        from core.ui_automation.mobile_android import ensure_appium_running
+
+        appium_res = ensure_appium_running(auto_start=True)
+        if not appium_res.get("ok"):
+            tool_hint = ""
+            if not appium_res.get("installed", True):
+                tool_hint = (
+                    "\n\nInstala Appium:\n"
+                    "1. npm install -g appium\n"
+                    "2. appium driver install uiautomator2"
+                )
             jm.mark_error(
                 job_id,
-                message="Appium Server no detectado",
-                details=(
-                    "No se pudo conectar a Appium en localhost:4723.\n\n"
-                    "Pasos para solucionarlo:\n"
-                    "1. Instala Appium: npm install -g appium\n"
-                    "2. Instala el driver Android: appium driver install uiautomator2\n"
-                    "3. Inicia el servidor: appium\n"
-                    "4. Verifica que el dispositivo/emulador esté conectado: adb devices"
-                ),
+                message="Appium Server no disponible",
+                details=(appium_res.get("message") or "No responde en localhost:4723.") + tool_hint,
             )
             return
 
+        if appium_res.get("managed_by_elia"):
+            jm.update_progress(job_id, {"stage": "Appium iniciado por ELIA…"})
+
         # 2. Seleccionar proyecto
         jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
-        projects = [
-            d for d in os.listdir(projects_dir)
-            if os.path.isdir(os.path.join(projects_dir, d))
-        ]
-        force_new = len(projects) == 0
-        project_path: Optional[str] = None
+        from webui.project_selection import prompt_project_path
 
-        if force_new:
-            ans = jm.create_prompt_and_wait(
-                job_id,
-                prompt=_mk_prompt("input_text", title="Nuevo Proyecto (Móvil)", message="Nombre del proyecto"),
-            )
-            if not ans:
-                jm.cancel_job(job_id)
-                return
-            project_name = re.sub(r"[^\w\-_.]", "_", str(ans).strip())
-            project_path = os.path.join(projects_dir, project_name)
-        else:
-            is_new = jm.create_prompt_and_wait(
-                job_id,
-                prompt=_mk_prompt("yes_no", title="Selección de Proyecto", message="¿Es un proyecto nuevo?"),
-            )
-            if is_new:
-                ans = jm.create_prompt_and_wait(
-                    job_id,
-                    prompt=_mk_prompt("input_text", title="Nuevo Proyecto (Móvil)", message="Nombre del proyecto"),
-                )
-                if not ans:
-                    jm.cancel_job(job_id)
-                    return
-                project_name = re.sub(r"[^\w\-_.]", "_", str(ans).strip())
-                project_path = os.path.join(projects_dir, project_name)
-            else:
-                pick = jm.create_prompt_and_wait(
-                    job_id,
-                    prompt=_mk_prompt(
-                        "pick_project",
-                        title="Proyecto existente",
-                        message="Selecciona el proyecto",
-                        options=[{"value": p, "label": p} for p in projects],
-                    ),
-                )
-                if not pick:
-                    jm.cancel_job(job_id)
-                    return
-                project_path = os.path.join(projects_dir, str(pick))
+        project_path = prompt_project_path(
+            jm,
+            job_id,
+            projects_dir=projects_dir,
+            new_project_title="Nuevo Proyecto (Móvil)",
+            new_project_message="Nombre del proyecto",
+            existing_title="Proyecto existente",
+            existing_message="Selecciona el proyecto",
+        )
+        if not project_path:
+            jm.cancel_job(job_id)
+            return
 
         os.makedirs(project_path, exist_ok=True)
         os.makedirs(os.path.join(project_path, "scripts"), exist_ok=True)
@@ -328,6 +302,48 @@ class MobileRecorder:
         rec_name = re.sub(r"[^\w\-_.]", "_", str(rec_name_ans).strip()) or "mobile_recording"
         output_file = os.path.join(project_path, "scripts", f"{rec_name}.json")
 
+        from core.ui_automation.window_capture import is_emulator_device_id
+        from core.ui_automation.recording_video import (
+            ask_record_video,
+            build_video_path,
+            start_window_video_recorder,
+        )
+
+        grabar_video = False
+        video_path: Optional[str] = None
+        video_recorder = None
+        if is_emulator_device_id(device_id):
+            grabar_video = ask_record_video(
+                jm,
+                job_id,
+                _mk_prompt,
+                message="¿Deseas grabar video del emulador Android?",
+            )
+            if grabar_video:
+                video_path = build_video_path(project_path, prefix="video_emulador")
+
+        resolved_package = (app_package or "").strip()
+        resolved_activity = (app_activity or "").strip()
+        if not (apk_path or "").strip() and not resolved_package:
+            jm.update_progress(job_id, {"stage": "Detectando app en primer plano…"})
+            from core.ui_automation.mobile_android import detect_foreground_package
+
+            det = detect_foreground_package(device_id)
+            if det.get("ok") and det.get("package"):
+                resolved_package = str(det["package"])
+                if not resolved_activity and det.get("activity"):
+                    resolved_activity = str(det["activity"])
+            else:
+                jm.mark_error(
+                    job_id,
+                    message="No se detectó la app en el móvil",
+                    details=(
+                        det.get("error")
+                        or "Indica el paquete Android, la ruta del APK, o abre la app en primer plano."
+                    ),
+                )
+                return
+
         # 4. Iniciar grabación con Appium
         jm.update_progress(job_id, {"stage": "Iniciando sesión Appium…"})
         try:
@@ -348,8 +364,8 @@ class MobileRecorder:
         app_err = _apply_android_app_capabilities(
             capabilities,
             apk_path=apk_path,
-            app_package=app_package,
-            app_activity=app_activity,
+            app_package=resolved_package,
+            app_activity=resolved_activity,
             device_id=device_id,
         )
         if app_err:
@@ -370,6 +386,22 @@ class MobileRecorder:
                 ),
             )
             return
+
+        if grabar_video and video_path:
+            from core.ui_automation.window_capture import find_android_emulator_hwnd
+
+            hwnd = find_android_emulator_hwnd(device_id)
+            video_recorder, video_err = start_window_video_recorder(
+                video_path,
+                hwnd,
+                max_duration_sec=300,
+            )
+            if video_err:
+                adapter.info("ELIA · Móvil", f"Video no iniciado: {video_err}")
+                video_path = None
+                video_recorder = None
+            else:
+                jm.update_progress(job_id, {"stage": "Grabando video del emulador…"})
 
         jm.update_progress(
             job_id,
@@ -432,6 +464,13 @@ class MobileRecorder:
             except Exception:
                 pass
 
+        if video_recorder:
+            try:
+                video_recorder.stop()
+                time.sleep(0.5)
+            except Exception:
+                pass
+
         # 6. Guardar resultado
         jm.update_progress(job_id, {"stage": "Guardando grabación…", "recording": False})
         result: Dict[str, Any] = {
@@ -448,13 +487,21 @@ class MobileRecorder:
 
         from webui.conversion_result import conversion_result
 
+        generated_files = [("grabación", output_file)]
+        if video_path and os.path.isfile(video_path) and os.path.getsize(video_path) > 0:
+            generated_files.append(("video", video_path))
+
         adapter.info(
             "Grabación Móvil",
             f"Grabación completada.\n\nEventos capturados: {len(recorded_events)}",
             result=conversion_result(
                 project_dir=project_path,
-                files=[("grabación", output_file)],
+                files=generated_files,
             ),
         )
-        jm.add_event(job_id, "mobile_recorder", {"output_file": output_file, "events": len(recorded_events)})
+        progress: Dict[str, Any] = {"output_file": output_file, "events": len(recorded_events)}
+        if video_path and os.path.isfile(video_path):
+            progress["video_path"] = video_path
+        jm.update_progress(job_id, progress)
+        jm.add_event(job_id, "mobile_recorder", progress)
         jm.mark_done(job_id)
