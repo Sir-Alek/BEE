@@ -22,6 +22,9 @@ _SKIP_FILENAMES = frozenset(
         "modules_config.py",
         "mobile_recorder.py",
         "mobile_android.py",
+        "elia_memory.py",
+        "elia_memory_crypto.py",
+        "elia_paths.py",
     }
 )
 

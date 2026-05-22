@@ -383,6 +383,65 @@ export async function putAiPreferences(mode: AiMode): Promise<AiCapabilitiesResp
   return res.json();
 }
 
+export type AiMemoryStatusResponse = {
+  entries: number;
+  max_entries: number;
+  encrypted: boolean;
+  updated_at: number | null;
+  export_format: string;
+};
+
+export type AiMemoryImportResponse = {
+  ok: boolean;
+  mode: string;
+  added: number;
+  updated: number;
+  total: number;
+};
+
+export async function getAiMemoryStatus(): Promise<AiMemoryStatusResponse> {
+  const res = await fetch("/api/ai/memory/status");
+  if (!res.ok) throw new Error(`No se pudo leer el estado de memoria IA: ${res.status}`);
+  return res.json();
+}
+
+export async function exportAiMemory(
+  teamPassphrase: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch("/api/ai/memory/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ team_passphrase: teamPassphrase }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = typeof (data as { detail?: string }).detail === "string" ? (data as { detail: string }).detail : "";
+    throw new Error(detail || `No se pudo exportar la memoria: ${res.status}`);
+  }
+  const cd = res.headers.get("Content-Disposition") || "";
+  const match = /filename="([^"]+)"/.exec(cd);
+  const filename = match?.[1] || "elia_memory_team.enc";
+  return { blob: await res.blob(), filename };
+}
+
+export async function importAiMemory(params: {
+  teamPassphrase: string;
+  mode: "merge" | "replace";
+  file: File;
+}): Promise<AiMemoryImportResponse> {
+  const form = new FormData();
+  form.append("team_passphrase", params.teamPassphrase);
+  form.append("mode", params.mode);
+  form.append("file", params.file);
+  const res = await fetch("/api/ai/memory/import", { method: "POST", body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as { detail?: string }).detail === "string" ? (data as { detail: string }).detail : "";
+    throw new Error(detail || `No se pudo importar la memoria: ${res.status}`);
+  }
+  return data as AiMemoryImportResponse;
+}
+
 export type LicenseStatusResponse = {
   ok: boolean;
   reason: string;

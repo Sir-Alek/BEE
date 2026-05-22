@@ -44,7 +44,13 @@ def step_by_step_dir() -> Path:
 
 
 def elia_memory_path() -> Path:
+    """Ruta legada en texto plano (solo migración)."""
     return ensure_user_data_root() / "elia_memory.json"
+
+
+def elia_memory_enc_path() -> Path:
+    """Memoria IA cifrada en reposo (Fernet + huella de máquina)."""
+    return ensure_user_data_root() / "elia_memory.enc"
 
 
 def external_connectors_dir() -> Path:

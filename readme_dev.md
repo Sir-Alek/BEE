@@ -162,7 +162,7 @@ Quitar el archivo para rehabilitar (salvo licencia caducada, que requiere nueva 
 
 ## Datos de usuario y proyectos
 
-Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable opcional: **`ELIA_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) se guarda en **`elia_memory.json`** en esa misma área (`core/elia_memory.py`).
+Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable opcional: **`ELIA_USER_DATA`** (ruta raíz de datos). La memoria local de correcciones BDD (few-shot para IA) se guarda cifrada en **`elia_memory.enc`** (`core/elia_memory.py`, Fernet + huella de máquina). Migración automática desde `elia_memory.json` legado (`.bak`). Export/import para equipos: Configuración → Inteligencia → *Compartir base de conocimiento* (archivo `.enc` cifrado con frase de equipo compartida; fusión o reemplazo).
 
 ## Integraciones (Jira, Value Edge, Gherkin)
 

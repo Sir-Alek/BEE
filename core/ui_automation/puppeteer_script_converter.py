@@ -1036,6 +1036,7 @@ class PuppeteerToBehaveConverter:
             try:
                 from core import gemma_inference
                 from core.elia_memory import append_correction, recent_examples_for_prompt
+                from core.elia_memory_crypto import MANUAL_EDIT_FROM_ATTEMPT, MAX_AI_REVIEW_ATTEMPTS
 
                 if gemma_inference.is_ai_runtime_configured():
                     script_excerpt = recording_excerpt
@@ -1043,8 +1044,8 @@ class PuppeteerToBehaveConverter:
                     examples = recent_examples_for_prompt(limit=3)
                     last_rendered: Optional[str] = None
 
-                    for attempt in range(1, 5):
-                        can_manual = attempt >= 4
+                    for attempt in range(1, MAX_AI_REVIEW_ATTEMPTS + 1):
+                        can_manual = attempt >= MANUAL_EDIT_FROM_ATTEMPT
                         if attempt <= 3:
                             temp = ai_temps[attempt - 1]
                             ai_steps = gemma_inference.suggest_bdd_steps_from_actions(
@@ -1069,7 +1070,7 @@ class PuppeteerToBehaveConverter:
                         review = self.ui.bdd_preview_review(
                             feature_text=rendered,
                             attempt=attempt,
-                            max_attempts=4,
+                            max_attempts=MAX_AI_REVIEW_ATTEMPTS,
                             script_excerpt=script_excerpt,
                             can_manual=can_manual,
                         )
@@ -1085,7 +1086,7 @@ class PuppeteerToBehaveConverter:
                                 )
                             return ft
                         if action == "reject":
-                            if attempt >= 4:
+                            if attempt >= MAX_AI_REVIEW_ATTEMPTS:
                                 break
                             continue
                         if action == "use_heuristic":

@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activateLicense,
   getAiCapabilities,
+  exportAiMemory,
+  getAiMemoryStatus,
+  importAiMemory,
+  type AiMemoryStatusResponse,
   getAppAbout,
   putAiPreferences,
   type AppAboutResponse,
@@ -208,9 +212,6 @@ function encodeRecordingLink(r: RecordingRef): string {
 
 const ELIA_UI_BC = "elia-ui";
 
-/** Visible in the UI: if this text does not appear, `frontend/dist` is stale — run `npm run build`. */
-const ELIA_WEB_UI_BUILD = "elia-ui-20260520-settings-tabs";
-
 type SettingsTabId = "general" | "ai" | "license" | "connectors" | "about";
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
@@ -402,6 +403,13 @@ export default function App() {
   /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
   const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
+  const [aiMemoryOpen, setAiMemoryOpen] = useState(false);
+  const [aiMemoryStatus, setAiMemoryStatus] = useState<AiMemoryStatusResponse | null>(null);
+  const [aiMemoryTeamPassphrase, setAiMemoryTeamPassphrase] = useState("");
+  const [aiMemoryImportMode, setAiMemoryImportMode] = useState<"merge" | "replace">("merge");
+  const [aiMemoryImportFile, setAiMemoryImportFile] = useState<File | null>(null);
+  const [aiMemoryBusy, setAiMemoryBusy] = useState(false);
+  const [aiMemoryMsg, setAiMemoryMsg] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseState | null>(null);
   const [activationKey, setActivationKey] = useState("");
   const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
@@ -529,6 +537,15 @@ export default function App() {
     }
   }, []);
 
+  const refreshAiMemoryStatus = useCallback(async () => {
+    try {
+      const st = await getAiMemoryStatus();
+      setAiMemoryStatus(st);
+    } catch {
+      setAiMemoryStatus(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isHomeSurface) return;
     void refreshAiCapabilities();
@@ -537,6 +554,11 @@ export default function App() {
   useEffect(() => {
     if (settingsOpen && isHomeSurface) void refreshAiCapabilities();
   }, [settingsOpen, isHomeSurface, refreshAiCapabilities]);
+
+  useEffect(() => {
+    if (!settingsOpen || settingsTab !== "ai" || !isHomeSurface) return;
+    void refreshAiMemoryStatus();
+  }, [settingsOpen, settingsTab, isHomeSurface, refreshAiMemoryStatus]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -1264,7 +1286,7 @@ export default function App() {
             type="button"
             data-testid="elia-settings-open"
             aria-label="Abrir configuración"
-            title={`Configuración · build ${ELIA_WEB_UI_BUILD}`}
+            title="Configuración"
             onClick={() => {
               setSettingsOpen(true);
               setSettingsTab("general");
@@ -1451,6 +1473,7 @@ export default function App() {
             )}
 
             {settingsTab === "ai" && (
+            <>
             <div
               style={{
                 border: `1px solid ${c.border}`,
@@ -1535,6 +1558,208 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <div
+              data-testid="elia-ai-memory-accordion"
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                marginBottom: 14,
+                background: c.neutralBg,
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                data-testid="elia-ai-memory-toggle"
+                onClick={() => setAiMemoryOpen((open) => !open)}
+                aria-expanded={aiMemoryOpen}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  border: "none",
+                  background: "transparent",
+                  color: c.text,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                <span style={{ fontSize: 11, color: c.muted, width: 14 }}>{aiMemoryOpen ? "▾" : "▸"}</span>
+                <span>Compartir base de conocimiento</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: c.muted }}>
+                  {aiMemoryStatus
+                    ? `${aiMemoryStatus.entries}/${aiMemoryStatus.max_entries} ejemplos`
+                    : "— ejemplos"}
+                </span>
+              </button>
+              {aiMemoryOpen && (
+                <div
+                  style={{
+                    padding: "0 14px 14px",
+                    borderTop: `1px solid ${c.border}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.45, paddingTop: 12 }}>
+                    Exporta o importa el historial de entrenamiento para unificar los criterios de la IA con tu
+                    equipo de trabajo. La memoria local se guarda cifrada en este equipo; el archivo exportado usa
+                    una frase de equipo compartida.
+                  </div>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: c.text }}>
+                    Frase de equipo
+                    <input
+                      type="password"
+                      data-testid="elia-ai-memory-passphrase"
+                      value={aiMemoryTeamPassphrase}
+                      onChange={(e) => setAiMemoryTeamPassphrase(e.target.value)}
+                      placeholder="Misma frase al exportar e importar"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                        fontSize: 14,
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="elia-ai-memory-export"
+                    disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim()}
+                    onClick={() => {
+                      setAiMemoryBusy(true);
+                      setAiMemoryMsg(null);
+                      void (async () => {
+                        try {
+                          const { blob, filename } = await exportAiMemory(aiMemoryTeamPassphrase.trim());
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          setAiMemoryMsg("Memoria exportada correctamente.");
+                        } catch (e) {
+                          setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+                        } finally {
+                          setAiMemoryBusy(false);
+                        }
+                      })();
+                    }}
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
+                      color: c.primaryFg,
+                      cursor: aiMemoryBusy ? "wait" : "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    Exportar memoria actual
+                  </button>
+
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginTop: 4 }}>
+                    Importar base de conocimiento
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: c.text }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="elia-ai-memory-import-mode"
+                        checked={aiMemoryImportMode === "merge"}
+                        onChange={() => setAiMemoryImportMode("merge")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <b>Fusionar (recomendado)</b>
+                        <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                          Añade reglas sin borrar tu historial. En conflicto prevalece lo importado.
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="elia-ai-memory-import-mode"
+                        checked={aiMemoryImportMode === "replace"}
+                        onChange={() => setAiMemoryImportMode("replace")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <b>Reemplazar por completo</b>
+                        <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                          Borra toda la memoria local y la sustituye por el archivo cargado (irreversible).
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      type="file"
+                      accept=".enc,.json,application/json"
+                      data-testid="elia-ai-memory-import-file"
+                      onChange={(e) => setAiMemoryImportFile(e.target.files?.[0] ?? null)}
+                      style={{ fontSize: 12, color: c.text, maxWidth: "100%" }}
+                    />
+                    <button
+                      type="button"
+                      data-testid="elia-ai-memory-import"
+                      disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim() || !aiMemoryImportFile}
+                      onClick={() => {
+                        if (!aiMemoryImportFile) return;
+                        setAiMemoryBusy(true);
+                        setAiMemoryMsg(null);
+                        void (async () => {
+                          try {
+                            const result = await importAiMemory({
+                              teamPassphrase: aiMemoryTeamPassphrase.trim(),
+                              mode: aiMemoryImportMode,
+                              file: aiMemoryImportFile,
+                            });
+                            await refreshAiMemoryStatus();
+                            setAiMemoryImportFile(null);
+                            setAiMemoryMsg(
+                              result.mode === "replace"
+                                ? `Importación completa: ${result.total} ejemplo(s) en memoria.`
+                                : `Fusión: ${result.added} añadido(s), ${result.updated} actualizado(s), total ${result.total}.`,
+                            );
+                          } catch (e) {
+                            setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo importar.");
+                          } finally {
+                            setAiMemoryBusy(false);
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
+                        color: c.primaryFg,
+                        cursor: aiMemoryBusy ? "wait" : "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      Confirmar importación
+                    </button>
+                  </div>
+                  {aiMemoryMsg && (
+                    <div style={{ fontSize: 12, color: c.text, lineHeight: 1.45 }}>{aiMemoryMsg}</div>
+                  )}
+                </div>
+              )}
+            </div>
+            </>
             )}
 
             {settingsTab === "license" && (
@@ -2197,8 +2422,8 @@ export default function App() {
                   <div style={{ fontSize: 14, marginBottom: 6 }}>
                     <b>{aboutInfo.app_name}</b> — {aboutInfo.tagline}
                   </div>
-                  <div style={{ fontSize: 14, marginBottom: 6 }}>
-                    Versión: <b>{aboutInfo.version}</b>
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 6 }}>
+                    Versión {aboutInfo.version}
                   </div>
                   <div style={{ fontSize: 14, marginBottom: 12 }}>
                     Desarrollador: {aboutInfo.developer}
@@ -2286,9 +2511,6 @@ export default function App() {
                       <div style={{ fontSize: 12, color: c.muted }}>(Licence.txt no disponible)</div>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: c.muted, marginTop: 10 }}>
-                    Build UI: {ELIA_WEB_UI_BUILD}
-                  </div>
                 </>
               ) : (
                 <div style={{ fontSize: 13, color: c.muted }}>Cargando información…</div>
@@ -2298,23 +2520,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      <div
-        style={{
-          position: "fixed",
-          left: 10,
-          bottom: 8,
-          zIndex: 99998,
-          fontSize: 11,
-          fontFamily: "ui-monospace, monospace",
-          color: c.muted,
-          opacity: 0.85,
-          pointerEvents: "none",
-        }}
-        aria-hidden
-      >
-        UI {ELIA_WEB_UI_BUILD}
-      </div>
 
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
         {errorText && (

@@ -457,6 +457,7 @@ class BDDDocConverter:
         try:
             from core import gemma_inference
             from core.elia_memory import append_correction, recent_examples_for_prompt
+            from core.elia_memory_crypto import MANUAL_EDIT_FROM_ATTEMPT, MAX_AI_REVIEW_ATTEMPTS
 
             if not gemma_inference.is_ai_runtime_configured():
                 return full_feature
@@ -469,8 +470,8 @@ class BDDDocConverter:
         examples = recent_examples_for_prompt(limit=3)
         mem = memory_block or _memory_few_shot_block(examples)
 
-        for attempt in range(1, 5):
-            can_manual = attempt >= 4
+        for attempt in range(1, MAX_AI_REVIEW_ATTEMPTS + 1):
+            can_manual = attempt >= MANUAL_EDIT_FROM_ATTEMPT
             if attempt > 1:
                 temp = ai_temps[min(attempt - 1, 2)]
                 last_rendered, _, _ = self._assemble_document_feature(
@@ -487,7 +488,7 @@ class BDDDocConverter:
                 review = self.ui.bdd_preview_review(
                     feature_text=last_rendered,
                     attempt=attempt,
-                    max_attempts=4,
+                    max_attempts=MAX_AI_REVIEW_ATTEMPTS,
                     script_excerpt=excerpt,
                     can_manual=can_manual,
                 )
@@ -503,7 +504,7 @@ class BDDDocConverter:
                     append_correction(script_snippet=excerpt, feature_text=ft)
                 return ft
             if action == "reject":
-                if attempt >= 4:
+                if attempt >= MAX_AI_REVIEW_ATTEMPTS:
                     break
                 continue
             if action == "use_heuristic":

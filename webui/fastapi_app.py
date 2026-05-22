@@ -6,9 +6,8 @@ import traceback
 import sys
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
@@ -101,6 +100,10 @@ class LicenseActivateRequest(BaseModel):
 
 class AiPreferencesRequest(BaseModel):
     mode: str  # auto | on | off
+
+
+class AiMemoryExportRequest(BaseModel):
+    team_passphrase: str = Field(min_length=1)
 
 
 class MobileEmulatorStartRequest(BaseModel):
@@ -273,6 +276,59 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="mode debe ser auto, on u off")
         save_preferences(mode=mode)  # type: ignore[arg-type]
         return get_ai_status_payload()
+
+    @app.get("/api/ai/memory/status")
+    def ai_memory_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.elia_memory import memory_status
+
+        return memory_status()
+
+    @app.post("/api/ai/memory/export")
+    def ai_memory_export(
+        req: AiMemoryExportRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Response:
+        from core.elia_memory import export_for_team
+
+        try:
+            blob, filename = export_for_team(req.team_passphrase.strip())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return Response(
+            content=blob,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/api/ai/memory/import")
+    async def ai_memory_import(
+        team_passphrase: str = Form(...),
+        mode: str = Form(...),
+        file: UploadFile = File(...),
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.elia_memory import import_from_team
+
+        normalized_mode = (mode or "").strip().lower()
+        if normalized_mode not in ("merge", "replace"):
+            raise HTTPException(status_code=400, detail="mode debe ser merge o replace")
+        if not (team_passphrase or "").strip():
+            raise HTTPException(status_code=400, detail="team_passphrase requerida")
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="Archivo vacío")
+        try:
+            result = import_from_team(data, team_passphrase.strip(), normalized_mode)  # type: ignore[arg-type]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"No se pudo importar la memoria: {e}") from e
+        return {"ok": True, **result}
 
     @app.get("/api/license/status")
     def license_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
