@@ -19,7 +19,7 @@ def _trim_script_for_preview(script_content: str, max_chars: int = 10000) -> str
     return s[: max_chars - 20] + "\n... [truncado]"
 
 
-class PuppeteerToBehaveConverter:
+class WebCaptureBehaveBuilder:
     
     def __init__(self, base_dir, ui: IUI, use_ai: bool = False, link_scenario: Optional[str] = None):
         self.base_dir = base_dir
@@ -1266,7 +1266,7 @@ class PuppeteerToBehaveConverter:
 
     def _load_recording_meta(self, js_file: str) -> Optional[Dict[str, Any]]:
         base = re.sub(r"\.js$", "", js_file, flags=re.I)
-        for suffix in ("_elia_meta.json", "_bee_meta.json"):
+        for suffix in ("_elia_meta.json",):
             meta_path = base + suffix
             if os.path.isfile(meta_path):
                 break

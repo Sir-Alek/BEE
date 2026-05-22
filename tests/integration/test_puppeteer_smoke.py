@@ -1,5 +1,5 @@
 """
-Smoke del flujo puppeteer_recorder vía API (stub de recorder.js, sin Chrome real).
+Smoke del flujo puppeteer_recorder vía API (stub de web_capture_engine.js, sin Chrome real).
 
 Corre en CI por defecto (tests/run_integration.py).
 """
@@ -27,7 +27,7 @@ class TestPuppeteerRecorderSmoke(unittest.TestCase):
 
     def test_stub_recorder_js_exits_cleanly(self) -> None:
         """Node stub: emula BROWSER_READY sin Puppeteer."""
-        stub = REPO_ROOT / "tests" / "fixtures" / "stub_recorder.js"
+        stub = REPO_ROOT / "tests" / "fixtures" / "stub_web_capture_engine.js"
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "scripts" / "rec.js"
             proc = subprocess.run(

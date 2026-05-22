@@ -4,7 +4,7 @@ import logging
 import sys
 from datetime import datetime
 
-class TestLogger:
+class CaseRunLogger:
     def __init__(self, test_name, project_dir=None):
         """
         Inicializa el logger para un test específico

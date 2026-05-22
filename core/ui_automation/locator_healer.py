@@ -1,7 +1,7 @@
 """
 Self-Healing Locator Generator — ELIA
 
-Toma un action_record del _elia_meta.json enriquecido (generado por recorder.js)
+Toma un action_record del _elia_meta.json enriquecido (generado por web_capture_engine.js)
 y usa Gemma 4 (via gemma_inference) para proponer locators más estables.
 
 Estrategia híbrida:

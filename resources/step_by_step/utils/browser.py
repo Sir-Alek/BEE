@@ -5,7 +5,7 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-class Browsers():
+class BrowserLauncher():
     @staticmethod
     def choose_browser(selection):
         if selection == 'chrome':

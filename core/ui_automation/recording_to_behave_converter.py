@@ -17,7 +17,7 @@ from ui.interfaces import ActionItem, BDDUserCancelled, IUI
 
 from core.ui_automation.flow_analyzer import ActionTuple, FlowAnalyzer
 from core.ui_automation.mobile_dom_parser import MobileElement, parse_android_page_source
-from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
+from core.ui_automation.web_capture_behave_builder import WebCaptureBehaveBuilder
 from core.ui_automation.recording_flow_analyzer import (
     enrich_mobile_events,
     extract_recording_actions,
@@ -147,7 +147,7 @@ def _filter_events_by_selection(
     return out if out else list(events)
 
 
-class RecordingToBehaveConverter(PuppeteerToBehaveConverter):
+class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
     """Convierte grabaciones .json de móvil o legacy a Behave."""
 
     def __init__(

@@ -5,7 +5,7 @@ Uso (Windows, desde la raíz del repo, con MSVC build tools + Cython):
   pip install cython setuptools
   python setup_cython.py build_ext --inplace
 
-Genera p.ej. core/ui_automation/puppeteer_script_converter.*.pyd junto al .py (también otros módulos del manifiesto).
+Genera p.ej. core/ui_automation/web_capture_behave_builder.*.pyd junto al .py (también otros módulos del manifiesto).
 En el empaquetado de release, el script scripts/build_release.py puede apartar los .py
 para que el ejecutable solo incluya los .pyd.
 """
@@ -29,7 +29,7 @@ compiler_directives = {"language_level": "3", "embedsignature": False}
 
 extensions = [
     Extension(
-        name=".".join(path[:-3].split("/")),  # core.puppeteer_script_converter
+        name=".".join(path[:-3].split("/")),  # core.web_capture_behave_builder
         sources=[path],
     )
     for path in CYTHON_MODULES

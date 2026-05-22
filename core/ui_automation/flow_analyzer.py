@@ -45,7 +45,7 @@ class FlowAnalyzer:
         Parsea el contenido de un script JS grabado y devuelve una lista
         ordenada de ActionTuple: (kind, value, extra).
 
-        Soporta los patrones generados por recorder.js de ELIA:
+        Soporta los patrones generados por web_capture_engine.js de ELIA:
           page.goto(url)
           page.click(selector)
           page.fill(selector, value) / page.type(selector, value)

@@ -10,12 +10,12 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 
-from utils.evidence import GetEvidence
+from utils.evidence import RunEvidenceStore
 import utils.button_functions as bf
-from utils.gen_reporTest import PDF
-from utils.PDFFeatureReport import PDFFeatureReport
+from utils.gen_reporTest import PdfReportDocument
+from utils.PDFFeatureReport import FeaturePdfReport
 
-class BaseUtils:
+class RunPathUtils:
     """Utilidades generales compartidas"""
     @staticmethod
     def sanitize_filename(name):
@@ -45,7 +45,7 @@ class BaseUtils:
             return {"error": str(e)}
 
 
-class DirectoryManager:
+class ProjectDirectoryLayout:
     """Gestión de carpetas (Outputs y Descargas)"""
     @staticmethod
     def get_base_dir():
@@ -53,18 +53,18 @@ class DirectoryManager:
 
     @staticmethod
     def setup_downloads():
-        download_dir = os.path.join(DirectoryManager.get_base_dir(), "outputs", "downloads")
+        download_dir = os.path.join(ProjectDirectoryLayout.get_base_dir(), "outputs", "downloads")
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir, ignore_errors=True)
         os.makedirs(download_dir, exist_ok=True)
         return download_dir
 
-class DriverManager:
+class BrowserSessionFactory:
     """Configuración extrema del ChromeDriver y CDP"""
     @staticmethod
     def create_driver(headless_mode):
         options = Options()
-        download_dir = DirectoryManager.setup_downloads()
+        download_dir = ProjectDirectoryLayout.setup_downloads()
         
         # Opciones base de seguridad y UI
         options.add_argument('--ignore-certificate-errors')
@@ -122,7 +122,7 @@ class DriverManager:
             driver = webdriver.Chrome(service=service, options=options)
             logging.info("✓ Driver iniciado con ChromeDriver local")
 
-        DriverManager._apply_cdp_overrides(driver, headless_mode)
+        BrowserSessionFactory._apply_cdp_overrides(driver, headless_mode)
         return driver
 
     @staticmethod
@@ -161,7 +161,7 @@ class DriverManager:
             except Exception as e:
                 pass
                 
-        DriverManager._inject_geolocation_mock(driver, latitude, longitude, accuracy)
+        BrowserSessionFactory._inject_geolocation_mock(driver, latitude, longitude, accuracy)
 
     @staticmethod
     def _inject_geolocation_mock(driver, lat, lng, acc):
@@ -179,7 +179,7 @@ class DriverManager:
         driver.execute_script(script)
         logging.info("✓ Mock inyectado correctamente")
 
-class LogManager:
+class RunLogCoordinator:
     """Manejo centralizado de Logs, Diagnósticos y Consolidación"""
     
     @staticmethod
@@ -215,10 +215,10 @@ class LogManager:
         if not context.generate_evidence:
             return None
             
-        logs_dir = os.path.join(DirectoryManager.get_base_dir(), "outputs", "logs")
+        logs_dir = os.path.join(ProjectDirectoryLayout.get_base_dir(), "outputs", "logs")
         os.makedirs(logs_dir, exist_ok=True)
         
-        feature_name = BaseUtils.sanitize_filename(feature.name)
+        feature_name = RunPathUtils.sanitize_filename(feature.name)
         feature_log_path = os.path.join(logs_dir, f"{feature_name}_feature.txt")
         
         feature_log_handler = logging.FileHandler(feature_log_path, mode='w', encoding='utf-8')
@@ -234,10 +234,10 @@ class LogManager:
 
     @staticmethod
     def setup_scenario_logger(context, scenario):
-        logs_dir = os.path.join(DirectoryManager.get_base_dir(), "outputs", "logs")
+        logs_dir = os.path.join(ProjectDirectoryLayout.get_base_dir(), "outputs", "logs")
         os.makedirs(logs_dir, exist_ok=True)
         
-        scenario_name = BaseUtils.sanitize_filename(scenario.name)
+        scenario_name = RunPathUtils.sanitize_filename(scenario.name)
         context.txt_filename = os.path.join(logs_dir, f"{scenario_name}.txt")
         
         file_handler = logging.FileHandler(context.txt_filename, mode='w', encoding='utf-8')
@@ -268,7 +268,7 @@ class LogManager:
                     context.diagnostic_logger.info("=== Botones visibles ===")
                     for i, button in enumerate(buttons[:3]):
                         if button.is_displayed():
-                            status = BaseUtils.get_element_status(button)
+                            status = RunPathUtils.get_element_status(button)
                             context.diagnostic_logger.info(f" - Botón {i+1}: '{status.get('text', '')}' Habilitado: {status.get('enabled', 'N/A')}")
                 except StaleElementReferenceException:
                     context.diagnostic_logger.warning("Elementos cambiaron durante diagnóstico")
@@ -283,7 +283,7 @@ class LogManager:
                     buttons = context.driver.find_elements(By.TAG_NAME, "button")
                     context.diagnostic_logger.warning("Campos de entrada (%d):", len(inputs))
                     for i, input_elem in enumerate(inputs[:3]):
-                        context.diagnostic_logger.warning(" - Input %d: %s", i+1, BaseUtils.get_element_status(input_elem))
+                        context.diagnostic_logger.warning(" - Input %d: %s", i+1, RunPathUtils.get_element_status(input_elem))
                 except Exception as dom_error:
                     context.diagnostic_logger.warning("Problema analizando DOM: %s", str(dom_error))
 
@@ -292,9 +292,9 @@ class LogManager:
         if not context.generate_evidence:
             return
             
-        logs_dir = os.path.join(DirectoryManager.get_base_dir(), "outputs", "logs")
+        logs_dir = os.path.join(ProjectDirectoryLayout.get_base_dir(), "outputs", "logs")
         feature_start_time_str = context.feature_start_time.strftime('%Y%m%d_%H%M%S')
-        scenario_logs = glob.glob(os.path.join(logs_dir, f"{BaseUtils.sanitize_filename(feature.name)}_*{feature_start_time_str}*.txt"))
+        scenario_logs = glob.glob(os.path.join(logs_dir, f"{RunPathUtils.sanitize_filename(feature.name)}_*{feature_start_time_str}*.txt"))
         
         with open(context.feature_log_path, 'a', encoding='utf-8') as feature_log:
             feature_log.write("\n=== LOGS DE ESCENARIOS CONSOLIDADOS ===\n")
@@ -307,7 +307,7 @@ class LogManager:
                 except Exception as e:
                     logging.error(f"Error consolidando log {scenario_log}: {str(e)}")
                     
-            summary = StatsManager.get_execution_summary(context, datetime.now() - context.feature_start_time)
+            summary = RunStatsTracker.get_execution_summary(context, datetime.now() - context.feature_start_time)
             feature_log.write("\n=== RESUMEN DE EJECUCIÓN ===\n")
             feature_log.write(summary)
             
@@ -315,11 +315,11 @@ class LogManager:
             logging.root.removeHandler(context.feature_log_handler)
             context.feature_log_handler.close()
 
-class DatasetManager:
+class FeatureDatasetLoader:
     """Carga y manejo de datos de prueba"""
     @staticmethod
     def load_dataset(context):
-        json_path = os.path.join(DirectoryManager.get_base_dir(), 'resources', 'data', f"{context.feature.name}.json")
+        json_path = os.path.join(ProjectDirectoryLayout.get_base_dir(), 'resources', 'data', f"{context.feature.name}.json")
         try:
             with open(json_path, 'r', encoding='utf-8') as file:
                 context.dataset = json.load(file)
@@ -330,12 +330,12 @@ class DatasetManager:
         except json.JSONDecodeError:
             raise Exception(f"Error leyendo JSON: {json_path}")
 
-class EvidenceManager:
+class RunEvidenceCoordinator:
     """Manejo de capturas y enlaces al helper global"""
     @staticmethod
     def setup_evidence(context, scenario):
         if context.generate_evidence:
-            context.evidence = GetEvidence()  
+            context.evidence = RunEvidenceStore()  
             context.evidence_dir = context.evidence.create_evidence_dir(scenario.name)
             
             # Usar la nueva función de configuración thread-safe de button_functions
@@ -386,10 +386,10 @@ class EvidenceManager:
         try:
             if not hasattr(context, 'evidence_dir'):
                 context.evidence_dir = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                os.makedirs(os.path.join(DirectoryManager.get_base_dir(), 'outputs', 'evidences', context.evidence_dir), exist_ok=True)
+                os.makedirs(os.path.join(ProjectDirectoryLayout.get_base_dir(), 'outputs', 'evidences', context.evidence_dir), exist_ok=True)
 
-            evidence_dir = os.path.join(DirectoryManager.get_base_dir(), 'outputs', 'evidences', context.evidence_dir)
-            step_name = BaseUtils.sanitize_filename(step.name)[:30]
+            evidence_dir = os.path.join(ProjectDirectoryLayout.get_base_dir(), 'outputs', 'evidences', context.evidence_dir)
+            step_name = RunPathUtils.sanitize_filename(step.name)[:30]
             timestamp = datetime.now().strftime('%H%M%S')
 
             # Limpiar tooltips y overlays de Angular Material para no obstruir la captura de fallo
@@ -420,7 +420,7 @@ class EvidenceManager:
         except Exception as e:
             logging.error(f"Error crítico al guardar captura: {str(e)}")
 
-class StatsManager:
+class RunStatsTracker:
     """Gestión de métricas de ejecución"""
     @staticmethod
     def init_stats(context):
@@ -456,7 +456,7 @@ class StatsManager:
             f"Took {int(mins)}m{secs:.3f}s"
         ])
 
-class ReportManager:
+class RunReportPublisher:
     """Generación de Reportes PDF"""
     
     @staticmethod
@@ -465,7 +465,7 @@ class ReportManager:
             return
         try:
             # Aseguramos pasar los screenshots al método genReport
-            PDF.genReport(
+            PdfReportDocument.genReport(
                 context.feature.name, 
                 scenario.name,
                 context.start_time.strftime('%Y-%m-%d_%H-%M-%S'),
@@ -499,7 +499,7 @@ class ReportManager:
                 
             logging.info(f"Se ejecutaron {total_scenarios} escenarios. Generando reporte PDF consolidado...")
             try:
-                reporte_final = PDFFeatureReport.generate_consolidated_report(context.all_feature_logs)
+                reporte_final = FeaturePdfReport.generate_consolidated_report(context.all_feature_logs)
                 logging.info(f"✓ Reporte consolidado listo: {reporte_final}")
             except Exception as e:
                 logging.error(f"Fallo al generar reporte consolidado: {str(e)}")

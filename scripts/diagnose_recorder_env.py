@@ -71,9 +71,9 @@ def main() -> int:
     print(f"  chromium_fallback_allowed  = {chromium_fallback_allowed()}")
 
     try:
-        from core.ui_automation.node_wrapper import node_wrapper
+        from core.ui_automation.script_runtime_host import script_runtime_host
 
-        np = node_wrapper.get_node_path()
+        np = script_runtime_host.get_node_path()
         print(f"  node_path                  = {np}")
     except Exception as exc:
         print(f"  node_path                  = ERROR: {exc}")

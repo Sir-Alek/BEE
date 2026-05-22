@@ -1,4 +1,4 @@
-# step_by_step_converter.py
+# web_capture_step_builder.py
 import os
 import re
 import json
@@ -9,7 +9,7 @@ from typing import List, Tuple
 from ui.interfaces import IUI
 
 
-class PuppeteerToStepByStepConverter:
+class WebCaptureStepBuilder:
     def __init__(self, base_dir, ui: IUI):
         self.base_dir = base_dir
         from core.elia_paths import behave_projects_dir, step_by_step_dir
@@ -494,10 +494,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # carpeta del test
 PROJECT_DIR = os.path.dirname(BASE_DIR) 
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
-from utils.evidence import GetEvidence
-from utils.browser import Browsers
-from utils.test_logger import TestLogger
-from utils.gen_reporTest import PDF
+from utils.evidence import RunEvidenceStore
+from utils.browser import BrowserLauncher
+from utils.test_logger import CaseRunLogger
+from utils.gen_reporTest import PdfReportDocument
 
 '''
         class_def = f'''class Test{base_name.capitalize()}(unittest.TestCase):
@@ -508,15 +508,15 @@ from utils.gen_reporTest import PDF
         cls.test_name = "{base_name}"
         
         # Configurar logger personalizado
-        cls.test_logger = TestLogger(cls.test_name, PROJECT_DIR)
+        cls.test_logger = CaseRunLogger(cls.test_name, PROJECT_DIR)
         cls.log_file = cls.test_logger.setup_logger()
         
         # Configurar logging estándar para compatibilidad
         logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
         
-        cls.wd = Browsers.choose_browser('chrome')
+        cls.wd = BrowserLauncher.choose_browser('chrome')
         cls.wd.implicitly_wait(10)
-        cls.test_dir = GetEvidence.create_evidence_dir(cls.test_name)
+        cls.test_dir = RunEvidenceStore.create_evidence_dir(cls.test_name)
         
     def test_{base_name.lower()}_flow(self):
         """Test: {test_name}"""
@@ -557,7 +557,7 @@ from utils.gen_reporTest import PDF
         """Limpieza y generación de reporte"""
         cls.wd.quit()
         try: 
-            PDF.genReportFromLog(cls.test_name, os.path.basename(PROJECT_DIR))
+            PdfReportDocument.genReportFromLog(cls.test_name, os.path.basename(PROJECT_DIR))
         except Exception as e: 
             cls.test_logger.error(f"PDF error: {str(e)}")
         cls.test_logger.cleanup()
@@ -630,7 +630,7 @@ if __name__ == "__main__":
             self.test_logger.info('Paso {step_number}: Navegando a {url}')
             self.wd.get("{url}")
             time.sleep(2)
-            GetEvidence.create_screenshot('{step_number:02d}', 'ingreso_a_la_url', self.test_dir, self.wd)
+            RunEvidenceStore.create_screenshot('{step_number:02d}', 'ingreso_a_la_url', self.test_dir, self.wd)
 '''
             
         elif action_type == 'click':
@@ -640,7 +640,7 @@ if __name__ == "__main__":
             element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'click_en_elemento', self.test_dir, self.wd)
+            RunEvidenceStore.create_screenshot('{step_number:02d}', 'click_en_elemento', self.test_dir, self.wd)
             element.click()
             time.sleep(1)
 '''
@@ -652,7 +652,7 @@ if __name__ == "__main__":
             element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'rellenar_campo', self.test_dir, self.wd)
+            RunEvidenceStore.create_screenshot('{step_number:02d}', 'rellenar_campo', self.test_dir, self.wd)
             element.clear()
             element.send_keys("{value}")
             time.sleep(1)
@@ -670,7 +670,7 @@ if __name__ == "__main__":
             option_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//option[contains(text(), '{option}')]")))
             without_outline = self.wd.execute_script('return arguments[0].style.outline', option_element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', option_element)
-            GetEvidence.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}', self.test_dir, self.wd)
+            RunEvidenceStore.create_screenshot('{step_number:02d}', 'seleccionar_opcion_{option[:5]}', self.test_dir, self.wd)
             time.sleep(1)
 '''
             
@@ -679,7 +679,7 @@ if __name__ == "__main__":
             return f'''            # Paso {step_number}: Esperar elemento
             self.test_logger.info('Paso {step_number}: Esperando elemento {selector}')
             wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
-            GetEvidence.create_screenshot('{step_number:02d}', 'esperar_elemento', self.test_dir, self.wd)
+            RunEvidenceStore.create_screenshot('{step_number:02d}', 'esperar_elemento', self.test_dir, self.wd)
             time.sleep(1)
 '''
         

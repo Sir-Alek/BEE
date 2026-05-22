@@ -103,7 +103,7 @@ python scripts/build_release.py
 - El manifiesto se **autodescubre** en `core/_cython_build_manifest.py` (no hace falta listar módulos a mano).
 - `--no-cython`: solo para depuración local; el `.exe` llevará fuentes `.py` de core.
 - `--no-strip-py`: no borra `.py` del dist tras PyInstaller (depuración).
-- Revisa `scripts/build_release.py` para flags del ofuscador de `recorder.js`.
+- Revisa `scripts/build_release.py` para flags del ofuscador de `web_capture_engine.js`.
 
 Luego, si usas solo PyInstaller:
 
@@ -166,7 +166,7 @@ Los proyectos generados suelen ir bajo **Documentos/ELIA** (Windows). Variable o
 
 ## Integraciones (Jira, Value Edge, Gherkin)
 
-Módulos Python en la raíz del paquete **`core/`** (mismo nivel que los demás conversores y utilidades): **`jira_extractor.py`**, **`value_edge_extractor.py`**, **`gherkin_converter.py`**, **`integrations_config_loader.py`**, **`connectors_profiles_store.py`**, **`integrations_service.py`**.
+Módulos Python en la raíz del paquete **`core/`** (mismo nivel que los demás conversores y utilidades): **`jira_story_fetcher.py`**, **`value_edge_story_fetcher.py`**, **`story_gherkin_builder.py`**, **`integrations_config_loader.py`**, **`connectors_profiles_store.py`**, **`integrations_service.py`**.
 
 - **Configuración recomendada:** `{ELIA_USER_DATA}/external_connectors/secrets.ini` con secciones `[JIRA]` (`URL`, `EMAIL`, `API_TOKEN`) y `[ValueEdge]` (`URL`, `SHARED_SPACE`, `WORKSPACE`, `TECH_PREVIEW_FLAG`, `USER`, `PASSWORD`, `LOGIN`). Si existía una instalación anterior con `.../elia/secrets.ini` bajo datos de usuario, ese archivo se sigue leyendo hasta migrar. Alternativa: **`ELIA_SECRETS_INI`** con ruta absoluta, o variables **`ELIA_*`** (p. ej. `ELIA_JIRA_URL`, `ELIA_VALUEEDGE_URL`; ver `integrations_config_loader.py`).
 - **Uso programático:** `import core.integrations_service as integrations` — `get_jira_extractor()`, `get_value_edge_extractor()`, `run_gherkin_batch(...)`, etc.

@@ -1,6 +1,6 @@
 /**
- * Stub mínimo de recorder.js para smoke con Node (sin Puppeteer).
- * Uso: node tests/fixtures/stub_recorder.js <output.js> <url>
+ * Stub mínimo de web_capture_engine.js para smoke con Node (sin Puppeteer).
+ * Uso: node tests/fixtures/stub_web_capture_engine.js <output.js> <url>
  */
 const fs = require("fs");
 const path = require("path");

@@ -1,5 +1,5 @@
 """
-Fachada ELIA para invocar desde la UI web sin acoplarse al legacy DICAI.
+Fachada ELIA para invocar desde la UI web sin acoplarse al modo legacy.
 
 Credenciales:
 - Por job (`inline=True`): objeto enviado en la API por job — no lee secrets.ini ni variables.
@@ -10,10 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from core.req_intelligence.gherkin_converter import UltimateGherkinConverter
+from core.req_intelligence.story_gherkin_builder import StoryGherkinBuilder
 from core.req_intelligence.integrations_config_loader import jira_settings, load_config_parser, value_edge_settings
-from core.req_intelligence.jira_extractor import JiraExtractor
-from core.req_intelligence.value_edge_extractor import ValueEdgeExtractor
+from core.req_intelligence.jira_story_fetcher import JiraStoryFetcher
+from core.req_intelligence.value_edge_story_fetcher import ValueEdgeStoryFetcher
 
 
 def _empty_jira_inline_message() -> str:
@@ -84,9 +84,9 @@ def resolve_value_edge_settings(*, inline: bool, creds: Optional[Mapping[str, st
     return ve, str(path)
 
 
-def get_jira_extractor(*, inline: bool, creds: Optional[Mapping[str, str]]) -> Tuple[JiraExtractor, str]:
+def get_jira_extractor(*, inline: bool, creds: Optional[Mapping[str, str]]) -> Tuple[JiraStoryFetcher, str]:
     j, src = resolve_jira_credentials(inline=inline, creds=creds)
-    return JiraExtractor(j["url"], j["email"], j["api_token"]), src
+    return JiraStoryFetcher(j["url"], j["email"], j["api_token"]), src
 
 
 def get_value_edge_extractor(
@@ -94,9 +94,9 @@ def get_value_edge_extractor(
     inline: bool,
     creds: Optional[Mapping[str, str]],
     verify_ssl: bool = False,
-) -> Tuple[ValueEdgeExtractor, str]:
+) -> Tuple[ValueEdgeStoryFetcher, str]:
     ve, src = resolve_value_edge_settings(inline=inline, creds=creds)
-    return ValueEdgeExtractor(settings=ve, verify_ssl=verify_ssl), src
+    return ValueEdgeStoryFetcher(settings=ve, verify_ssl=verify_ssl), src
 
 
 def run_gherkin_batch(
@@ -106,7 +106,7 @@ def run_gherkin_batch(
     use_ai: bool = False,
 ) -> None:
     """Ejecuta conversión por lotes (escribe learned_patterns.json bajo output_dir)."""
-    conv = UltimateGherkinConverter(str(input_dir), str(output_dir), use_ai=use_ai)
+    conv = StoryGherkinBuilder(str(input_dir), str(output_dir), use_ai=use_ai)
     conv.convert()
 
 

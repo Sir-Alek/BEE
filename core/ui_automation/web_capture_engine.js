@@ -679,12 +679,12 @@ let actionRecorder = null;
       }
 
       let highlightOverlay = null;
-      function ensureHighlightOverlay() {
+      function initCaptureOverlay() {
         if (!highlightOverlay) {
           highlightOverlay = document.createElement('div');
           highlightOverlay.style.position = 'fixed';
-          highlightOverlay.style.border = '2px solid #00bcd4';
-          highlightOverlay.style.background = 'rgba(0,188,212,0.15)';
+          highlightOverlay.style.border = '2px solid #7c6af2';
+          highlightOverlay.style.background = 'rgba(124,106,242,0.15)';
           highlightOverlay.style.pointerEvents = 'none';
           highlightOverlay.style.zIndex = 2147483647;
           highlightOverlay.style.display = 'none';
@@ -697,7 +697,7 @@ let actionRecorder = null;
           if (highlightOverlay) highlightOverlay.style.display = 'none';
           return;
         }
-        ensureHighlightOverlay();
+        initCaptureOverlay();
         const rect = el.getBoundingClientRect();
         highlightOverlay.style.display = 'block';
         highlightOverlay.style.left = `${rect.left}px`;

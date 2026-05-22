@@ -3,7 +3,7 @@ import os
 import re
 from collections import defaultdict
 
-class PDF(FPDF):
+class PdfReportDocument(FPDF):
 
     def texts(self, name):
         with open(name, 'rb') as xy:

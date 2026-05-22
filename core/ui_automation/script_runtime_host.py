@@ -8,7 +8,7 @@ import time
 import uuid
 from typing import Callable, Optional
 
-class NodeJSWrapper:
+class ScriptRuntimeHost:
     def __init__(self):
         self.temp_files = []
         self.temp_dirs = []
@@ -184,7 +184,7 @@ class NodeJSWrapper:
             # Escribir el JS en runtime_dir/ui_automation/ de modo que __dirname sea
             # ese subdirectorio y `path.join(__dirname, '..', 'node', ...)` resuelva
             # correctamente a runtime_dir/node/ (igual que en desarrollo donde
-            # recorder.js está en core/ui_automation/ y node/ está en core/node/).
+            # web_capture_engine.js está en core/ui_automation/ y node/ está en core/node/).
             _js_subdir = os.path.join(runtime_dir, "ui_automation")
             os.makedirs(_js_subdir, exist_ok=True)
             temp_file = os.path.join(_js_subdir, f"_elia_{uuid.uuid4().hex}_{js_file_name}")
@@ -399,4 +399,4 @@ class NodeJSWrapper:
         self.temp_dirs = []
 
 # Instancia global
-node_wrapper = NodeJSWrapper()
+script_runtime_host = ScriptRuntimeHost()

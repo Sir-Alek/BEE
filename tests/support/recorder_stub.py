@@ -1,5 +1,5 @@
 """
-Stub del subprocess de recorder.js para E2E e integración sin Chrome real.
+Stub del subprocess de web_capture_engine.js para E2E e integración sin Chrome real.
 
 Simula BROWSER_READY y termina con código 0, como si el usuario cerrara el navegador.
 """

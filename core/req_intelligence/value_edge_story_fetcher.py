@@ -20,7 +20,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
 
-class ValueEdgeExtractor:
+class ValueEdgeStoryFetcher:
     """
     Sesión Value Edge. Credenciales vía dict ``settings`` o archivo ini (ver ``core.integrations_config_loader``).
     """
@@ -191,7 +191,7 @@ def _legacy_cli_with_tk() -> None:
         print("Falta configuración Value Edge (secrets.ini o variables ELIA_VALUEEDGE_*).")
         return
     try:
-        extractor = ValueEdgeExtractor(settings=settings)
+        extractor = ValueEdgeStoryFetcher(settings=settings)
     except ValueError as e:
         print(e)
         return

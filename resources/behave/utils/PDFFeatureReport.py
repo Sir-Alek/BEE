@@ -7,7 +7,7 @@ from io import BytesIO
 import numpy as np
 import re
 
-class PDFFeatureReport(FPDF):
+class FeaturePdfReport(FPDF):
     def __init__(self):
         super().__init__()
         self.feature_name = ""
@@ -204,7 +204,7 @@ class PDFFeatureReport(FPDF):
     @staticmethod
     def generate_feature_report(feature_name, feature_log_path):
         try:
-            log_data = PDFFeatureReport.parse_log_file(feature_log_path)
+            log_data = FeaturePdfReport.parse_log_file(feature_log_path)
             feature_name = log_data.get('feature', feature_name)
             
             # Crear PDF            
@@ -253,7 +253,7 @@ class PDFFeatureReport(FPDF):
             total_duration = 0
             
             for log_path in feature_log_paths:
-                log_data = PDFFeatureReport.parse_log_file(log_path)
+                log_data = FeaturePdfReport.parse_log_file(log_path)
                 feature_data_list.append({
                     'name': log_data.get('feature', os.path.basename(log_path)),
                     'scenarios': log_data.get('scenarios', []),
@@ -309,7 +309,7 @@ class PDFFeatureReport(FPDF):
     
 #     try:
 #         print("=== Iniciando prueba del generador de PDF ===")
-#         pdf_filename = PDFFeatureReport.generate_feature_report(
+#         pdf_filename = FeaturePdfReport.generate_feature_report(
 #             feature_name=TEST_FEATURE_NAME,
 #             feature_log_path=TEST_LOG_PATH
 #         )

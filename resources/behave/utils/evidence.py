@@ -12,7 +12,7 @@ import pandas as pd
 
 BASE_DIR = os.getcwd()
 
-class GetEvidence():
+class RunEvidenceStore():
     
     @staticmethod
     def create_screenshot(step, label, dir_name, web_driver, step_type=None):

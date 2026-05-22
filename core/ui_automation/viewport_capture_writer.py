@@ -1,7 +1,7 @@
 import cv2, numpy as np, mss, time, os
 import threading
 
-class ScreenRecorder:
+class ViewportCaptureWriter:
     def __init__(self, output_path, monitor=None, fps=20, hwnd=None, max_duration_sec=600):
         self.output_path = output_path
         self.monitor = monitor

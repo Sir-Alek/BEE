@@ -244,7 +244,7 @@ def run_subprocess_with_automation_focus(
     on_browser_ready: Optional[Callable[[], None]] = None,
 ) -> subprocess.CompletedProcess:
     """
-    Launch a subprocess (e.g. node recorder.js) and try to focus the new automation
+    Launch a subprocess (e.g. node web_capture_engine.js) and try to focus the new automation
     browser window after a short delay while waiting for the process to exit.
 
     on_browser_ready: optional zero-arg callable called (once, in a daemon thread)

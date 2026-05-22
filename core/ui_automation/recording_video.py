@@ -40,18 +40,18 @@ def start_window_video_recorder(
     max_duration_sec: int = 600,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
-    Inicia ScreenRecorder acotado a la ventana (hwnd).
+    Inicia ViewportCaptureWriter acotado a la ventana (hwnd).
     Devuelve (recorder, error_message).
     """
     if not hwnd:
         return None, "No se encontró la ventana para grabar."
 
     try:
-        from core.ui_automation.video_recorder import ScreenRecorder
+        from core.ui_automation.viewport_capture_writer import ViewportCaptureWriter
     except Exception as exc:
         return None, f"No se pudo cargar el grabador de video: {exc}"
 
-    recorder = ScreenRecorder(
+    recorder = ViewportCaptureWriter(
         video_path,
         hwnd=hwnd,
         max_duration_sec=max_duration_sec,

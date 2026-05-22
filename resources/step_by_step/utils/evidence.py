@@ -9,7 +9,7 @@ from PIL import ImageGrab
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # carpeta del test
 PROJECT_DIR = os.path.dirname(BASE_DIR) 
 
-class GetEvidence():
+class RunEvidenceStore():
     
     @staticmethod
     def create_screenshot(step, label, dir_name, web_driver):

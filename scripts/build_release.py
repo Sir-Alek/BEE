@@ -26,8 +26,8 @@ if ROOT not in sys.path:
 
 CORE = os.path.join(ROOT, "core")
 CORE_UI = os.path.join(CORE, "ui_automation")
-OBFUSCATED_JS = os.path.join(CORE_UI, "recorder.obfuscated.js")
-SOURCE_RECORDER = os.path.join(CORE_UI, "recorder.js")
+OBFUSCATED_CAPTURE_ENGINE = os.path.join(CORE_UI, "web_capture_engine.obfuscated.js")
+SOURCE_CAPTURE_ENGINE = os.path.join(CORE_UI, "web_capture_engine.js")
 
 from core._cython_build_manifest import (
     CYTHON_REL_PATHS,
@@ -115,14 +115,14 @@ def verify_cython_artifacts(strict: bool = True) -> list[str]:
     return missing
 
 
-def obfuscate_recorder() -> None:
-    if not os.path.isfile(SOURCE_RECORDER):
-        print("AVISO: No existe core/ui_automation/recorder.js; se omite ofuscación.")
+def obfuscate_capture_engine() -> None:
+    if not os.path.isfile(SOURCE_CAPTURE_ENGINE):
+        print("AVISO: No existe core/ui_automation/web_capture_engine.js; se omite ofuscación.")
         return
     npx = shutil.which("npx")
     if not npx:
-        print("AVISO: npx no encontrado; copiando recorder.js sin ofuscar -> recorder.obfuscated.js")
-        shutil.copy2(SOURCE_RECORDER, OBFUSCATED_JS)
+        print("AVISO: npx no encontrado; copiando web_capture_engine.js sin ofuscar -> web_capture_engine.obfuscated.js")
+        shutil.copy2(SOURCE_CAPTURE_ENGINE, OBFUSCATED_CAPTURE_ENGINE)
         return
     try:
         run(
@@ -130,9 +130,9 @@ def obfuscate_recorder() -> None:
                 npx,
                 "--yes",
                 "javascript-obfuscator",
-                SOURCE_RECORDER,
+                SOURCE_CAPTURE_ENGINE,
                 "--output",
-                OBFUSCATED_JS,
+                OBFUSCATED_CAPTURE_ENGINE,
                 "--compact",
                 "true",
                 "--control-flow-flattening",
@@ -147,10 +147,10 @@ def obfuscate_recorder() -> None:
                 "false",
             ]
         )
-        print(f"OK Generado {OBFUSCATED_JS}")
+        print(f"OK Generado {OBFUSCATED_CAPTURE_ENGINE}")
     except subprocess.CalledProcessError:
-        print("AVISO: javascript-obfuscator falló; copiando recorder.js sin ofuscar.")
-        shutil.copy2(SOURCE_RECORDER, OBFUSCATED_JS)
+        print("AVISO: javascript-obfuscator falló; copiando web_capture_engine.js sin ofuscar.")
+        shutil.copy2(SOURCE_CAPTURE_ENGINE, OBFUSCATED_CAPTURE_ENGINE)
 
 
 def _dist_core_roots() -> list[str]:
@@ -363,7 +363,7 @@ def main() -> int:
     else:
         print("AVISO: --no-cython: el ejecutable puede incluir fuentes .py de core.")
 
-    obfuscate_recorder()
+    obfuscate_capture_engine()
 
     if not args.no_pyinstaller:
         if not args.no_cython:

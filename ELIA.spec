@@ -37,13 +37,13 @@ for _cyd in _cython_globs:
     cython_binaries.append((_rel, _bundle_dest))
 
 # Recorder: en release usar solo el ofuscado (el plano queda en el repo para desarrollo, no en el exe).
-# recorder.js ahora vive en core/ui_automation/ → se bundlea en core/ui_automation/ dentro del exe.
-_obf = os.path.join('core', 'ui_automation', 'recorder.obfuscated.js')
+# web_capture_engine.js ahora vive en core/ui_automation/ → se bundlea en core/ui_automation/ dentro del exe.
+_obf = os.path.join('core', 'ui_automation', 'web_capture_engine.obfuscated.js')
 if os.path.isfile(_obf):
     js_obf = [(_obf, 'core/ui_automation')]
 else:
-    # Sin build de ofuscación: incluir recorder.js como respaldo para que el exe no quede sin motor.
-    _plain = os.path.join('core', 'ui_automation', 'recorder.js')
+    # Sin build de ofuscación: incluir web_capture_engine.js como respaldo para que el exe no quede sin motor.
+    _plain = os.path.join('core', 'ui_automation', 'web_capture_engine.js')
     js_obf = [(_plain, 'core/ui_automation')] if os.path.isfile(_plain) else []
 
 

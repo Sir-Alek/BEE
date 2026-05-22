@@ -40,9 +40,9 @@ def debug_build():
     try:
         from core import get_core_file
 
-        print("\n🧪 get_core_file('recorder.js')...")
+        print("\n🧪 get_core_file('web_capture_engine.js')...")
         try:
-            content = get_core_file("recorder.js")
+            content = get_core_file("web_capture_engine.js")
             print(f"  ✅ OK - {len(content)} bytes")
         except Exception as e:
             print(f"  ❌ {e}")

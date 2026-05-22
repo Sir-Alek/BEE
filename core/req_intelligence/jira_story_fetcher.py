@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class JiraExtractor:
+class JiraStoryFetcher:
     def __init__(self, url: str, email: str, api_token: str):
         self.url = url.rstrip('/')
         self.email = email
@@ -195,7 +195,7 @@ def main():
         config = configparser.ConfigParser()
         config.read('secrets/secrets.ini', encoding='utf-8')
         
-        extractor = JiraExtractor(
+        extractor = JiraStoryFetcher(
             config.get('JIRA', 'URL'),
             config.get('JIRA', 'EMAIL'),
             config.get('JIRA', 'API_TOKEN')

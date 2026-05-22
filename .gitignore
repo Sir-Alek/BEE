@@ -7,6 +7,9 @@
 dist/
 build/
 
+# Directorio de distribución de paquetes
+ELIA/
+
 #cache
 *.pyc
 *__pycache__
@@ -18,8 +21,8 @@ node_modules/
 resources/models/**/*.gguf
 
 # Build release: JS ofuscado y extensiones Cython locales (no obligatorio en git)
-core/ui_automation/recorder.obfuscated.js
-core/recorder.test.js
+core/ui_automation/web_capture_engine.obfuscated.js
+core/web_capture_engine.test.js
 core/*.pyd
 core/*.c
 core/**/*.pyd
@@ -36,3 +39,6 @@ tests/e2e/test-results/
 test-results/
 playwright-report/
 tests/e2e/node_modules/
+
+# Información de proyecto para IA: no versionar datos de entrenamiento o modelos grandes
+repomix-output.xml

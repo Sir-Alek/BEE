@@ -11,10 +11,10 @@ tests/
 ├── run_all.py               # unit + api (unittest)
 ├── run_integration.py       # integración / smoke / nightly
 ├── support/
-│   ├── recorder_stub.py     # stub de recorder.js (sin Chrome real)
+│   ├── recorder_stub.py     # stub de web_capture_engine.js (sin Chrome real)
 │   └── markers.py           # flags ELIA_RUN_INTEGRATION / ELIA_RUN_NIGHTLY
 ├── fixtures/
-│   └── stub_recorder.js     # script Node mínimo (BROWSER_READY)
+│   └── stub_web_capture_engine.js     # script Node mínimo (BROWSER_READY)
 ├── unit/                    # test_*.py — lógica de dominio
 ├── api/                     # FastAPI (security, jobs, license, AI)
 ├── integration/             # smoke CI + opt-in red real + nightly
@@ -84,7 +84,7 @@ Cada test aísla licencia y datos de usuario (`ELIA_USER_DATA` temporal) para no
 
 | Archivo | Cuándo corre | Qué valida |
 |---------|--------------|------------|
-| `test_puppeteer_smoke.py` | **Siempre** (`run_integration.py`) | Job `puppeteer_recorder` vía API con stub; `stub_recorder.js` con Node |
+| `test_puppeteer_smoke.py` | **Siempre** (`run_integration.py`) | Job `puppeteer_recorder` vía API con stub; `stub_web_capture_engine.js` con Node |
 | `test_connectors_live.py` | `ELIA_RUN_INTEGRATION=1` | Jira / Value Edge con red real |
 | `test_legacy_runtime.py` | `ELIA_RUN_NIGHTLY=1` | Ventana Notepad, flujo legacy en Windows |
 | `test_appium_runtime.py` | `ELIA_RUN_NIGHTLY=1` | Servidor Appium accesible + cliente Python |
@@ -191,7 +191,7 @@ Reporte HTML: `tests/e2e/report/` (gitignored).
 Para E2E e integración sin abrir Chrome real:
 
 - `tests/support/recorder_stub.py` — parchea `run_subprocess_with_automation_focus`, escribe el `.js` de salida y emite `BROWSER_READY`
-- `tests/fixtures/stub_recorder.js` — equivalente ejecutable con `node` (smoke CI)
+- `tests/fixtures/stub_web_capture_engine.js` — equivalente ejecutable con `node` (smoke CI)
 
 Desactivar stub E2E (grabación real):
 

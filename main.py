@@ -6,27 +6,27 @@ IS_FROZEN = getattr(sys, 'frozen', False)
 
 # Conversores: import normal o extensiones Cython (.pyd); ver core/__dynamic_importer.py
 try:
-    from core.__dynamic_importer import puppeteer_script_converter, video_recorder, step_by_step_converter
-    PuppeteerToBehaveConverter = puppeteer_script_converter.PuppeteerToBehaveConverter
-    ScreenRecorder = video_recorder.ScreenRecorder
-    PuppeteerToStepByStepConverter = step_by_step_converter.PuppeteerToStepByStepConverter
+    from core.__dynamic_importer import web_capture_behave_builder, viewport_capture_writer, web_capture_step_builder
+    WebCaptureBehaveBuilder = web_capture_behave_builder.WebCaptureBehaveBuilder
+    ViewportCaptureWriter = viewport_capture_writer.ViewportCaptureWriter
+    WebCaptureStepBuilder = web_capture_step_builder.WebCaptureStepBuilder
 except ImportError:
     try:
-        from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
-        from core.ui_automation.video_recorder import ScreenRecorder
-        from core.ui_automation.step_by_step_converter import PuppeteerToStepByStepConverter
+        from core.ui_automation.web_capture_behave_builder import WebCaptureBehaveBuilder
+        from core.ui_automation.viewport_capture_writer import ViewportCaptureWriter
+        from core.ui_automation.web_capture_step_builder import WebCaptureStepBuilder
     except ImportError:
-        class PuppeteerToBehaveConverter:
+        class WebCaptureBehaveBuilder:
             def __init__(self, *args, **kwargs):
-                raise RuntimeError("Módulo PuppeteerToBehaveConverter no disponible")
+                raise RuntimeError("Módulo WebCaptureBehaveBuilder no disponible")
 
-        class PuppeteerToStepByStepConverter:
+        class WebCaptureStepBuilder:
             def __init__(self, *args, **kwargs):
-                raise RuntimeError("Módulo PuppeteerToStepByStepConverter no disponible")
+                raise RuntimeError("Módulo WebCaptureStepBuilder no disponible")
 
-        class ScreenRecorder:
+        class ViewportCaptureWriter:
             def __init__(self, *args, **kwargs):
-                raise RuntimeError("Módulo ScreenRecorder no disponible")
+                raise RuntimeError("Módulo ViewportCaptureWriter no disponible")
 
         print("Advertencia: Módulos críticos no disponibles")
         
@@ -518,7 +518,7 @@ class main:
         try:
             _require_license_for_jobs()
             if not self.web_mode:
-                converter = PuppeteerToBehaveConverter(self.base_dir, self.ui)
+                converter = WebCaptureBehaveBuilder(self.base_dir, self.ui)
                 converter.convert_script()
                 return
 
@@ -536,7 +536,7 @@ class main:
                     from core.ai_policy import resolve_use_ai
 
                     use_ai = resolve_use_ai().use_ai
-                    converter = PuppeteerToBehaveConverter(self.base_dir, adapter, use_ai=use_ai)
+                    converter = WebCaptureBehaveBuilder(self.base_dir, adapter, use_ai=use_ai)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
                 except BDDUserCancelled:
@@ -554,7 +554,7 @@ class main:
         try:
             _require_license_for_jobs()
             if not self.web_mode:
-                converter = PuppeteerToStepByStepConverter(self.base_dir, self.ui)
+                converter = WebCaptureStepBuilder(self.base_dir, self.ui)
                 converter.convert_script()
                 return
 
@@ -567,7 +567,7 @@ class main:
 
             def worker() -> None:
                 try:
-                    converter = PuppeteerToStepByStepConverter(self.base_dir, adapter)
+                    converter = WebCaptureStepBuilder(self.base_dir, adapter)
                     converter.convert_script()
                     self._job_manager.mark_done(job_id)
                 except Exception as e:
@@ -710,7 +710,7 @@ class main:
                         video_path = os.path.join(videos_dir, file_name_vid)
 
                         try:
-                            recorder_obj = ScreenRecorder(video_path)
+                            recorder_obj = ViewportCaptureWriter(video_path)
                             if recorder_obj.start():
                                 print(f"Grabación de video iniciada: {video_path}")
                             else:
@@ -719,19 +719,19 @@ class main:
                             print(f"Error iniciando grabación: {e}")
                             recorder_obj = None
 
-                    # Ejecutar Puppeteer/Node recorder.js
+                    # Ejecutar Puppeteer/Node web_capture_engine.js
                     if IS_FROZEN:
-                        from core.ui_automation.node_wrapper import node_wrapper
+                        from core.ui_automation.script_runtime_host import script_runtime_host
 
                         jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (solo la primera vez)"})
                         try:
-                            node_wrapper._ensure_runtime_prepared()
+                            script_runtime_host._ensure_runtime_prepared()
                         except Exception:
                             pass
 
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
-                        result = node_wrapper.run_obfuscated_js(
-                            "recorder.js",
+                        result = script_runtime_host.run_obfuscated_js(
+                            "web_capture_engine.js",
                             [output_file, url],
                             subprocess_timeout=None,
                             focus_automation_browser=True,
@@ -740,7 +740,7 @@ class main:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
-                        recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "recorder.js")
+                        recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "web_capture_engine.js")
 
                         result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, url],
@@ -780,9 +780,9 @@ class main:
                 finally:
                     if IS_FROZEN:
                         try:
-                            from core.ui_automation.node_wrapper import node_wrapper
+                            from core.ui_automation.script_runtime_host import script_runtime_host
 
-                            node_wrapper.cleanup()
+                            script_runtime_host.cleanup()
                         except Exception:
                             pass
 
@@ -883,7 +883,7 @@ class main:
                 
                 # Iniciar grabación sin diálogo
                 try:
-                    recorder = ScreenRecorder(video_path)
+                    recorder = ViewportCaptureWriter(video_path)
                     if recorder.start():
                         print(f"Grabación de video iniciada: {video_path}")
                     else:
@@ -896,9 +896,9 @@ class main:
             # Ejecutar diferente según el modo
             if IS_FROZEN:
                 # En modo empaquetado, usar el wrapper ofuscado
-                from core.ui_automation.node_wrapper import node_wrapper
-                result = node_wrapper.run_obfuscated_js(
-                    "recorder.js",
+                from core.ui_automation.script_runtime_host import script_runtime_host
+                result = script_runtime_host.run_obfuscated_js(
+                    "web_capture_engine.js",
                     [output_file, url],
                     subprocess_timeout=None,
                     focus_automation_browser=True,
@@ -906,7 +906,7 @@ class main:
             else:
                 from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
-                recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "recorder.js")
+                recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "web_capture_engine.js")
                 result = run_subprocess_with_automation_focus(
                     ["node", recorder_js_path, output_file, url],
                     cwd=self.base_dir,
@@ -939,8 +939,8 @@ class main:
             # Limpiar recursos
             if IS_FROZEN:
                 # Importar y limpiar solo si está en modo empaquetado
-                from core.ui_automation.node_wrapper import node_wrapper
-                node_wrapper.cleanup()
+                from core.ui_automation.script_runtime_host import script_runtime_host
+                script_runtime_host.cleanup()
             else:
                 # En modo desarrollo, no hay recursos ofuscados que limpiar
                 pass

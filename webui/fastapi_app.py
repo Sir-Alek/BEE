@@ -10,8 +10,8 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
-from core.ui_automation.puppeteer_script_converter import PuppeteerToBehaveConverter
-from core.ui_automation.step_by_step_converter import PuppeteerToStepByStepConverter
+from core.ui_automation.web_capture_behave_builder import WebCaptureBehaveBuilder
+from core.ui_automation.web_capture_step_builder import WebCaptureStepBuilder
 from ui.interfaces import BDDUserCancelled
 from webui.job_manager import JobManager, Prompt
 from webui.webui_adapter import WebUIAdapter
@@ -570,7 +570,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     return
 
                 if req.mode == "puppeteer_to_behave":
-                    converter = PuppeteerToBehaveConverter(
+                    converter = WebCaptureBehaveBuilder(
                         base_dir,
                         adapter,
                         use_ai=use_ai,
@@ -627,7 +627,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     return
 
                 if req.mode == "puppeteer_to_step_by_step":
-                    converter = PuppeteerToStepByStepConverter(base_dir, adapter)
+                    converter = WebCaptureStepBuilder(base_dir, adapter)
                     converter.convert_script()
                     jm.mark_done(job_id)
                     return
@@ -740,13 +740,13 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     )
 
                     # Video: se prepara el objeto pero NO se inicia aún.
-                    # La grabación comienza solo cuando recorder.js señaliza BROWSER_READY,
+                    # La grabación comienza solo cuando web_capture_engine.js señaliza BROWSER_READY,
                     # es decir, cuando el browser ya abrió la URL y está listo para interactuar.
                     video_path: Optional[str] = None
                     _recorder_holder: list = [None]  # mutable ref para el callback
 
                     if grabar_video:
-                        from core.ui_automation.video_recorder import ScreenRecorder
+                        from core.ui_automation.viewport_capture_writer import ViewportCaptureWriter
 
                         file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
                         videos_dir = os.path.join(project_path, "grabaciones")
@@ -756,7 +756,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         def _start_video_on_browser_ready() -> None:
                             """Called from a daemon thread when BROWSER_READY arrives."""
                             try:
-                                r = ScreenRecorder(video_path)
+                                r = ViewportCaptureWriter(video_path)
                                 if r.start():
                                     _recorder_holder[0] = r
                                     jm.update_progress(job_id, {"stage": "Grabando video"})
@@ -769,17 +769,17 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     jm.update_progress(job_id, {"stage": "Preparando runtime de grabación"})
 
-                    # --- Ejecutar recorder.js
+                    # --- Ejecutar web_capture_engine.js
                     if is_frozen():
-                        from core.ui_automation.node_wrapper import node_wrapper
+                        from core.ui_automation.script_runtime_host import script_runtime_host
                         try:
-                            if getattr(node_wrapper, "was_runtime_prepared_now", False):
+                            if getattr(script_runtime_host, "was_runtime_prepared_now", False):
                                 jm.update_progress(job_id, {"stage": "Preparando runtime de grabación (primera vez)"})
                         except Exception:
                             pass
 
-                        result = node_wrapper.run_obfuscated_js(
-                            "recorder.js",
+                        result = script_runtime_host.run_obfuscated_js(
+                            "web_capture_engine.js",
                             [output_file, req.url],
                             subprocess_timeout=None,
                             focus_automation_browser=True,
@@ -789,7 +789,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         from core.ui_automation.recorder_focus import run_subprocess_with_automation_focus
 
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
-                        recorder_js_path = os.path.join(base_dir, "core", "ui_automation", "recorder.js")
+                        recorder_js_path = os.path.join(base_dir, "core", "ui_automation", "web_capture_engine.js")
                         result = run_subprocess_with_automation_focus(
                             ["node", recorder_js_path, output_file, req.url],
                             cwd=base_dir,

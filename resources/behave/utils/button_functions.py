@@ -35,20 +35,20 @@ import glob
 import pandas as pd
 from python_calamine import CalamineWorkbook
 
-from utils.evidence import GetEvidence
+from utils.evidence import RunEvidenceStore
 
 BASE_DIR = os.getcwd()
 
 # ============================================================
 # ESTADO SEGURO PARA CONCURRENCIA (Reemplaza a las globales)
 # ============================================================
-class EvidenceState(threading.local):
+class ThreadEvidenceContext(threading.local):
     def __init__(self):
         self.take_evidence = False
         self.dir_name = ""
         self.func = None
 
-_evidence_state = EvidenceState()
+_evidence_state = ThreadEvidenceContext()
 
 def set_global_evidence_config(take=False, dir_name="", func=None):
     """Permite actualizar el estado de las evidencias de forma segura por hilo."""
@@ -912,7 +912,7 @@ def ui_validate_download(
         dir_evidencia = getattr(_evidence_state, 'dir_name', "")
         
         if usar_create_screenshot and dir_evidencia:
-            GetEvidence.create_download_receipt(
+            RunEvidenceStore.create_download_receipt(
                 step=screenshot_step, 
                 label=nombre_elemento, 
                 dir_name=dir_evidencia, 
@@ -954,7 +954,7 @@ def ui_validate_txt_content(
             if len(lineas) > 20:
                 texto_preview += "\n... [MÁS DATOS OCULTOS PARA LA VISTA PREVIA] ..."
                 
-            GetEvidence.create_data_preview_receipt(
+            RunEvidenceStore.create_data_preview_receipt(
                 step=screenshot_step,
                 label=nombre_elemento,
                 dir_name=dir_evidencia,
@@ -1012,7 +1012,7 @@ def ui_validate_excel_content(
             
             titulo_recibo = nombre_elemento if not hoja_con_datos else f"{nombre_elemento}_({hoja_con_datos})"
             
-            GetEvidence.create_data_preview_receipt(
+            RunEvidenceStore.create_data_preview_receipt(
                 step=screenshot_step,
                 label=titulo_recibo,
                 dir_name=dir_evidencia,

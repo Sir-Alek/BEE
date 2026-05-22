@@ -6,7 +6,7 @@ from datetime import datetime
 import unicodedata
 
 
-class PDF(FPDF):
+class PdfReportDocument(FPDF):
 
     def texts(self, name):
         with open(name, 'rb') as xy:
@@ -115,7 +115,7 @@ class PDF(FPDF):
                     statusTest = line.split('Estado: ')[1].strip()
         
         # Llamar al método original con los datos del log
-        PDF.genReport(testName, dt_format, dt_formatFin, project_name, statusTest, durationTest)
+        PdfReportDocument.genReport(testName, dt_format, dt_formatFin, project_name, statusTest, durationTest)
 
     @staticmethod
     def genReport(testName, dt_format, dt_formatFin, project_name, statusTest='', durationTest=''):
