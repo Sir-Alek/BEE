@@ -1,53 +1,32 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getAiCapabilities,
   getAiMemoryStatus,
   getAppAbout,
-  putAiPreferences,
-  type AiMemoryStatusResponse,
-  type AppAboutResponse,
-  getEliaConnectors,
-  getLicenseStatus,
-  getMobileAvds,
-  getMobileAppiumStatus,
-  getMobileDevices,
-  getMobileForegroundApp,
-  getMobilePreflight,
   getModulesStatus,
   getRecorderPreflight,
-  getScenarios,
-  getRecordings,
-  type MobileAppiumStatusResponse,
-  type MobileDeviceInfo,
-  type MobilePreflightResponse,
-  type RecorderPreflightResponse,
-  type AiCapabilitiesResponse,
-  putEliaConnectors,
   startConvertJob,
-  startMobileAppium,
-  startMobileEmulator,
-  stopMobileAppium,
-  uploadDocs,
+  type AiCapabilitiesResponse,
+  type AiMemoryStatusResponse,
+  type AppAboutResponse,
+  type RecorderPreflightResponse,
 } from "./api";
-import { shouldAutoOpenMobileEnv } from "./mobileEnvUi";
-import type {
-  ActivePrompt,
-  EliaConnectorProfile,
-  LoadedDoc,
-  ModulesStatus,
-  RecordingRef,
-  ScenarioRef,
-} from "./types";
-import { ELIA_CONNECTORS_LS_KEY, newConnectorProfile } from "./connectorDefaults";
+import type { ActivePrompt, LoadedDoc, ModulesStatus, RecordingRef, ScenarioRef } from "./types";
 import { themeQuerySuffix, useEliaTheme } from "./eliaTheme";
 import { useJobProgress } from "./job/useJobProgress";
 import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
-import { encodeRecordingLink, encodeScenarioLink } from "./app/linkUtils";
-import { licenseFromApi, type LicenseState } from "./app/licenseUtils";
-import { settingsTabsForLicense, SETTINGS_TABS_WITHOUT_LICENSE, type SettingsTabId } from "./app/settingsTabs";
+import { settingsTabsForLicense, type SettingsTabId } from "./app/settingsTabs";
 import { openJobUrlInNewTabPrepared } from "./app/utils";
+import { ConnectorProvider } from "./context/ConnectorContext";
+import { HomeUiProvider } from "./context/HomeUiContext";
+import { LicenseProvider } from "./context/LicenseContext";
+import { RecordingProvider } from "./context/RecordingContext";
+import { SettingsUiProvider } from "./context/SettingsUiContext";
+import { useConnectors } from "./hooks/useConnectors";
+import { useLicense } from "./hooks/useLicense";
+import { useMobileRecording } from "./hooks/useMobileRecording";
 import { HomeSurface } from "./home/HomeSurface";
 import { AppHeader, ErrorAlert } from "./layout/AppShell";
 import { JobWorkspace } from "./job/JobWorkspace";
@@ -56,17 +35,11 @@ import { SettingsDialog } from "./settings/SettingsDialog";
 export default function App() {
   const { c, dark, toggle } = useEliaTheme();
 
-  /** Pinned from first paint: home URL has no job_id; avoids any edge case mixing job UI into home. */
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
   const [homeTab, setHomeTab] = useState<"ui" | "req">("ui");
-
   const [jobId, setJobId] = useState<string | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
-  const {
-    job,
-    events: jobEvents,
-    errorText: jobPollError,
-  } = useJobProgress(jobId, polling);
+  const { job, events: jobEvents, errorText: jobPollError } = useJobProgress(jobId, polling);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [textValue, setTextValue] = useState<string>("");
   const [urlValue, setUrlValue] = useState<string>("");
@@ -74,7 +47,6 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
   const [homeHint, setHomeHint] = useState<string | null>(null);
-  /** Solo afecta a «Convertir a Behave»: llama.cpp + GGUF + metadatos de grabación. */
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
   const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
   const [aiMemoryOpen, setAiMemoryOpen] = useState(false);
@@ -84,85 +56,18 @@ export default function App() {
   const [aiMemoryImportFile, setAiMemoryImportFile] = useState<File | null>(null);
   const [aiMemoryBusy, setAiMemoryBusy] = useState(false);
   const [aiMemoryMsg, setAiMemoryMsg] = useState<string | null>(null);
-  const [license, setLicense] = useState<LicenseState | null>(null);
-  const [activationKey, setActivationKey] = useState("");
-  const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
-  const [fpCopyAck, setFpCopyAck] = useState(false);
-  /** Huella en pestaña Licencia: solo visible tras pulsar «Obtener huella»; se oculta al cerrar Configuración. */
-  const [licenseFpVisible, setLicenseFpVisible] = useState(false);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   const [aboutInfo, setAboutInfo] = useState<AppAboutResponse | null>(null);
   const [aboutChangelogOpen, setAboutChangelogOpen] = useState(false);
-  const [connectorProfiles, setConnectorProfiles] = useState<EliaConnectorProfile[]>([]);
-  const [reqConnectorProfileId, setReqConnectorProfileId] = useState("");
-  const [settingsProfileId, setSettingsProfileId] = useState("");
-  const [settingsTestMsg, setSettingsTestMsg] = useState<string | null>(null);
-  const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
-
-  // Building Blocks — módulos por licencia
   const [modules, setModules] = useState<ModulesStatus | null>(null);
   const [showLockModal, setShowLockModal] = useState<string | null>(null);
-  const canRunJobs = license?.can_run_jobs ?? false;
-  const visibleSettingsTabs = settingsTabsForLicense(canRunJobs);
-
-  // UI Automation — selector de plataforma
   const [platform, setPlatform] = useState<"web" | "mobile" | "legacy">("web");
   const [recorderPreflight, setRecorderPreflight] = useState<RecorderPreflightResponse | null>(null);
   const [recorderPreflightLoading, setRecorderPreflightLoading] = useState(false);
-  const [apkPath, setApkPath] = useState("");
-  const [deviceId, setDeviceId] = useState("");
-  const [deviceMode, setDeviceMode] = useState<"physical" | "emulator">("physical");
-  const [mobileDevices, setMobileDevices] = useState<MobileDeviceInfo[]>([]);
-  const [mobileDevicesLoading, setMobileDevicesLoading] = useState(false);
-  const [mobileDevicesError, setMobileDevicesError] = useState<string | null>(null);
-  const [mobileAvds, setMobileAvds] = useState<string[]>([]);
-  const [mobileAvdsLoading, setMobileAvdsLoading] = useState(false);
-  const [mobileAvdsError, setMobileAvdsError] = useState<string | null>(null);
-  const [selectedAvd, setSelectedAvd] = useState("");
-  const [mobilePreflight, setMobilePreflight] = useState<MobilePreflightResponse | null>(null);
-  const [mobilePreflightLoading, setMobilePreflightLoading] = useState(false);
-  const [mobileEnvOpen, setMobileEnvOpen] = useState(false);
-  const [emulatorStarting, setEmulatorStarting] = useState(false);
-  const [emulatorMessage, setEmulatorMessage] = useState<string | null>(null);
-  const [mobileFieldError, setMobileFieldError] = useState<string | null>(null);
-  const [detectingForegroundApp, setDetectingForegroundApp] = useState(false);
-  const [appiumStatus, setAppiumStatus] = useState<MobileAppiumStatusResponse | null>(null);
-  const [appiumStarting, setAppiumStarting] = useState(false);
-  const [appPackage, setAppPackage] = useState("");
-  const [appActivity, setAppActivity] = useState("");
   const [windowName, setWindowName] = useState("");
   const [exePath, setExePath] = useState("");
-
-  const recordingConfig = useMemo((): RecordingConfig => {
-    if (platform === "mobile") {
-      return {
-        platform: "mobile",
-        deviceId,
-        deviceMode,
-        apkPath,
-        appPackage,
-        appActivity,
-      };
-    }
-    if (platform === "legacy") {
-      return { platform: "legacy", windowName, exePath };
-    }
-    return { platform: "web", url: urlValue };
-  }, [
-    platform,
-    urlValue,
-    deviceId,
-    deviceMode,
-    apkPath,
-    appPackage,
-    appActivity,
-    windowName,
-    exePath,
-  ]);
-
-  // Req Intelligence — ingesta de documentos
   const [loadedDocs, setLoadedDocs] = useState<LoadedDoc[]>([]);
   const [docDragOver, setDocDragOver] = useState(false);
   const [docUploadError, setDocUploadError] = useState<string | null>(null);
@@ -174,66 +79,77 @@ export default function App() {
   const [autoLinkToScenario, setAutoLinkToScenario] = useState(false);
   const [autoLinkScenarioRef, setAutoLinkScenarioRef] = useState("");
 
-  const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+  const licenseState = useLicense({ isHomeSurface, settingsOpen, settingsTab, setSettingsTab });
+  const {
+    license, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
+    fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, refreshLicense,
+  } = licenseState;
 
-  const persistConnectorProfiles = useCallback(async (next: EliaConnectorProfile[]) => {
-    const doc = { version: 1 as const, profiles: next };
-    try {
-      localStorage.setItem(ELIA_CONNECTORS_LS_KEY, JSON.stringify(doc));
-    } catch {
-      // ignore
-    }
-    try {
-      await putEliaConnectors(doc);
-    } catch {
-      // guardar local aunque backend falle (p. ej. sin cryptography instalado)
-    }
+  const connectorState = useConnectors({ isHomeSurface });
+  const {
+    connectorProfiles, setConnectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
+    settingsProfileId, setSettingsProfileId, settingsTestMsg, setSettingsTestMsg,
+    settingsSaveMsg, setSettingsSaveMsg, persistConnectorProfiles, duplicateConnectorProfile,
+    deleteConnectorProfile, syncSettingsProfileId,
+  } = connectorState;
+
+  const setMobileFieldErrorRef = useRef<(v: string | null) => void>(() => {});
+
+  const scrollToUserMessage = useCallback((testId: string) => {
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-testid="${testId}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }, []);
 
-  useEffect(() => {
-    if (!isHomeSurface) return;
-    let alive = true;
-    void (async () => {
-      let localProfiles: EliaConnectorProfile[] = [];
-      try {
-        const raw = localStorage.getItem(ELIA_CONNECTORS_LS_KEY);
-        if (raw) {
-          const p = JSON.parse(raw) as { profiles?: EliaConnectorProfile[] };
-          if (Array.isArray(p?.profiles)) localProfiles = p.profiles;
-        }
-      } catch {
-        localProfiles = [];
+  const showHomeError = useCallback(
+    (message: string, opts?: { mobileInline?: boolean }) => {
+      setErrorText(message);
+      if (opts?.mobileInline) {
+        setMobileFieldErrorRef.current(message);
+        scrollToUserMessage("elia-mobile-form-error");
+      } else {
+        scrollToUserMessage("elia-error-alert");
       }
-      try {
-        const remote = await getEliaConnectors();
-        if (!alive) return;
-        const r = remote?.profiles ?? [];
-        const use = r.length ? r : localProfiles;
-        setConnectorProfiles(use);
-        const firstId = use[0]?.id ?? "";
-        setReqConnectorProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
-        setSettingsProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
-      } catch {
-        if (!alive) return;
-        setConnectorProfiles(localProfiles);
-        const firstId = localProfiles[0]?.id ?? "";
-        setReqConnectorProfileId((prev) =>
-          prev && localProfiles.some((x) => x.id === prev) ? prev : firstId,
-        );
-        setSettingsProfileId((prev) =>
-          prev && localProfiles.some((x) => x.id === prev) ? prev : firstId,
-        );
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [isHomeSurface]);
+    },
+    [scrollToUserMessage],
+  );
+
+  const mobileState = useMobileRecording({
+    isHomeSurface,
+    homeTab,
+    platform,
+    canRunJobs,
+    onShowError: showHomeError,
+    onSetHomeHint: setHomeHint,
+  });
+  setMobileFieldErrorRef.current = mobileState.setMobileFieldError;
+
+  const {
+    apkPath, setApkPath, deviceId, setDeviceId, deviceMode, setDeviceMode,
+    mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
+    mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd,
+    refreshMobileAvds, mobilePreflight, mobilePreflightLoading, mobileEnvOpen, setMobileEnvOpen,
+    emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
+    detectingForegroundApp, detectForegroundApp, appiumStatus, appiumStarting, handleStartAppium,
+    refreshAppiumStatus, refreshMobilePreflight, appPackage, setAppPackage, appActivity, setAppActivity,
+  } = mobileState;
+
+  const visibleSettingsTabs = settingsTabsForLicense(canRunJobs);
+  const activePrompt = (job?.active_prompt ?? null) as ActivePrompt | null;
+
+  const recordingConfig = useMemo((): RecordingConfig => {
+    if (platform === "mobile") {
+      return { platform: "mobile", deviceId, deviceMode, apkPath, appPackage, appActivity };
+    }
+    if (platform === "legacy") {
+      return { platform: "legacy", windowName, exePath };
+    }
+    return { platform: "web", url: urlValue };
+  }, [platform, urlValue, deviceId, deviceMode, apkPath, appPackage, appActivity, windowName, exePath]);
 
   const refreshAiCapabilities = useCallback(async () => {
     try {
-      const caps = await getAiCapabilities();
-      setAiCaps(caps);
+      setAiCaps(await getAiCapabilities());
     } catch {
       setAiCaps(null);
     }
@@ -241,8 +157,7 @@ export default function App() {
 
   const refreshAiMemoryStatus = useCallback(async () => {
     try {
-      const st = await getAiMemoryStatus();
-      setAiMemoryStatus(st);
+      setAiMemoryStatus(await getAiMemoryStatus());
     } catch {
       setAiMemoryStatus(null);
     }
@@ -265,8 +180,10 @@ export default function App() {
   useEffect(() => {
     if (!settingsOpen) {
       setAboutChangelogOpen(false);
-      return;
     }
+  }, [settingsOpen]);
+
+  useEffect(() => {
     let alive = true;
     void (async () => {
       try {
@@ -276,72 +193,22 @@ export default function App() {
         if (alive) setAboutInfo(null);
       }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [settingsOpen]);
-
-  const deleteConnectorProfile = useCallback(() => {
-    const p = connectorProfiles.find((x) => x.id === settingsProfileId);
-    if (!p) return;
-    if (!window.confirm(`¿Eliminar el perfil «${p.name}»? Esta acción no se puede deshacer.`)) return;
-    const next = connectorProfiles.filter((x) => x.id !== settingsProfileId);
-    setConnectorProfiles(next);
-    setSettingsProfileId(next[0]?.id ?? "");
-    setSettingsTestMsg(null);
-    setSettingsSaveMsg(null);
-    void persistConnectorProfiles(next);
-  }, [connectorProfiles, settingsProfileId, persistConnectorProfiles]);
-
-  const duplicateConnectorProfile = useCallback(() => {
-    const p = connectorProfiles.find((x) => x.id === settingsProfileId);
-    if (!p) return;
-    const np = newConnectorProfile(connectorProfiles.length + 1);
-    const copy = {
-      ...np,
-      name: `${p.name} (copia)`,
-      jira: { ...p.jira },
-      value_edge: { ...p.value_edge },
-    };
-    const next = [...connectorProfiles, copy];
-    setConnectorProfiles(next);
-    setSettingsProfileId(copy.id);
-    setSettingsTestMsg(null);
-    setSettingsSaveMsg(null);
-  }, [connectorProfiles, settingsProfileId]);
-
-  const refreshLicense = useCallback(async () => {
-    try {
-      const l = await getLicenseStatus();
-      setLicense(licenseFromApi(l));
-    } catch {
-      setLicense(null);
-    }
+    return () => { alive = false; };
   }, []);
 
   useEffect(() => {
-    if (!isHomeSurface) return;
-    void refreshLicense();
-  }, [isHomeSurface, refreshLicense]);
-
-  useEffect(() => {
-    if (!settingsOpen || !isHomeSurface) return;
-    void refreshLicense();
-  }, [settingsOpen, isHomeSurface, refreshLicense]);
-
-  useEffect(() => {
-    if (!settingsOpen) {
-      setLicenseFpVisible(false);
-      setFpCopyAck(false);
-    }
+    if (!settingsOpen) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const info = await getAppAbout();
+        if (alive) setAboutInfo(info);
+      } catch {
+        if (alive) setAboutInfo(null);
+      }
+    })();
+    return () => { alive = false; };
   }, [settingsOpen]);
-
-  useEffect(() => {
-    if (canRunJobs) return;
-    if (!SETTINGS_TABS_WITHOUT_LICENSE.includes(settingsTab)) {
-      setSettingsTab("license");
-    }
-  }, [canRunJobs, settingsTab]);
 
   useEffect(() => {
     if (canRunJobs) return;
@@ -353,7 +220,6 @@ export default function App() {
     setLoadedDocs([]);
   }, [canRunJobs]);
 
-  // Cargar estado de módulos (Building Blocks)
   useEffect(() => {
     if (!isHomeSurface) return;
     let alive = true;
@@ -393,239 +259,8 @@ export default function App() {
         if (alive) setRecorderPreflightLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [isHomeSurface, homeTab, platform, canRunJobs]);
-
-  const refreshMobileDevices = useCallback(async () => {
-    setMobileDevicesLoading(true);
-    setMobileDevicesError(null);
-    try {
-      const res = await getMobileDevices();
-      const devices = res.devices ?? [];
-      setMobileDevices(devices);
-      if (res.error) setMobileDevicesError(res.error);
-      const online = devices.filter((d) => d.state === "device");
-      setDeviceId((prev) => {
-        const filtered =
-          deviceMode === "physical"
-            ? online.filter((d) => d.kind === "physical")
-            : online.filter((d) => d.kind === "emulator");
-        if (filtered.length === 1) return filtered[0].id;
-        if (prev && filtered.some((d) => d.id === prev)) return prev;
-        return filtered[0]?.id ?? prev;
-      });
-    } catch {
-      setMobileDevices([]);
-      setMobileDevicesError("No se pudo obtener la lista de dispositivos adb.");
-    } finally {
-      setMobileDevicesLoading(false);
-    }
-  }, [deviceMode]);
-
-  const refreshMobileAvds = useCallback(async () => {
-    setMobileAvdsLoading(true);
-    setMobileAvdsError(null);
-    try {
-      const res = await getMobileAvds();
-      const avds = res.avds ?? [];
-      setMobileAvds(avds);
-      if (res.error) setMobileAvdsError(res.error);
-      setSelectedAvd((prev) => (prev && avds.includes(prev) ? prev : avds[0] ?? ""));
-    } catch {
-      setMobileAvds([]);
-      setMobileAvdsError("No se pudo listar AVDs del SDK.");
-    } finally {
-      setMobileAvdsLoading(false);
-    }
-  }, []);
-
-  const refreshMobilePreflight = useCallback(async () => {
-    try {
-      const pf = await getMobilePreflight();
-      setMobilePreflight(pf);
-    } catch {
-      // ignore; handled on tab load
-    }
-  }, []);
-
-  const refreshAppiumStatus = useCallback(async () => {
-    try {
-      const st = await getMobileAppiumStatus();
-      setAppiumStatus(st);
-    } catch {
-      setAppiumStatus(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isHomeSurface || homeTab !== "ui" || platform !== "mobile" || !canRunJobs) return;
-    let alive = true;
-    setMobilePreflightLoading(true);
-    void (async () => {
-      try {
-        const pf = await getMobilePreflight();
-        if (alive) setMobilePreflight(pf);
-      } catch {
-        if (alive) {
-          setMobilePreflight({
-            ok: false,
-            platform: "unknown",
-            items: [],
-            warnings: [],
-            errors: ["No se pudo comprobar el entorno móvil. Reinicie ELIA e inténtelo de nuevo."],
-            env: {},
-            android_only: true,
-          });
-        }
-      } finally {
-        if (alive) setMobilePreflightLoading(false);
-      }
-    })();
-    void refreshMobileDevices();
-    void refreshMobileAvds();
-    void refreshAppiumStatus();
-    return () => {
-      alive = false;
-    };
-  }, [isHomeSurface, homeTab, platform, canRunJobs, refreshMobileDevices, refreshMobileAvds, refreshAppiumStatus]);
-
-  useEffect(() => {
-    if (shouldAutoOpenMobileEnv(mobilePreflight)) {
-      setMobileEnvOpen(true);
-    }
-  }, [mobilePreflight]);
-
-  useEffect(() => {
-    if (platform !== "mobile") return;
-    void refreshMobileDevices();
-  }, [deviceMode, platform, refreshMobileDevices]);
-
-  const handleStartEmulator = useCallback(async () => {
-    if (!selectedAvd.trim()) {
-      setEmulatorMessage("Selecciona un AVD.");
-      return;
-    }
-    setEmulatorStarting(true);
-    setEmulatorMessage("Iniciando emulador…");
-    try {
-      const res = await startMobileEmulator({ avd: selectedAvd.trim(), wait_boot: true });
-      if (res.device_id) setDeviceId(res.device_id);
-      setEmulatorMessage(res.message || (res.ok ? "Emulador listo." : "No se pudo iniciar el emulador."));
-      await refreshMobileDevices();
-    } catch (e) {
-      setEmulatorMessage(e instanceof Error ? e.message : "Error al iniciar el emulador.");
-    } finally {
-      setEmulatorStarting(false);
-    }
-  }, [refreshMobileDevices, selectedAvd]);
-
-  // Close home tab = close whole app (backend). sendBeacon/fetch + main.py polling /api/app/should-exit.
-  useEffect(() => {
-    if (!isHomeSurface) return;
-    const body = JSON.stringify({ reason: "home_closed" });
-    const fireExit = () => {
-      try {
-        const blob = new Blob([body], { type: "application/json" });
-        if (!navigator.sendBeacon("/api/app/exit", blob)) {
-          void fetch("/api/app/exit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-        }
-      } catch {
-        try {
-          void fetch("/api/app/exit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-        } catch {
-          // ignore
-        }
-      }
-    };
-    window.addEventListener("beforeunload", fireExit);
-    window.addEventListener("pagehide", fireExit);
-    return () => {
-      window.removeEventListener("beforeunload", fireExit);
-      window.removeEventListener("pagehide", fireExit);
-    };
-  }, [isHomeSurface]);
-
-  const scrollToUserMessage = useCallback((testId: string) => {
-    requestAnimationFrame(() => {
-      document.querySelector(`[data-testid="${testId}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
-  }, []);
-
-  const showHomeError = useCallback(
-    (message: string, opts?: { mobileInline?: boolean }) => {
-      setErrorText(message);
-      if (opts?.mobileInline) {
-        setMobileFieldError(message);
-        scrollToUserMessage("elia-mobile-form-error");
-      } else {
-        scrollToUserMessage("elia-error-alert");
-      }
-    },
-    [scrollToUserMessage],
-  );
-
-  const detectForegroundApp = useCallback(async (): Promise<{ package: string; activity: string } | null> => {
-    if (!deviceId.trim()) {
-      showHomeError("Selecciona un dispositivo adb antes de detectar la app.", { mobileInline: true });
-      return null;
-    }
-    setDetectingForegroundApp(true);
-    setMobileFieldError(null);
-    try {
-      const fg = await getMobileForegroundApp(deviceId.trim());
-      if (fg.ok && fg.package) {
-        setAppPackage(fg.package);
-        if (fg.activity) setAppActivity(fg.activity);
-        setHomeHint(`App detectada en el móvil: ${fg.package}`);
-        return { package: fg.package, activity: fg.activity ?? "" };
-      }
-      showHomeError(
-        fg.error ||
-          "No se detectó ninguna app en primer plano. Abre la app en el móvil (no el launcher) e inténtalo de nuevo.",
-        { mobileInline: true },
-      );
-      return null;
-    } catch (e) {
-      showHomeError(
-        e instanceof Error ? e.message : "No se pudo detectar la app en primer plano.",
-        { mobileInline: true },
-      );
-      return null;
-    } finally {
-      setDetectingForegroundApp(false);
-    }
-  }, [deviceId, showHomeError]);
-
-  const handleStartAppium = useCallback(async () => {
-    setAppiumStarting(true);
-    setMobileFieldError(null);
-    try {
-      const res = await startMobileAppium(60);
-      await refreshAppiumStatus();
-      await refreshMobilePreflight();
-      if (res.ok && res.running) {
-        setHomeHint(res.message || "Appium listo.");
-      } else {
-        showHomeError(res.message || "No se pudo iniciar Appium.", { mobileInline: true });
-      }
-    } catch (e) {
-      showHomeError(e instanceof Error ? e.message : "Error al iniciar Appium.", { mobileInline: true });
-    } finally {
-      setAppiumStarting(false);
-    }
-  }, [refreshAppiumStatus, refreshMobilePreflight, showHomeError]);
 
   const startJob = async (
     mode:
@@ -637,7 +272,6 @@ export default function App() {
       | "mobile_to_behave"
       | "legacy_to_behave"
       | "doc_to_bdd"
-      // ELIA
       | "elia_jira_smoke"
       | "elia_value_edge_smoke"
       | "elia_gherkin_batch",
@@ -675,9 +309,7 @@ export default function App() {
           mobileAct = detected.activity || mobileAct;
         }
       }
-      if (!recordingConfig.apkPath.trim() && !mobilePkg) {
-        return;
-      }
+      if (!recordingConfig.apkPath.trim() && !mobilePkg) return;
     }
 
     const newTab = openJobUrlInNewTabPrepared();
@@ -692,7 +324,6 @@ export default function App() {
     void (async () => {
       try {
         const prof = connectorProfiles.find((x) => x.id === reqConnectorProfileId);
-
         const res = await startConvertJob(
           buildConvertJobBody({
             mode,
@@ -727,13 +358,13 @@ export default function App() {
         setHomeHint(
           "El flujo se abrió en otra pestaña. Esta vista es el inicio: déjala abierta y usa la otra pestaña para los pasos y el resultado.",
         );
-      } catch (e: any) {
+      } catch (e: unknown) {
         try {
           newTab.close();
         } catch {
           // ignore
         }
-        setErrorText(String(e?.message ?? e));
+        setErrorText(String((e as Error)?.message ?? e));
       }
     })();
   };
@@ -760,16 +391,49 @@ export default function App() {
     const initialJobId = sp.get("job_id");
     const mode = sp.get("mode");
     if (mode) setWorkspaceMode(mode);
-
     if (initialJobId) {
       setJobId(initialJobId);
       setPolling(true);
       setInitialChecked(true);
       return;
     }
-
     setInitialChecked(true);
   }, []);
+
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    const body = JSON.stringify({ reason: "home_closed" });
+    const fireExit = () => {
+      try {
+        const blob = new Blob([body], { type: "application/json" });
+        if (!navigator.sendBeacon("/api/app/exit", blob)) {
+          void fetch("/api/app/exit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          });
+        }
+      } catch {
+        try {
+          void fetch("/api/app/exit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    };
+    window.addEventListener("beforeunload", fireExit);
+    window.addEventListener("pagehide", fireExit);
+    return () => {
+      window.removeEventListener("beforeunload", fireExit);
+      window.removeEventListener("pagehide", fireExit);
+    };
+  }, [isHomeSurface]);
 
   useEffect(() => {
     if (!isHomeSurface) return;
@@ -777,9 +441,7 @@ export default function App() {
     try {
       bc = new BroadcastChannel(ELIA_UI_BC);
       bc.onmessage = (ev: MessageEvent) => {
-        if (ev.data?.type === "elia_job_finished") {
-          setHomeHint(null);
-        }
+        if (ev.data?.type === "elia_job_finished") setHomeHint(null);
       };
     } catch {
       // ignore
@@ -838,204 +500,154 @@ export default function App() {
     }
   }, [job?.state]);
 
-
   const openSettings = () => {
     setSettingsOpen(true);
     setSettingsTab("general");
     setSettingsTestMsg(null);
     setSettingsSaveMsg(null);
-    const fallback = reqConnectorProfileId || connectorProfiles[0]?.id || "";
-    setSettingsProfileId((prev) =>
-      prev && connectorProfiles.some((x) => x.id === prev) ? prev : fallback,
-    );
+    syncSettingsProfileId();
   };
 
+  const licenseCtx = useMemo(
+    () => ({
+      license, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
+      fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, refreshLicense,
+    }),
+    [
+      license, activationKey, licenseActivateMsg, fpCopyAck, licenseFpVisible,
+      canRunJobs, refreshLicense, setLicense, setActivationKey, setLicenseActivateMsg,
+      setFpCopyAck, setLicenseFpVisible,
+    ],
+  );
+
+  const connectorCtx = useMemo(
+    () => ({
+      connectorProfiles, setConnectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
+      settingsProfileId, setSettingsProfileId, settingsTestMsg, setSettingsTestMsg,
+      settingsSaveMsg, setSettingsSaveMsg, persistConnectorProfiles, duplicateConnectorProfile,
+      deleteConnectorProfile,
+    }),
+    [
+      connectorProfiles, reqConnectorProfileId, settingsProfileId, settingsTestMsg, settingsSaveMsg,
+      persistConnectorProfiles, duplicateConnectorProfile, deleteConnectorProfile,
+      setConnectorProfiles, setReqConnectorProfileId, setSettingsProfileId,
+      setSettingsTestMsg, setSettingsSaveMsg,
+    ],
+  );
+
+  const recordingCtx = useMemo(
+    () => ({
+      platform, setPlatform, urlValue, setUrlValue, windowName, setWindowName, exePath, setExePath,
+      recorderPreflight, recorderPreflightLoading, mobilePreflight, mobilePreflightLoading,
+      mobileEnvOpen, setMobileEnvOpen, appiumStatus, appiumStarting, handleStartAppium,
+      refreshAppiumStatus, refreshMobilePreflight, deviceMode, setDeviceMode, deviceId, setDeviceId,
+      mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
+      mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd, refreshMobileAvds,
+      emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
+      appPackage, setAppPackage, appActivity, setAppActivity, apkPath, setApkPath,
+      detectingForegroundApp, detectForegroundApp,
+    }),
+    [
+      platform, urlValue, windowName, exePath, recorderPreflight, recorderPreflightLoading,
+      mobilePreflight, mobilePreflightLoading, mobileEnvOpen, appiumStatus, appiumStarting,
+      handleStartAppium, refreshAppiumStatus, refreshMobilePreflight, deviceMode, deviceId,
+      mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
+      mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, refreshMobileAvds,
+      emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, appPackage,
+      appActivity, apkPath, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
+    ],
+  );
+
+  const settingsUiCtx = useMemo(
+    () => ({
+      c, dark, toggleTheme: toggle, visibleSettingsTabs, settingsTab, setSettingsTab,
+      aiCaps, aiPrefsSaving, setAiPrefsSaving, setAiCaps, aiMemoryOpen, setAiMemoryOpen,
+      aiMemoryStatus, aiMemoryTeamPassphrase, setAiMemoryTeamPassphrase, aiMemoryImportMode,
+      setAiMemoryImportMode, aiMemoryImportFile, setAiMemoryImportFile, aiMemoryBusy, setAiMemoryBusy,
+      aiMemoryMsg, setAiMemoryMsg, refreshAiMemoryStatus, setErrorText, setModules,
+      aboutInfo, aboutChangelogOpen, setAboutChangelogOpen,
+    }),
+    [
+      c, dark, toggle, visibleSettingsTabs, settingsTab, aiCaps, aiPrefsSaving, aiMemoryOpen,
+      aiMemoryStatus, aiMemoryTeamPassphrase, aiMemoryImportMode, aiMemoryImportFile, aiMemoryBusy,
+      aiMemoryMsg, refreshAiMemoryStatus, aboutInfo, aboutChangelogOpen,
+    ],
+  );
+
+  const homeUiCtx = useMemo(
+    () => ({
+      c, dark, initialChecked, homeTab, setHomeTab, homeHint, aiCaps, license,
+      setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
+      showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
+      autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
+      setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
+      setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
+      availableRecordings, setAvailableScenarios, setAvailableRecordings,
+    }),
+    [
+      c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules,
+      showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
+      loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
+      availableRecordings,
+    ],
+  );
+
   return (
-    <div
-      style={{
-        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-        background: c.pageBg,
-        color: c.text,
-        minHeight: "100vh",
-      }}
-    >
-      <AppHeader
-        c={c}
-        isHomeSurface={isHomeSurface}
-        jobState={job?.state}
-        workspaceMode={workspaceMode}
-        connectorProfiles={connectorProfiles}
-        reqConnectorProfileId={reqConnectorProfileId}
-        onOpenSettings={openSettings}
-      />
+    <LicenseProvider value={licenseCtx}>
+      <ConnectorProvider value={connectorCtx}>
+        <RecordingProvider value={recordingCtx}>
+          <SettingsUiProvider value={settingsUiCtx}>
+            <HomeUiProvider value={homeUiCtx}>
+              <div
+                style={{
+                  fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+                  background: c.pageBg,
+                  color: c.text,
+                  minHeight: "100vh",
+                }}
+              >
+                <AppHeader
+                  c={c}
+                  isHomeSurface={isHomeSurface}
+                  jobState={job?.state}
+                  workspaceMode={workspaceMode}
+                  connectorProfiles={connectorProfiles}
+                  reqConnectorProfileId={reqConnectorProfileId}
+                  onOpenSettings={openSettings}
+                />
 
-      <SettingsDialog
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        c={c}
-        dark={dark}
-        toggleTheme={toggle}
-        visibleSettingsTabs={visibleSettingsTabs}
-        settingsTab={settingsTab}
-        setSettingsTab={setSettingsTab}
-        aiCaps={aiCaps}
-        aiPrefsSaving={aiPrefsSaving}
-        setAiPrefsSaving={setAiPrefsSaving}
-        setAiCaps={setAiCaps}
-        aiMemoryOpen={aiMemoryOpen}
-        setAiMemoryOpen={setAiMemoryOpen}
-        aiMemoryStatus={aiMemoryStatus}
-        aiMemoryTeamPassphrase={aiMemoryTeamPassphrase}
-        setAiMemoryTeamPassphrase={setAiMemoryTeamPassphrase}
-        aiMemoryImportMode={aiMemoryImportMode}
-        setAiMemoryImportMode={setAiMemoryImportMode}
-        aiMemoryImportFile={aiMemoryImportFile}
-        setAiMemoryImportFile={setAiMemoryImportFile}
-        aiMemoryBusy={aiMemoryBusy}
-        setAiMemoryBusy={setAiMemoryBusy}
-        aiMemoryMsg={aiMemoryMsg}
-        setAiMemoryMsg={setAiMemoryMsg}
-        refreshAiMemoryStatus={refreshAiMemoryStatus}
-        setErrorText={setErrorText}
-        refreshLicense={refreshLicense}
-        setModules={setModules}
-        license={license}
-        activationKey={activationKey}
-        setActivationKey={setActivationKey}
-        licenseActivateMsg={licenseActivateMsg}
-        setLicenseActivateMsg={setLicenseActivateMsg}
-        licenseFpVisible={licenseFpVisible}
-        setLicenseFpVisible={setLicenseFpVisible}
-        fpCopyAck={fpCopyAck}
-        setFpCopyAck={setFpCopyAck}
-        setLicense={setLicense}
-        connectorProfiles={connectorProfiles}
-        setConnectorProfiles={setConnectorProfiles}
-        settingsProfileId={settingsProfileId}
-        setSettingsProfileId={setSettingsProfileId}
-        settingsTestMsg={settingsTestMsg}
-        setSettingsTestMsg={setSettingsTestMsg}
-        settingsSaveMsg={settingsSaveMsg}
-        setSettingsSaveMsg={setSettingsSaveMsg}
-        persistConnectorProfiles={persistConnectorProfiles}
-        duplicateConnectorProfile={duplicateConnectorProfile}
-        deleteConnectorProfile={deleteConnectorProfile}
-        aboutInfo={aboutInfo}
-        aboutChangelogOpen={aboutChangelogOpen}
-        setAboutChangelogOpen={setAboutChangelogOpen}
-      />
+                <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
-        {errorText && <ErrorAlert c={c} message={errorText} onDismiss={() => setErrorText(null)} />}
+                <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
+                  {errorText && (
+                    <ErrorAlert c={c} message={errorText} onDismiss={() => setErrorText(null)} />
+                  )}
 
-        {isHomeSurface && (
-          <HomeSurface
-            c={c}
-            dark={dark}
-            initialChecked={initialChecked}
-            homeTab={homeTab}
-            setHomeTab={setHomeTab}
-            homeHint={homeHint}
-            aiCaps={aiCaps}
-            license={license}
-            setSettingsOpen={setSettingsOpen}
-            setSettingsTab={setSettingsTab}
-            setLicenseActivateMsg={setLicenseActivateMsg}
-            canRunJobs={canRunJobs}
-            modules={modules}
-            showLockModal={showLockModal}
-            setShowLockModal={setShowLockModal}
-            platform={platform}
-            setPlatform={setPlatform}
-            urlValue={urlValue}
-            setUrlValue={setUrlValue}
-            recorderPreflight={recorderPreflight}
-            recorderPreflightLoading={recorderPreflightLoading}
-            mobilePreflight={mobilePreflight}
-            mobilePreflightLoading={mobilePreflightLoading}
-            mobileEnvOpen={mobileEnvOpen}
-            setMobileEnvOpen={setMobileEnvOpen}
-            appiumStatus={appiumStatus}
-            appiumStarting={appiumStarting}
-            handleStartAppium={handleStartAppium}
-            refreshAppiumStatus={refreshAppiumStatus}
-            refreshMobilePreflight={refreshMobilePreflight}
-            showHomeError={showHomeError}
-            deviceMode={deviceMode}
-            setDeviceMode={setDeviceMode}
-            deviceId={deviceId}
-            setDeviceId={setDeviceId}
-            mobileDevices={mobileDevices}
-            mobileDevicesLoading={mobileDevicesLoading}
-            mobileDevicesError={mobileDevicesError}
-            refreshMobileDevices={refreshMobileDevices}
-            mobileAvds={mobileAvds}
-            mobileAvdsLoading={mobileAvdsLoading}
-            mobileAvdsError={mobileAvdsError}
-            selectedAvd={selectedAvd}
-            setSelectedAvd={setSelectedAvd}
-            refreshMobileAvds={refreshMobileAvds}
-            emulatorStarting={emulatorStarting}
-            handleStartEmulator={handleStartEmulator}
-            emulatorMessage={emulatorMessage}
-            mobileFieldError={mobileFieldError}
-            appPackage={appPackage}
-            setAppPackage={setAppPackage}
-            appActivity={appActivity}
-            setAppActivity={setAppActivity}
-            detectingForegroundApp={detectingForegroundApp}
-            detectForegroundApp={detectForegroundApp}
-            apkPath={apkPath}
-            setApkPath={setApkPath}
-            setMobileFieldError={setMobileFieldError}
-            windowName={windowName}
-            setWindowName={setWindowName}
-            exePath={exePath}
-            setExePath={setExePath}
-            autoLinkToScenario={autoLinkToScenario}
-            setAutoLinkToScenario={setAutoLinkToScenario}
-            autoLinkScenarioRef={autoLinkScenarioRef}
-            setAutoLinkScenarioRef={setAutoLinkScenarioRef}
-            availableScenarios={availableScenarios}
-            startJob={startJob}
-            loadedDocs={loadedDocs}
-            setLoadedDocs={setLoadedDocs}
-            docDragOver={docDragOver}
-            setDocDragOver={setDocDragOver}
-            docUploadError={docUploadError}
-            setDocUploadError={setDocUploadError}
-            linkRecordings={linkRecordings}
-            setLinkRecordings={setLinkRecordings}
-            linkMapping={linkMapping}
-            setLinkMapping={setLinkMapping}
-            recordingMapping={recordingMapping}
-            setRecordingMapping={setRecordingMapping}
-            availableRecordings={availableRecordings}
-            setAvailableScenarios={setAvailableScenarios}
-            setAvailableRecordings={setAvailableRecordings}
-            reqConnectorProfileId={reqConnectorProfileId}
-            setReqConnectorProfileId={setReqConnectorProfileId}
-            connectorProfiles={connectorProfiles}
-          />
-        )}
+                  {isHomeSurface && <HomeSurface />}
 
-        {!isHomeSurface && (
-          <JobWorkspace
-            c={c}
-            jobId={jobId}
-            job={job}
-            jobEvents={jobEvents}
-            activePrompt={activePrompt}
-            stoppingRecording={stoppingRecording}
-            setStoppingRecording={setStoppingRecording}
-            setErrorText={setErrorText}
-            textValue={textValue}
-            setTextValue={setTextValue}
-            bddPreviewText={bddPreviewText}
-            setBddPreviewText={setBddPreviewText}
-          />
-        )}
-      </div>
-    </div>
+                  {!isHomeSurface && (
+                    <JobWorkspace
+                      c={c}
+                      jobId={jobId}
+                      job={job}
+                      jobEvents={jobEvents}
+                      activePrompt={activePrompt}
+                      stoppingRecording={stoppingRecording}
+                      setStoppingRecording={setStoppingRecording}
+                      setErrorText={setErrorText}
+                      textValue={textValue}
+                      setTextValue={setTextValue}
+                      bddPreviewText={bddPreviewText}
+                      setBddPreviewText={setBddPreviewText}
+                      betaFeedbackUrl={aboutInfo?.beta_feedback_url}
+                    />
+                  )}
+                </div>
+              </div>
+            </HomeUiProvider>
+          </SettingsUiProvider>
+        </RecordingProvider>
+      </ConnectorProvider>
+    </LicenseProvider>
   );
 }

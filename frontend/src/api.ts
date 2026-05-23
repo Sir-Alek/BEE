@@ -372,6 +372,8 @@ export type AppAboutResponse = {
   tagline: string;
   license_text: string;
   changelog: ChangelogEntry[];
+  beta_feedback_url?: string | null;
+  local_logs_hint?: string | null;
 };
 
 export async function getAppAbout(): Promise<AppAboutResponse> {
@@ -549,6 +551,25 @@ export async function getJobEvents(
     throw new Error(`Failed to fetch job events: ${res.status}`);
   }
   return res.json();
+}
+
+/** Descarga el reporte de error sanitizado (.txt) para un job en estado error. */
+export async function downloadJobErrorReport(jobId: string): Promise<void> {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/error-report`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `No se pudo descargar el reporte: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";\n]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? `elia_error_${jobId.slice(0, 8)}.txt`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function stopRecording(jobId: string): Promise<void> {

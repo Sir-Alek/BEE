@@ -202,6 +202,9 @@ def _require_active_license() -> None:
 
 
 def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
+    from webui.error_reporting import configure_execution_logging
+
+    configure_execution_logging()
     app = FastAPI(title="ELIA Web UI (local)")
     jm = job_manager or JobManager()
     base_dir = _repo_root()
@@ -229,6 +232,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
         from core.changelog import load_changelog
+        from webui.error_reporting import beta_feedback_url
 
         licence_path = os.path.join(base_dir, "Licence.txt")
         license_text = ""
@@ -238,6 +242,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     license_text = f.read()
             except Exception:
                 license_text = ""
+        feedback = beta_feedback_url()
         return {
             "app_name": "ELIA",
             "version": ELIA_VERSION,
@@ -246,6 +251,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "tagline": ELIA_TAGLINE,
             "license_text": license_text,
             "changelog": load_changelog(base_dir),
+            "beta_feedback_url": feedback or None,
+            "local_logs_hint": "Documents/ELIA/logs/elia_execution.log",
         }
 
     @app.get("/api/ai/status")
@@ -1096,6 +1103,41 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             return {"job_id": job_id, **payload}
         except KeyError:
             raise HTTPException(status_code=404, detail="job not found")
+
+    @app.get("/api/jobs/{job_id}/error-report")
+    def download_job_error_report(
+        job_id: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Response:
+        from webui.error_reporting import build_error_report, load_job_error_report
+
+        try:
+            summary = jm.get_job_summary(job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="job not found")
+
+        if summary.get("state") != "error" or not summary.get("error"):
+            raise HTTPException(status_code=400, detail="job has no exportable error")
+
+        cached = load_job_error_report(job_id)
+        if cached:
+            content = cached
+        else:
+            job = jm.get_job(job_id)
+            with job.lock:
+                raw = job.error or {}
+                content = build_error_report(
+                    job_id=job_id,
+                    mode=job.mode,
+                    error_msg=str(raw.get("message", "Unknown error")),
+                    traceback_str=str(raw.get("details") or ""),
+                    events=list(job.events),
+                )
+
+        short_id = job_id.replace("-", "")[:8]
+        headers = {"Content-Disposition": f'attachment; filename="elia_error_{short_id}.txt"'}
+        return Response(content=content, media_type="text/plain; charset=utf-8", headers=headers)
 
     @app.post("/api/jobs/{job_id}/prompts/{prompt_id}/response")
     def answer_prompt(

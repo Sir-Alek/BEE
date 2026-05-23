@@ -10,126 +10,34 @@ import {
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
-import type {
-  AiCapabilitiesResponse,
-  MobileAppiumStatusResponse,
-  MobileDeviceInfo,
-  MobilePreflightResponse,
-  ModulesStatus,
-  RecorderPreflightResponse,
-} from "../api";
-import type { ConvertJobMode } from "../recording/types";
-import type { EliaConnectorProfile, LoadedDoc, RecordingRef, ScenarioRef } from "../types";
+import { useConnectorContext } from "../context/ConnectorContext";
+import { useHomeUiContext } from "../context/HomeUiContext";
+import { useRecordingContext } from "../context/RecordingContext";
 
-export type HomeSurfaceProps = {
-  c: Record<string, string>;
-  dark: boolean;
-  initialChecked: boolean;
-  homeTab: "ui" | "req";
-  setHomeTab: (tab: "ui" | "req") => void;
-  homeHint: string | null;
-  aiCaps: AiCapabilitiesResponse | null;
-  license: LicenseState | null;
-  setSettingsOpen: (open: boolean) => void;
-  setSettingsTab: (tab: import("../app/settingsTabs").SettingsTabId) => void;
-  setLicenseActivateMsg: (msg: string | null) => void;
-  canRunJobs: boolean;
-  modules: ModulesStatus | null;
-  showLockModal: string | null;
-  setShowLockModal: (v: string | null) => void;
-  platform: "web" | "mobile" | "legacy";
-  setPlatform: (p: "web" | "mobile" | "legacy") => void;
-  urlValue: string;
-  setUrlValue: (v: string) => void;
-  recorderPreflight: RecorderPreflightResponse | null;
-  recorderPreflightLoading: boolean;
-  mobilePreflight: MobilePreflightResponse | null;
-  mobilePreflightLoading: boolean;
-  mobileEnvOpen: boolean;
-  setMobileEnvOpen: (v: boolean) => void;
-  appiumStatus: MobileAppiumStatusResponse | null;
-  appiumStarting: boolean;
-  handleStartAppium: () => void;
-  refreshAppiumStatus: () => Promise<void>;
-  refreshMobilePreflight: () => Promise<void>;
-  showHomeError: (msg: string, opts?: { mobileInline?: boolean }) => void;
-  deviceMode: "physical" | "emulator";
-  setDeviceMode: (m: "physical" | "emulator") => void;
-  deviceId: string;
-  setDeviceId: (v: string) => void;
-  mobileDevices: MobileDeviceInfo[];
-  mobileDevicesLoading: boolean;
-  mobileDevicesError: string | null;
-  refreshMobileDevices: () => Promise<void>;
-  mobileAvds: string[];
-  mobileAvdsLoading: boolean;
-  mobileAvdsError: string | null;
-  selectedAvd: string;
-  setSelectedAvd: (v: string) => void;
-  refreshMobileAvds: () => Promise<void>;
-  emulatorStarting: boolean;
-  handleStartEmulator: () => void;
-  emulatorMessage: string | null;
-  mobileFieldError: string | null;
-  appPackage: string;
-  setAppPackage: (v: string) => void;
-  appActivity: string;
-  setAppActivity: (v: string) => void;
-  detectingForegroundApp: boolean;
-  detectForegroundApp: () => Promise<{ package: string; activity: string } | null>;
-  apkPath: string;
-  setApkPath: (v: string) => void;
-  setMobileFieldError: (v: string | null) => void;
-  windowName: string;
-  setWindowName: (v: string) => void;
-  exePath: string;
-  setExePath: (v: string) => void;
-  autoLinkToScenario: boolean;
-  setAutoLinkToScenario: (v: boolean) => void;
-  autoLinkScenarioRef: string;
-  setAutoLinkScenarioRef: (v: string) => void;
-  availableScenarios: ScenarioRef[];
-  startJob: (mode: ConvertJobMode) => void;
-  loadedDocs: LoadedDoc[];
-  setLoadedDocs: React.Dispatch<React.SetStateAction<LoadedDoc[]>>;
-  docDragOver: boolean;
-  setDocDragOver: (v: boolean) => void;
-  docUploadError: string | null;
-  setDocUploadError: React.Dispatch<React.SetStateAction<string | null>>;
-  linkRecordings: boolean;
-  setLinkRecordings: (v: boolean) => void;
-  linkMapping: Record<string, string>;
-  setLinkMapping: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  recordingMapping: Record<string, string>;
-  setRecordingMapping: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  availableRecordings: RecordingRef[];
-  setAvailableScenarios: React.Dispatch<React.SetStateAction<ScenarioRef[]>>;
-  setAvailableRecordings: React.Dispatch<React.SetStateAction<RecordingRef[]>>;
-  reqConnectorProfileId: string;
-  setReqConnectorProfileId: (v: string) => void;
-  connectorProfiles: EliaConnectorProfile[];
-};
-
-export function HomeSurface(props: HomeSurfaceProps) {
+export function HomeSurface() {
   const {
     c, dark, initialChecked, homeTab, setHomeTab, homeHint, aiCaps, license,
     setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
-    showLockModal, setShowLockModal, platform, setPlatform, urlValue, setUrlValue,
-    recorderPreflight, recorderPreflightLoading, mobilePreflight, mobilePreflightLoading,
-    mobileEnvOpen, setMobileEnvOpen, appiumStatus, appiumStarting, handleStartAppium,
-    refreshAppiumStatus, refreshMobilePreflight, showHomeError, deviceMode, setDeviceMode,
-    deviceId, setDeviceId, mobileDevices, mobileDevicesLoading, mobileDevicesError,
-    refreshMobileDevices, mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd,
-    setSelectedAvd, refreshMobileAvds, emulatorStarting, handleStartEmulator, emulatorMessage,
-    mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
-    detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
-    windowName, setWindowName, exePath, setExePath, autoLinkToScenario, setAutoLinkToScenario,
+    showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
     setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings,
-    reqConnectorProfileId, setReqConnectorProfileId, connectorProfiles,
-  } = props;
+  } = useHomeUiContext();
+  const {
+    connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
+  } = useConnectorContext();
+  const {
+    platform, setPlatform, urlValue, setUrlValue, recorderPreflight, recorderPreflightLoading,
+    mobilePreflight, mobilePreflightLoading, mobileEnvOpen, setMobileEnvOpen, appiumStatus,
+    appiumStarting, handleStartAppium, refreshAppiumStatus, refreshMobilePreflight,
+    deviceMode, setDeviceMode, deviceId, setDeviceId, mobileDevices, mobileDevicesLoading,
+    mobileDevicesError, refreshMobileDevices, mobileAvds, mobileAvdsLoading, mobileAvdsError,
+    selectedAvd, setSelectedAvd, refreshMobileAvds, emulatorStarting, handleStartEmulator,
+    emulatorMessage, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
+    detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
+    windowName, setWindowName, exePath, setExePath,
+  } = useRecordingContext();
 
   if (!initialChecked) return null;
 

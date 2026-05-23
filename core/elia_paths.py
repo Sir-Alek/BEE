@@ -82,3 +82,20 @@ def doc_features_dir() -> Path:
 def ai_preferences_path() -> Path:
     """Preferencias de IA local (modo auto / on / off)."""
     return ensure_user_data_root() / "ai_preferences.json"
+
+
+def logs_dir() -> Path:
+    """Logs locales de ejecución (rotativos, sin telemetría en la nube)."""
+    d = ensure_user_data_root() / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def execution_log_path() -> Path:
+    return logs_dir() / "elia_execution.log"
+
+
+def error_reports_dir() -> Path:
+    d = logs_dir() / "error_reports"
+    d.mkdir(parents=True, exist_ok=True)
+    return d

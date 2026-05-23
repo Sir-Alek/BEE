@@ -4,7 +4,7 @@ No compilar con Cython: este módulo se importa como core._version para que
 un .pyd obsoleto de core.version no oculte bumps de ELIA_VERSION en desarrollo.
 """
 
-ELIA_VERSION = "0.7.0"
+ELIA_VERSION = "0.7.20"
 ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
 ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
 

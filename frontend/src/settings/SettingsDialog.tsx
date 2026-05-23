@@ -20,68 +20,20 @@ import {
 import type { SettingsTabId } from "../app/settingsTabs";
 import { emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../connectorDefaults";
 import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
-import type { EliaConnectorProfile, ModulesStatus } from "../types";
+import type { EliaConnectorProfile } from "../types";
+import { useConnectorContext } from "../context/ConnectorContext";
+import { useLicenseContext } from "../context/LicenseContext";
+import { useSettingsUiContext } from "../context/SettingsUiContext";
 
 export type SettingsDialogProps = {
   open: boolean;
   onClose: () => void;
-  c: Record<string, string>;
-  dark: boolean;
-  toggleTheme: () => void;
-  visibleSettingsTabs: { id: SettingsTabId; label: string }[];
-  settingsTab: SettingsTabId;
-  setSettingsTab: (tab: SettingsTabId) => void;
-  aiCaps: AiCapabilitiesResponse | null;
-  aiPrefsSaving: boolean;
-  setAiPrefsSaving: React.Dispatch<React.SetStateAction<boolean>>;
-  setAiCaps: React.Dispatch<React.SetStateAction<AiCapabilitiesResponse | null>>;
-  aiMemoryOpen: boolean;
-  setAiMemoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  aiMemoryStatus: AiMemoryStatusResponse | null;
-  aiMemoryTeamPassphrase: string;
-  setAiMemoryTeamPassphrase: React.Dispatch<React.SetStateAction<string>>;
-  aiMemoryImportMode: "merge" | "replace";
-  setAiMemoryImportMode: React.Dispatch<React.SetStateAction<"merge" | "replace">>;
-  aiMemoryImportFile: File | null;
-  setAiMemoryImportFile: React.Dispatch<React.SetStateAction<File | null>>;
-  aiMemoryBusy: boolean;
-  setAiMemoryBusy: React.Dispatch<React.SetStateAction<boolean>>;
-  aiMemoryMsg: string | null;
-  setAiMemoryMsg: React.Dispatch<React.SetStateAction<string | null>>;
-  refreshAiMemoryStatus: () => Promise<void>;
-  setErrorText: React.Dispatch<React.SetStateAction<string | null>>;
-  refreshLicense: () => Promise<void>;
-  setModules: React.Dispatch<React.SetStateAction<ModulesStatus | null>>;
-  license: LicenseState | null;
-  activationKey: string;
-  setActivationKey: React.Dispatch<React.SetStateAction<string>>;
-  licenseActivateMsg: string | null;
-  setLicenseActivateMsg: React.Dispatch<React.SetStateAction<string | null>>;
-  licenseFpVisible: boolean;
-  setLicenseFpVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  fpCopyAck: boolean;
-  setFpCopyAck: React.Dispatch<React.SetStateAction<boolean>>;
-  setLicense: React.Dispatch<React.SetStateAction<LicenseState | null>>;
-  connectorProfiles: EliaConnectorProfile[];
-  setConnectorProfiles: React.Dispatch<React.SetStateAction<EliaConnectorProfile[]>>;
-  settingsProfileId: string;
-  setSettingsProfileId: React.Dispatch<React.SetStateAction<string>>;
-  settingsTestMsg: string | null;
-  setSettingsTestMsg: React.Dispatch<React.SetStateAction<string | null>>;
-  settingsSaveMsg: string | null;
-  setSettingsSaveMsg: React.Dispatch<React.SetStateAction<string | null>>;
-  persistConnectorProfiles: (next: EliaConnectorProfile[]) => Promise<void>;
-  duplicateConnectorProfile: () => void;
-  deleteConnectorProfile: () => void;
-  aboutInfo: AppAboutResponse | null;
-  aboutChangelogOpen: boolean;
-  setAboutChangelogOpen: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 export function SettingsDialog(props: SettingsDialogProps) {
   if (!props.open) return null;
+  const { onClose } = props;
   const {
-    onClose,
     c,
     dark,
     toggleTheme,
@@ -107,8 +59,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setAiMemoryMsg,
     refreshAiMemoryStatus,
     setErrorText,
-    refreshLicense,
     setModules,
+    aboutInfo,
+    aboutChangelogOpen,
+    setAboutChangelogOpen,
+  } = useSettingsUiContext();
+  const {
     license,
     activationKey,
     setActivationKey,
@@ -119,6 +75,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
     fpCopyAck,
     setFpCopyAck,
     setLicense,
+    refreshLicense,
+  } = useLicenseContext();
+  const {
     connectorProfiles,
     setConnectorProfiles,
     settingsProfileId,
@@ -130,10 +89,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     persistConnectorProfiles,
     duplicateConnectorProfile,
     deleteConnectorProfile,
-    aboutInfo,
-    aboutChangelogOpen,
-    setAboutChangelogOpen,
-  } = props;
+  } = useConnectorContext();
 
   return (
         <div
@@ -1355,6 +1311,42 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       })}
                     </div>
                   )}
+                  {aboutInfo.beta_feedback_url ? (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.border}`,
+                        background: c.inputBg,
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>Beta — reporte de errores</div>
+                      <div style={{ color: c.muted, marginBottom: 8 }}>
+                        Si encuentras un fallo, descarga el reporte desde la pantalla del trabajo y compártelo solo
+                        tras revisarlo. Sin telemetría automática en la nube.
+                      </div>
+                      <a
+                        href={aboutInfo.beta_feedback_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: c.primary, fontWeight: 600 }}
+                      >
+                        Abrir formulario de feedback →
+                      </a>
+                      {aboutInfo.local_logs_hint ? (
+                        <div style={{ marginTop: 8, fontSize: 12, color: c.muted }}>
+                          Log local: {aboutInfo.local_logs_hint}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : aboutInfo.local_logs_hint ? (
+                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
+                      Log local de diagnóstico: {aboutInfo.local_logs_hint}
+                    </div>
+                  ) : null}
                   <div style={{ fontSize: 14, marginBottom: 12 }}>
                     Desarrollador: {aboutInfo.developer}
                   </div>

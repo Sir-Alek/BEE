@@ -4,6 +4,26 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.7.20] - 2026-05-19
+
+### Añadido
+
+- Reporte de errores offline-first para beta: log rotativo local (`Documents/ELIA/logs/elia_execution.log`), snapshot sanitizado por job y endpoint `GET /api/jobs/{id}/error-report` para descarga `.txt`.
+- Botón «Descargar reporte de error» en la pantalla de trabajo fallido, con aviso de privacidad y enlace opcional al formulario beta (`ELIA_BETA_FEEDBACK_URL`).
+- Sanitización de rutas de usuario, tokens y credenciales antes de exportar; el polling ya no expone tracebacks completos en JSON.
+
+### Cambiado
+
+- Acerca de: muestra ruta del log local y enlace al formulario de feedback cuando está configurado.
+
+## [0.7.10] - 2026-05-19
+
+### Cambiado
+
+- Hooks dedicados para licencia, conectores y grabación móvil: la lógica de estado se extrajo de `App.tsx` a `useLicense`, `useConnectors` y `useMobileRecording`, reduciendo acoplamiento del contenedor principal.
+- Contextos tipados por dominio (`LicenseContext`, `ConnectorContext`, `RecordingContext`, `SettingsUiContext`, `HomeUiContext`): `SettingsDialog` y `HomeSurface` dejan de recibir decenas de props individuales.
+- `JobWorkspace` modularizado: cada tipo de prompt (selección, sí/no, vista previa BDD, etc.) vive en su propio subcomponente bajo `job/prompts/`.
+
 ## [0.7.0] - 2026-05-19
 
 ### Añadido

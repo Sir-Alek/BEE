@@ -219,12 +219,25 @@ class JobManager:
             job.updated_at = time.time()
             job.error = {"message": message, "details": details}
             if job.active_prompt and job.active_prompt.status == "pending":
-                # Unblock core thread waiting for user input.
                 job.active_prompt.status = "cancelled"
                 job.active_prompt.answer = None
                 job.active_prompt.answered_at = time.time()
             job.cond.notify_all()
+            mode = job.mode
+            events_snapshot = list(job.events)
         self._emit_event(job_id, {"type": "job_error", "message": message})
+        try:
+            from webui.error_reporting import persist_job_error_snapshot
+
+            persist_job_error_snapshot(
+                job_id=job_id,
+                mode=mode,
+                error_msg=message,
+                traceback_str=details,
+                events=events_snapshot,
+            )
+        except Exception:
+            pass
 
     def update_progress(self, job_id: str, progress: Dict[str, Any]) -> None:
         with self._global_lock:
@@ -275,12 +288,16 @@ class JobManager:
                     "actions": prompt.actions,
                 }
 
+            error_out = None
+            if job.error:
+                error_out = {"message": job.error.get("message", "Unknown error")}
+
             return {
                 "job_id": job.job_id,
                 "mode": job.mode,
                 "state": job.state,
                 "progress": job.progress,
-                "error": job.error,
+                "error": error_out,
                 "active_prompt": active_prompt,
                 "events_count": len(job.events),
             }

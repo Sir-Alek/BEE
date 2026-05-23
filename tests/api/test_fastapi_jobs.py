@@ -58,6 +58,19 @@ class TestJobLifecycle(ApiTestCase):
             final = api.wait_for_job(body["job_id"], timeout=10.0)
             self.assertEqual(final["state"], "error")
             self.assertIn("documentos", final["error"]["message"].lower())
+            self.assertNotIn("details", final.get("error") or {})
+
+    def test_error_report_download_for_failed_job(self) -> None:
+        with elia_test_app() as (api, _):
+            code, body = api.post_json("/api/jobs/convert", {"mode": "doc_to_bdd", "doc_files": []})
+            self.assertEqual(code, 200)
+            job_id = body["job_id"]
+            final = api.wait_for_job(job_id, timeout=10.0)
+            self.assertEqual(final["state"], "error")
+            res = api.client.get(f"/api/jobs/{job_id}/error-report")
+            self.assertEqual(res.status_code, 200)
+            self.assertIn("text/plain", res.headers.get("content-type", ""))
+            self.assertIn("ELIA BETA BUG REPORT", res.text)
 
     def test_mobile_recorder_without_license_module_errors_when_not_in_key(self) -> None:
         """Perm license without M flag → module disabled at runtime."""
