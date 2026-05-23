@@ -9,6 +9,7 @@ from unittest.mock import patch
 from webui.error_reporting import (
     build_error_report,
     persist_job_error_snapshot,
+    prune_error_reports,
     sanitize_text,
 )
 
@@ -35,7 +36,8 @@ class TestErrorReporting(unittest.TestCase):
         )
         self.assertIn("doc_to_bdd", report)
         self.assertIn("Sin documentos", report)
-        self.assertIn("PRIVACY NOTICE", report)
+        self.assertIn("AVISO DE PRIVACIDAD", report)
+        self.assertIn("sanitizado localmente", report)
 
     def test_persist_job_error_snapshot_writes_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,6 +59,19 @@ class TestErrorReporting(unittest.TestCase):
                 self.assertTrue(path.is_file())
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("fail", text)
+
+    def test_prune_error_reports_keeps_newest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp) / "error_reports"
+            report_dir.mkdir(parents=True)
+            for i in range(5):
+                p = report_dir / f"job-{i}.txt"
+                p.write_text(f"report {i}", encoding="utf-8")
+            with patch("webui.error_reporting.error_reports_dir", return_value=report_dir):
+                removed = prune_error_reports(max_files=2)
+            self.assertEqual(removed, 3)
+            remaining = list(report_dir.glob("*.txt"))
+            self.assertEqual(len(remaining), 2)
 
 
 if __name__ == "__main__":

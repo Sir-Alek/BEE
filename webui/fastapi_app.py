@@ -232,7 +232,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
         from core.changelog import load_changelog
-        from webui.error_reporting import beta_feedback_url
+        from webui.error_reporting import beta_feedback_url, execution_log_retention_label
 
         licence_path = os.path.join(base_dir, "Licence.txt")
         license_text = ""
@@ -252,7 +252,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "license_text": license_text,
             "changelog": load_changelog(base_dir),
             "beta_feedback_url": feedback or None,
-            "local_logs_hint": "Documents/ELIA/logs/elia_execution.log",
+            "local_logs_hint": (
+                "Documents/ELIA/logs/elia_execution.log — "
+                + execution_log_retention_label()
+            ),
         }
 
     @app.get("/api/ai/status")
@@ -1120,20 +1123,25 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if summary.get("state") != "error" or not summary.get("error"):
             raise HTTPException(status_code=400, detail="job has no exportable error")
 
-        cached = load_job_error_report(job_id)
-        if cached:
-            content = cached
-        else:
+        content: str | None = None
+        try:
             job = jm.get_job(job_id)
             with job.lock:
                 raw = job.error or {}
-                content = build_error_report(
-                    job_id=job_id,
-                    mode=job.mode,
-                    error_msg=str(raw.get("message", "Unknown error")),
-                    traceback_str=str(raw.get("details") or ""),
-                    events=list(job.events),
-                )
+                if raw:
+                    content = build_error_report(
+                        job_id=job_id,
+                        mode=job.mode,
+                        error_msg=str(raw.get("message", "Error desconocido")),
+                        traceback_str=str(raw.get("details") or ""),
+                        events=list(job.events),
+                    )
+        except KeyError:
+            pass
+        if not content:
+            content = load_job_error_report(job_id)
+        if not content:
+            raise HTTPException(status_code=404, detail="error report not available")
 
         short_id = job_id.replace("-", "")[:8]
         headers = {"Content-Disposition": f'attachment; filename="elia_error_{short_id}.txt"'}

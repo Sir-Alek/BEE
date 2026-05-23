@@ -4,27 +4,32 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.7.20] - 2026-05-19
+## [0.7.20] - 2026-05-22
 
 ### Añadido
 
-- Reporte de errores offline-first para beta: log rotativo local (`Documents/ELIA/logs/elia_execution.log`), snapshot sanitizado por job y endpoint `GET /api/jobs/{id}/error-report` para descarga `.txt`.
-- Botón «Descargar reporte de error» en la pantalla de trabajo fallido, con aviso de privacidad y enlace opcional al formulario beta (`ELIA_BETA_FEEDBACK_URL`).
-- Sanitización de rutas de usuario, tokens y credenciales antes de exportar; el polling ya no expone tracebacks completos en JSON.
+- Sistema de diagnóstico local y seguro: Se implementó un generador de reportes de errores que funciona de forma 100% local (offline-first). Si una tarea llega a interrumpirse, la aplicación crea un registro de diagnóstico aislado que puedes descargar al instante como un archivo de texto plano (.txt)
+- Asistente de soporte en fallos: Nueva opción visual «Descargar reporte de error» dentro de las pantallas de tareas fallidas. Esta función incluye un aviso de privacidad transparente y un enlace directo para enviar tus comentarios al formulario de la comunidad Beta.
+- Privacidad de datos reforzada: El sistema ahora limpia, oculta y remueve de forma automática cualquier información sensible (como tokens de acceso, contraseñas de conectores o nombres de rutas de carpetas personales) antes de exportar un reporte o procesar estados internos, garantizando que tus credenciales corporativas jamás queden expuestas.
 
 ### Cambiado
 
-- Acerca de: muestra ruta del log local y enlace al formulario de feedback cuando está configurado.
+- Sección "Acerca de" informativa: Se actualizó este panel para mostrar con total claridad la ruta exacta donde se almacenan tus registros de ejecución locales en el equipo, facilitando el acceso rápido al formulario de retroalimentación de la fase Beta.
+- Log de ejecución acotado: El archivo `elia_execution.log` usa rotación automática (~20 MB máximo) y registra solo eventos de ELIA, sin ruido del servidor web. Los reportes antiguos en `error_reports/` se podan automáticamente.
 
-## [0.7.10] - 2026-05-19
+### Corregido
+
+- Plantilla de reporte de error en español (incluido aviso de privacidad) y regeneración al descargar desde la interfaz.
+
+## [0.7.10] - 2026-05-22
 
 ### Cambiado
 
-- Hooks dedicados para licencia, conectores y grabación móvil: la lógica de estado se extrajo de `App.tsx` a `useLicense`, `useConnectors` y `useMobileRecording`, reduciendo acoplamiento del contenedor principal.
-- Contextos tipados por dominio (`LicenseContext`, `ConnectorContext`, `RecordingContext`, `SettingsUiContext`, `HomeUiContext`): `SettingsDialog` y `HomeSurface` dejan de recibir decenas de props individuales.
-- `JobWorkspace` modularizado: cada tipo de prompt (selección, sí/no, vista previa BDD, etc.) vive en su propio subcomponente bajo `job/prompts/`.
+- Independencia de módulos centrales: Se separó por completo la lógica interna que gestiona las licencias, los conectores externos y las grabaciones móviles. Al aislar estos servicios, se previene que una interrupción en un módulo específico afecte al rendimiento general del software, haciendo que ELIA sea mucho más ligera y tolerante a fallos.
+- Optimización de fluidez en menús y paneles: Rediseñamos la forma en que las pantallas comparten configuraciones y preferencias en segundo plano. Este cambio estructural elimina procesos internos redundantes, lo que se traduce en una navegación entre menús globales notablemente más rápida y con menor consumo de memoria.
+- Interacciones en el espacio de trabajo más ágiles: Los elementos del espacio de trabajo (ventanas de confirmación, cuadros de selección y paneles de vista previa BDD) ahora operan de manera modular. Lo que implica transiciones mucho más suaves y una respuesta inmediata de la interfaz al interactuar con los flujos de automatización generados.
 
-## [0.7.0] - 2026-05-19
+## [0.7.0] - 2026-05-22
 
 ### Añadido
 

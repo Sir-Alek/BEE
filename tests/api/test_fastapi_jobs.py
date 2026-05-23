@@ -70,7 +70,8 @@ class TestJobLifecycle(ApiTestCase):
             res = api.client.get(f"/api/jobs/{job_id}/error-report")
             self.assertEqual(res.status_code, 200)
             self.assertIn("text/plain", res.headers.get("content-type", ""))
-            self.assertIn("ELIA BETA BUG REPORT", res.text)
+            self.assertIn("REPORTE DE ERROR BETA", res.text)
+            self.assertIn("AVISO DE PRIVACIDAD", res.text)
 
     def test_mobile_recorder_without_license_module_errors_when_not_in_key(self) -> None:
         """Perm license without M flag → module disabled at runtime."""
