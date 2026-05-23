@@ -203,6 +203,10 @@ def _apply_android_app_capabilities(
     return None
 
 
+def _emit(jm: JobManager, job_id: str, event_type: str, **payload: Any) -> None:
+    jm.add_event(job_id, event_type, payload or None)
+
+
 class MobileRecorder:
     """
     Grabador de interacciones para aplicaciones Android vía Appium (iOS no soportado).
@@ -239,8 +243,10 @@ class MobileRecorder:
         device_err = assert_device_online(device_id)
         if device_err:
             msg, details = device_err
+            _emit(jm, job_id, "device_check_failed", message=msg)
             jm.mark_error(job_id, message=msg, details=details)
             return
+        _emit(jm, job_id, "device_check_ok", device_id=device_id)
 
         jm.update_progress(job_id, {"stage": "Verificando Appium Server…"})
         from core.ui_automation.mobile_android import ensure_appium_running
@@ -254,15 +260,18 @@ class MobileRecorder:
                     "1. npm install -g appium\n"
                     "2. appium driver install uiautomator2"
                 )
+            _emit(jm, job_id, "appium_check_failed", message=appium_res.get("message"))
             jm.mark_error(
                 job_id,
                 message="Appium Server no disponible",
                 details=(appium_res.get("message") or "No responde en localhost:4723.") + tool_hint,
             )
             return
+        _emit(jm, job_id, "appium_check_ok")
 
         if appium_res.get("managed_by_elia"):
             jm.update_progress(job_id, {"stage": "Appium iniciado por ELIA…"})
+            _emit(jm, job_id, "appium_auto_started")
 
         # 2. Seleccionar proyecto
         jm.update_progress(job_id, {"stage": "Seleccionar proyecto"})
@@ -333,6 +342,13 @@ class MobileRecorder:
                 resolved_package = str(det["package"])
                 if not resolved_activity and det.get("activity"):
                     resolved_activity = str(det["activity"])
+                _emit(
+                    jm,
+                    job_id,
+                    "foreground_app_detected",
+                    package=resolved_package,
+                    activity=resolved_activity,
+                )
             else:
                 jm.mark_error(
                     job_id,
@@ -375,7 +391,9 @@ class MobileRecorder:
         try:
             options = AppiumOptions().load_capabilities(capabilities)
             driver = appium_webdriver.Remote("http://localhost:4723", options=options)
+            _emit(jm, job_id, "session_started", device_id=device_id)
         except Exception as e:
+            _emit(jm, job_id, "session_failed", error=str(e))
             jm.mark_error(
                 job_id,
                 message="No se pudo iniciar la sesión Appium",
@@ -402,6 +420,7 @@ class MobileRecorder:
                 video_recorder = None
             else:
                 jm.update_progress(job_id, {"stage": "Grabando video del emulador…"})
+                _emit(jm, job_id, "video_started", video_path=video_path)
 
         jm.update_progress(
             job_id,
@@ -411,6 +430,7 @@ class MobileRecorder:
                 "recording": True,
             },
         )
+        _emit(jm, job_id, "recording_started")
 
         # 5. Captura de interacciones
         recorded_events = []
@@ -437,6 +457,13 @@ class MobileRecorder:
                         if current_pkg and current_pkg != target_package:
                             away_checks += 1
                             if away_checks >= 2:
+                                _emit(
+                                    jm,
+                                    job_id,
+                                    "app_left_foreground",
+                                    expected=target_package,
+                                    current=current_pkg,
+                                )
                                 break
                         else:
                             away_checks = 0
@@ -456,8 +483,10 @@ class MobileRecorder:
                                 "elapsed_s": int(time.time() - start_ts),
                             },
                         )
+                        _emit(jm, job_id, "screen_captured", count=len(recorded_events))
                 except Exception:
                     break
+            _emit(jm, job_id, "recording_stopped", events=len(recorded_events))
         finally:
             try:
                 driver.quit()

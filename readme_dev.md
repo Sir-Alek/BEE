@@ -89,7 +89,21 @@ npm install
 npm run build
 ```
 
+`npm run build` ejecuta `tsc --noEmit` y después empaqueta con Vite. Para solo verificar tipos: `npm run typecheck`.
+
 La salida queda en `frontend/dist/` (la sirve FastAPI en modo web).
+
+### Estructura del frontend (desde 0.7.0)
+
+| Ruta | Rol |
+|------|-----|
+| `frontend/src/App.tsx` | Estado global, efectos y composición |
+| `frontend/src/home/HomeSurface.tsx` | Pestañas UI Automation e Inteligencia de Requerimientos |
+| `frontend/src/job/JobWorkspace.tsx` | Prompts, progreso y resultados del job |
+| `frontend/src/settings/SettingsDialog.tsx` | Modal de configuración |
+| `frontend/src/layout/AppShell.tsx` | Cabecera y alertas |
+| `frontend/src/app/` | Constantes, licencia, utilidades |
+| `frontend/src/recording/` | Formularios tipados Web/Móvil/Legacy |
 
 ## Build de release (Cython + JS + PyInstaller)
 

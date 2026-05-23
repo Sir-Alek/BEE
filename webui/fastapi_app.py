@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.ui_automation.web_capture_behave_builder import WebCaptureBehaveBuilder
 from core.ui_automation.web_capture_step_builder import WebCaptureStepBuilder
@@ -88,6 +88,19 @@ class ConvertRequest(BaseModel):
     link_scenario: Optional[str] = None
     link_scenario_by_doc: Optional[Dict[str, str]] = None
     link_recording_by_doc: Optional[Dict[str, str]] = None
+
+    @model_validator(mode="after")
+    def validate_mode_requirements(self) -> "ConvertRequest":
+        if self.mode == "puppeteer_recorder" and not (self.url or "").strip():
+            raise ValueError("url is required for puppeteer_recorder")
+        if self.mode == "mobile_recorder" and not (self.device_id or "").strip():
+            raise ValueError("device_id is required for mobile_recorder")
+        if self.mode == "legacy_recorder":
+            if not (self.window_name or "").strip() and not (self.exe_path or "").strip():
+                raise ValueError("window_name or exe_path is required for legacy_recorder")
+        if self.mode == "doc_to_bdd" and self.doc_files is None:
+            raise ValueError("doc_files is required for doc_to_bdd")
+        return self
 
 
 class PromptResponseRequest(BaseModel):
@@ -1073,12 +1086,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     @app.get("/api/jobs/{job_id}/events")
     def get_job_events(
         job_id: str,
+        since: int = 0,
         limit: int = 200,
         _: None = Depends(_require_localhost),
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         try:
-            return {"job_id": job_id, "events": jm.get_job_events(job_id, limit=limit)}
+            payload = jm.get_job_events(job_id, limit=limit, since=since)
+            return {"job_id": job_id, **payload}
         except KeyError:
             raise HTTPException(status_code=404, detail="job not found")
 

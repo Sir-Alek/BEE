@@ -285,8 +285,20 @@ class JobManager:
                 "events_count": len(job.events),
             }
 
-    def get_job_events(self, job_id: str, *, limit: int = 200) -> List[Dict[str, Any]]:
+    def get_job_events(
+        self,
+        job_id: str,
+        *,
+        limit: int = 200,
+        since: int = 0,
+    ) -> Dict[str, Any]:
         job = self.get_job(job_id)
         with job.lock:
-            return list(job.events[-limit:])
+            start = max(0, since)
+            chunk = list(job.events[start : start + limit])
+            return {
+                "events": chunk,
+                "next_index": start + len(chunk),
+                "total": len(job.events),
+            }
 

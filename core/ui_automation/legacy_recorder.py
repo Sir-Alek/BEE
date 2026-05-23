@@ -63,6 +63,10 @@ def _launch_exe(exe_path: str) -> Optional[subprocess.Popen]:
         return None
 
 
+def _emit(jm: JobManager, job_id: str, event_type: str, **payload: Any) -> None:
+    jm.add_event(job_id, event_type, payload or None)
+
+
 class LegacyRecorder:
     """
     Grabador de interacciones para aplicaciones de escritorio Windows.
@@ -148,8 +152,10 @@ class LegacyRecorder:
         proc: Optional[subprocess.Popen] = None
         if exe_path:
             jm.update_progress(job_id, {"stage": f"Lanzando {os.path.basename(exe_path)}…"})
+            _emit(jm, job_id, "exe_launch_started", exe_path=exe_path)
             proc = _launch_exe(exe_path)
             if proc is None and not window_name:
+                _emit(jm, job_id, "exe_launch_failed", exe_path=exe_path)
                 jm.mark_error(
                     job_id,
                     message="No se pudo lanzar el ejecutable",
@@ -161,12 +167,16 @@ class LegacyRecorder:
         jm.update_progress(job_id, {"stage": "Buscando ventana…"})
         win = None
         if window_name:
+            _emit(jm, job_id, "window_search_started", window_name=window_name)
             for _ in range(10):
                 win = _find_window(window_name)
                 if win:
                     break
                 time.sleep(0.5)
-            if not win:
+            if win:
+                _emit(jm, job_id, "window_found", window_name=window_name)
+            else:
+                _emit(jm, job_id, "window_not_found", window_name=window_name)
                 adapter.info(
                     "ELIA · Legacy",
                     f"Ventana '{window_name}' no encontrada. La grabación continuará con captura global de pantalla.",
@@ -187,21 +197,28 @@ class LegacyRecorder:
             )
             if video_err:
                 adapter.info("ELIA · Legacy", f"Video no iniciado: {video_err}")
+                _emit(jm, job_id, "video_failed", error=video_err)
                 video_path = None
                 video_recorder = None
             else:
                 jm.update_progress(job_id, {"stage": "Grabando video de la ventana…"})
+                _emit(jm, job_id, "video_started", video_path=video_path)
 
         # 5. Iniciar grabación con PyAutoGUI + pynput
         jm.update_progress(job_id, {"stage": "Grabando… presiona ESC o pulsa «Finalizar grabación» en ELIA", "recording": True})
         recorded_events: List[Dict[str, Any]] = []
         stop_recording = {"value": False}
         start_ts = time.time()
+        last_event_emit = 0
 
         try:
             from pynput import mouse as pynput_mouse, keyboard as pynput_keyboard  # type: ignore
 
+            _emit(jm, job_id, "hook_started")
+            _emit(jm, job_id, "recording_started")
+
             def on_click(x: int, y: int, button: Any, pressed: bool) -> Optional[bool]:
+                nonlocal last_event_emit
                 if not pressed:
                     return None
                 event: Dict[str, Any] = {
@@ -221,6 +238,10 @@ class LegacyRecorder:
                 except Exception:
                     pass
                 recorded_events.append(event)
+                count = len(recorded_events)
+                if count == 1 or count - last_event_emit >= 5:
+                    _emit(jm, job_id, "event_captured", count=count)
+                    last_event_emit = count
                 return None
 
             def on_key_press(key: Any) -> Optional[bool]:
@@ -236,6 +257,10 @@ class LegacyRecorder:
                     "type": "key",
                     "key": key_str,
                 })
+                count = len(recorded_events)
+                if count == 1 or count - last_event_emit >= 5:
+                    _emit(jm, job_id, "event_captured", count=count)
+                    last_event_emit = count
                 return None
 
             mouse_listener = pynput_mouse.Listener(on_click=on_click)
@@ -253,11 +278,14 @@ class LegacyRecorder:
 
             mouse_listener.stop()
             key_listener.stop()
+            _emit(jm, job_id, "recording_stopped", events=len(recorded_events))
 
         except ImportError:
             # Fallback: captura básica con PyAutoGUI (sin pynput)
             import pyautogui  # type: ignore
+            _emit(jm, job_id, "hook_failed", reason="pynput_not_installed")
             jm.update_progress(job_id, {"stage": "Captura de pantalla básica (instala pynput para grabación completa)…"})
+            _emit(jm, job_id, "recording_started")
             max_duration = 60
             interval = 2.0
             elapsed = 0.0
@@ -273,6 +301,7 @@ class LegacyRecorder:
                     "x": pos.x,
                     "y": pos.y,
                 })
+            _emit(jm, job_id, "recording_stopped", events=len(recorded_events))
 
         # 6. Terminar proceso si lo lanzamos
         if proc is not None:

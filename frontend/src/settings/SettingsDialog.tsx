@@ -1,0 +1,1454 @@
+import React from "react";
+import {
+  activateLicense,
+  exportAiMemory,
+  getModulesStatus,
+  importAiMemory,
+  putAiPreferences,
+  putEliaConnectors,
+  testEliaConnector,
+  type AiCapabilitiesResponse,
+  type AiMemoryStatusResponse,
+  type AiMode,
+  type AppAboutResponse,
+} from "../api";
+import { copyTextToClipboard, modalFieldStyle } from "../app/utils";
+import {
+  formatLicenseStatusLabel,
+  type LicenseState,
+} from "../app/licenseUtils";
+import type { SettingsTabId } from "../app/settingsTabs";
+import { emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../connectorDefaults";
+import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
+import type { EliaConnectorProfile, ModulesStatus } from "../types";
+
+export type SettingsDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  c: Record<string, string>;
+  dark: boolean;
+  toggleTheme: () => void;
+  visibleSettingsTabs: { id: SettingsTabId; label: string }[];
+  settingsTab: SettingsTabId;
+  setSettingsTab: (tab: SettingsTabId) => void;
+  aiCaps: AiCapabilitiesResponse | null;
+  aiPrefsSaving: boolean;
+  setAiPrefsSaving: React.Dispatch<React.SetStateAction<boolean>>;
+  setAiCaps: React.Dispatch<React.SetStateAction<AiCapabilitiesResponse | null>>;
+  aiMemoryOpen: boolean;
+  setAiMemoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  aiMemoryStatus: AiMemoryStatusResponse | null;
+  aiMemoryTeamPassphrase: string;
+  setAiMemoryTeamPassphrase: React.Dispatch<React.SetStateAction<string>>;
+  aiMemoryImportMode: "merge" | "replace";
+  setAiMemoryImportMode: React.Dispatch<React.SetStateAction<"merge" | "replace">>;
+  aiMemoryImportFile: File | null;
+  setAiMemoryImportFile: React.Dispatch<React.SetStateAction<File | null>>;
+  aiMemoryBusy: boolean;
+  setAiMemoryBusy: React.Dispatch<React.SetStateAction<boolean>>;
+  aiMemoryMsg: string | null;
+  setAiMemoryMsg: React.Dispatch<React.SetStateAction<string | null>>;
+  refreshAiMemoryStatus: () => Promise<void>;
+  setErrorText: React.Dispatch<React.SetStateAction<string | null>>;
+  refreshLicense: () => Promise<void>;
+  setModules: React.Dispatch<React.SetStateAction<ModulesStatus | null>>;
+  license: LicenseState | null;
+  activationKey: string;
+  setActivationKey: React.Dispatch<React.SetStateAction<string>>;
+  licenseActivateMsg: string | null;
+  setLicenseActivateMsg: React.Dispatch<React.SetStateAction<string | null>>;
+  licenseFpVisible: boolean;
+  setLicenseFpVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  fpCopyAck: boolean;
+  setFpCopyAck: React.Dispatch<React.SetStateAction<boolean>>;
+  setLicense: React.Dispatch<React.SetStateAction<LicenseState | null>>;
+  connectorProfiles: EliaConnectorProfile[];
+  setConnectorProfiles: React.Dispatch<React.SetStateAction<EliaConnectorProfile[]>>;
+  settingsProfileId: string;
+  setSettingsProfileId: React.Dispatch<React.SetStateAction<string>>;
+  settingsTestMsg: string | null;
+  setSettingsTestMsg: React.Dispatch<React.SetStateAction<string | null>>;
+  settingsSaveMsg: string | null;
+  setSettingsSaveMsg: React.Dispatch<React.SetStateAction<string | null>>;
+  persistConnectorProfiles: (next: EliaConnectorProfile[]) => Promise<void>;
+  duplicateConnectorProfile: () => void;
+  deleteConnectorProfile: () => void;
+  aboutInfo: AppAboutResponse | null;
+  aboutChangelogOpen: boolean;
+  setAboutChangelogOpen: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+export function SettingsDialog(props: SettingsDialogProps) {
+  if (!props.open) return null;
+  const {
+    onClose,
+    c,
+    dark,
+    toggleTheme,
+    visibleSettingsTabs,
+    settingsTab,
+    setSettingsTab,
+    aiCaps,
+    aiPrefsSaving,
+    setAiPrefsSaving,
+    setAiCaps,
+    aiMemoryOpen,
+    setAiMemoryOpen,
+    aiMemoryStatus,
+    aiMemoryTeamPassphrase,
+    setAiMemoryTeamPassphrase,
+    aiMemoryImportMode,
+    setAiMemoryImportMode,
+    aiMemoryImportFile,
+    setAiMemoryImportFile,
+    aiMemoryBusy,
+    setAiMemoryBusy,
+    aiMemoryMsg,
+    setAiMemoryMsg,
+    refreshAiMemoryStatus,
+    setErrorText,
+    refreshLicense,
+    setModules,
+    license,
+    activationKey,
+    setActivationKey,
+    licenseActivateMsg,
+    setLicenseActivateMsg,
+    licenseFpVisible,
+    setLicenseFpVisible,
+    fpCopyAck,
+    setFpCopyAck,
+    setLicense,
+    connectorProfiles,
+    setConnectorProfiles,
+    settingsProfileId,
+    setSettingsProfileId,
+    settingsTestMsg,
+    setSettingsTestMsg,
+    settingsSaveMsg,
+    setSettingsSaveMsg,
+    persistConnectorProfiles,
+    duplicateConnectorProfile,
+    deleteConnectorProfile,
+    aboutInfo,
+    aboutChangelogOpen,
+    setAboutChangelogOpen,
+  } = props;
+
+  return (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Configuración"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100000,
+            background: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => onClose()}
+        >
+          <div
+            data-testid="elia-settings-dialog"
+            style={{
+              width: "min(680px, 100%)",
+              maxHeight: "min(92vh, 920px)",
+              overflow: "auto",
+              borderRadius: 16,
+              border: `1px solid ${c.border}`,
+              background: c.surface,
+              boxShadow: c.shadow,
+              padding: 22,
+              color: c.text,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, flex: 1 }}>Configuración</div>
+              <button
+                type="button"
+                onClick={() => onClose()}
+                style={{
+                  border: `1px solid ${c.btnGhostBorder}`,
+                  background: c.btnGhostBg,
+                  color: c.text,
+                  borderRadius: 10,
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                marginBottom: 16,
+                padding: 4,
+                borderRadius: 12,
+                border: `1px solid ${c.border}`,
+                background: c.neutralBg,
+              }}
+            >
+              {visibleSettingsTabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-testid={`elia-settings-tab-${t.id}`}
+                  onClick={() => setSettingsTab(t.id)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${settingsTab === t.id ? c.primary : c.btnGhostBorder}`,
+                    background: settingsTab === t.id ? c.primary : c.btnGhostBg,
+                    color: settingsTab === t.id ? c.primaryFg : c.text,
+                    fontWeight: settingsTab === t.id ? 700 : 500,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {settingsTab === "general" && (
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>Apariencia</div>
+              <label
+                htmlFor="elia-theme-toggle"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  cursor: "pointer",
+                  fontSize: 14,
+                }}
+              >
+                <span>{dark ? "Modo oscuro activo" : "Modo claro activo"}</span>
+                <input
+                  id="elia-theme-toggle"
+                  type="checkbox"
+                  checked={dark}
+                  onChange={() => toggleTheme()}
+                  style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+                />
+                <span
+                  style={{
+                    position: "relative",
+                    width: 44,
+                    height: 26,
+                    borderRadius: 999,
+                    background: dark ? c.primary : c.border,
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: dark ? 22 : 3,
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left 160ms ease",
+                    }}
+                  />
+                </span>
+              </label>
+            </div>
+            )}
+
+            {settingsTab === "ai" && (
+            <>
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>IA (Local)</div>
+              <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
+                {aiCaps?.brand_line ?? "Evolving Learning & Intelligent Automation"} — activa por defecto en modo automático.
+              </div>
+              {(["auto", "on", "off"] as AiMode[]).map((m) => (
+                <label
+                  key={m}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 10,
+                    cursor: aiPrefsSaving ? "wait" : "pointer",
+                    fontSize: 14,
+                    opacity: aiPrefsSaving ? 0.7 : 1,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="elia-ai-mode"
+                    checked={(aiCaps?.preferences.mode ?? "auto") === m}
+                    disabled={aiPrefsSaving}
+                    onChange={() => {
+                      setAiPrefsSaving(true);
+                      void (async () => {
+                        try {
+                          const next = await putAiPreferences(m);
+                          setAiCaps(next);
+                        } catch (e: unknown) {
+                          setErrorText(String((e as Error)?.message ?? e));
+                        } finally {
+                          setAiPrefsSaving(false);
+                        }
+                      })();
+                    }}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <b>
+                      {m === "auto"
+                        ? "Automático (recomendado)"
+                        : m === "on"
+                          ? "Siempre activada"
+                          : "Modo rápido (sin IA)"}
+                    </b>
+                    <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                      {m === "auto"
+                        ? "Usa IA si hay modelo de IA disponible, llama-cpp y RAM (≥8 GB total, ≥4 GB libres)."
+                        : m === "on"
+                          ? "Fuerza IA si el modelo está disponible; ignora el umbral de RAM libre (puede ir muy lento o fallar)."
+                          : "Conversiones heurísticas deterministas, sin revisión de IA."}
+                    </span>
+                  </span>
+                </label>
+              ))}
+              {aiCaps && (
+                <div style={{ fontSize: 12, color: c.muted, marginTop: 8, lineHeight: 1.4 }}>
+                  <div>{aiCaps.resolution.message}</div>
+                  {aiCaps.capability.ram_total_gb != null && (
+                    <div style={{ marginTop: 6 }}>
+                      RAM: {aiCaps.capability.ram_available_gb ?? "?"} GB libres /{" "}
+                      {aiCaps.capability.ram_total_gb} GB total (mín. {aiCaps.capability.ram_min_free_gb}{" "}
+                      libres, {aiCaps.capability.ram_min_total_gb} total).
+                    </div>
+                  )}
+                  {aiCaps.capability.reasons.length > 0 && (
+                    <ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+                      {aiCaps.capability.reasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div
+              data-testid="elia-ai-memory-accordion"
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                marginBottom: 14,
+                background: c.neutralBg,
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                data-testid="elia-ai-memory-toggle"
+                onClick={() => setAiMemoryOpen((open) => !open)}
+                aria-expanded={aiMemoryOpen}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  border: "none",
+                  background: "transparent",
+                  color: c.text,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                <span style={{ fontSize: 11, color: c.muted, width: 14 }}>{aiMemoryOpen ? "▾" : "▸"}</span>
+                <span>Compartir base de conocimiento</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: c.muted }}>
+                  {aiMemoryStatus
+                    ? `${aiMemoryStatus.entries}/${aiMemoryStatus.max_entries} ejemplos`
+                    : "— ejemplos"}
+                </span>
+              </button>
+              {aiMemoryOpen && (
+                <div
+                  style={{
+                    padding: "0 14px 14px",
+                    borderTop: `1px solid ${c.border}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.45, paddingTop: 12 }}>
+                    Exporta o importa el historial de entrenamiento para unificar los criterios de la IA con tu
+                    equipo de trabajo. La memoria local se guarda cifrada en este equipo; el archivo exportado usa
+                    una frase de equipo compartida.
+                  </div>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: c.text }}>
+                    Frase de equipo
+                    <input
+                      type="password"
+                      data-testid="elia-ai-memory-passphrase"
+                      value={aiMemoryTeamPassphrase}
+                      onChange={(e) => setAiMemoryTeamPassphrase(e.target.value)}
+                      placeholder="Misma frase al exportar e importar"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                        fontSize: 14,
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="elia-ai-memory-export"
+                    disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim()}
+                    onClick={() => {
+                      setAiMemoryBusy(true);
+                      setAiMemoryMsg(null);
+                      void (async () => {
+                        try {
+                          const { blob, filename } = await exportAiMemory(aiMemoryTeamPassphrase.trim());
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          setAiMemoryMsg("Memoria exportada correctamente.");
+                        } catch (e) {
+                          setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+                        } finally {
+                          setAiMemoryBusy(false);
+                        }
+                      })();
+                    }}
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
+                      color: c.primaryFg,
+                      cursor: aiMemoryBusy ? "wait" : "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    Exportar memoria actual
+                  </button>
+
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginTop: 4 }}>
+                    Importar base de conocimiento
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: c.text }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="elia-ai-memory-import-mode"
+                        checked={aiMemoryImportMode === "merge"}
+                        onChange={() => setAiMemoryImportMode("merge")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <b>Fusionar (recomendado)</b>
+                        <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                          Añade reglas sin borrar tu historial. En conflicto prevalece lo importado.
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="elia-ai-memory-import-mode"
+                        checked={aiMemoryImportMode === "replace"}
+                        onChange={() => setAiMemoryImportMode("replace")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <b>Reemplazar por completo</b>
+                        <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
+                          Borra toda la memoria local y la sustituye por el archivo cargado (irreversible).
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      type="file"
+                      accept=".enc,.json,application/json"
+                      data-testid="elia-ai-memory-import-file"
+                      onChange={(e) => setAiMemoryImportFile(e.target.files?.[0] ?? null)}
+                      style={{ fontSize: 12, color: c.text, maxWidth: "100%" }}
+                    />
+                    <button
+                      type="button"
+                      data-testid="elia-ai-memory-import"
+                      disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim() || !aiMemoryImportFile}
+                      onClick={() => {
+                        if (!aiMemoryImportFile) return;
+                        setAiMemoryBusy(true);
+                        setAiMemoryMsg(null);
+                        void (async () => {
+                          try {
+                            const result = await importAiMemory({
+                              teamPassphrase: aiMemoryTeamPassphrase.trim(),
+                              mode: aiMemoryImportMode,
+                              file: aiMemoryImportFile,
+                            });
+                            await refreshAiMemoryStatus();
+                            setAiMemoryImportFile(null);
+                            setAiMemoryMsg(
+                              result.mode === "replace"
+                                ? `Importación completa: ${result.total} ejemplo(s) en memoria.`
+                                : `Fusión: ${result.added} añadido(s), ${result.updated} actualizado(s), total ${result.total}.`,
+                            );
+                          } catch (e) {
+                            setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo importar.");
+                          } finally {
+                            setAiMemoryBusy(false);
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
+                        color: c.primaryFg,
+                        cursor: aiMemoryBusy ? "wait" : "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      Confirmar importación
+                    </button>
+                  </div>
+                  {aiMemoryMsg && (
+                    <div style={{ fontSize: 12, color: c.text, lineHeight: 1.45 }}>{aiMemoryMsg}</div>
+                  )}
+                </div>
+              )}
+            </div>
+            </>
+            )}
+
+            {settingsTab === "license" && (
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>Licencia</div>
+              {license ? (
+                <>
+                  <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
+                    <span style={{ fontWeight: 600 }}>Estado actual: </span>
+                    {formatLicenseStatusLabel(license)}
+                  </div>
+                  {!license.activated && license.reason === "not_activated" && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: c.text,
+                        marginBottom: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.licWarnBorder}`,
+                        background: c.licWarnBg,
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        Para activar ELIA, envía este código a soporte.
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>Huella de máquina:</span>
+                        <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
+                          {license.machine_fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await copyTextToClipboard(license.machine_fingerprint);
+                              if (ok) {
+                                setFpCopyAck(true);
+                                window.setTimeout(() => setFpCopyAck(false), 2000);
+                              } else {
+                                setLicenseActivateMsg("No se pudo copiar. Selecciona el código manualmente.");
+                              }
+                            })();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${c.btnGhostBorder}`,
+                            background: c.btnGhostBg,
+                            color: c.text,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {fpCopyAck ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {license.activated && licenseFpVisible && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: c.text,
+                        marginBottom: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.border}`,
+                        background: c.surface,
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        Huella de máquina actual (para ampliar módulos u obtener otra clave en soporte):
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
+                          {license.machine_fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await copyTextToClipboard(license.machine_fingerprint);
+                              if (ok) {
+                                setFpCopyAck(true);
+                                window.setTimeout(() => setFpCopyAck(false), 2000);
+                              } else {
+                                setLicenseActivateMsg("No se pudo copiar. Selecciona el código manualmente.");
+                              }
+                            })();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${c.btnGhostBorder}`,
+                            background: c.btnGhostBg,
+                            color: c.text,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {fpCopyAck ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                    <input
+                      type="text"
+                      data-testid="elia-license-key"
+                      value={activationKey}
+                      onChange={(e) => setActivationKey(e.target.value)}
+                      placeholder="Introduce tu código de activación"
+                      style={{
+                        flex: "1 1 220px",
+                        minWidth: 200,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                        fontSize: 14,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      data-testid="elia-license-activate"
+                      disabled={!activationKey.trim()}
+                      onClick={() => {
+                        setLicenseActivateMsg(null);
+                        void (async () => {
+                          try {
+                            const r = await activateLicense(activationKey.trim());
+                            if (r.ok) {
+                              await refreshLicense();
+                              setActivationKey("");
+                              setLicenseFpVisible(false);
+                              setFpCopyAck(false);
+                              setLicenseActivateMsg("Licencia activada correctamente.");
+                              const m = await getModulesStatus();
+                              setModules(m);
+                            } else {
+                              setLicenseActivateMsg(r.message || "Clave no válida para esta máquina.");
+                            }
+                          } catch (e: unknown) {
+                            setLicenseActivateMsg(String((e as Error)?.message ?? e));
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: c.primary,
+                        color: c.primaryFg,
+                        fontWeight: 700,
+                        fontSize: 14,
+                        cursor: activationKey.trim() ? "pointer" : "not-allowed",
+                        opacity: activationKey.trim() ? 1 : 0.55,
+                      }}
+                    >
+                      Activar
+                    </button>
+                  </div>
+                  {licenseActivateMsg && (
+                    <div data-testid="elia-license-message" style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
+                  )}
+                  {license.activated && !licenseFpVisible && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLicenseActivateMsg(null);
+                        void refreshLicense().then(() => setLicenseFpVisible(true));
+                      }}
+                      style={{
+                        marginTop: 10,
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Obtener huella de máquina
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: c.muted }}>No se pudo consultar el estado de la licencia.</div>
+              )}
+            </div>
+            )}
+
+            {settingsTab === "connectors" && (
+            <div
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · Jira y Value Edge</div>
+              <div style={{ color: c.muted, fontSize: 13, marginBottom: 12 }}>
+                Los datos se guardan en el navegador y, también cifrados
+                en disco (misma máquina). Usa solo en red local (<code>127.0.0.1</code>).
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>Perfil</label>
+                <select
+                  value={settingsProfileId}
+                  onChange={(e) => setSettingsProfileId(e.target.value)}
+                  style={{
+                    flex: "1 1 240px",
+                    minWidth: 200,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${c.inputBorder}`,
+                    background: c.inputBg,
+                    color: c.text,
+                    fontSize: 14,
+                  }}
+                >
+                  {connectorProfiles.length === 0 && <option value="">— Sin perfiles —</option>}
+                  {connectorProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const np = newConnectorProfile(connectorProfiles.length + 1);
+                    setConnectorProfiles((l) => [...l, np]);
+                    setSettingsProfileId(np.id);
+                    setSettingsTestMsg(null);
+                    setSettingsSaveMsg(null);
+                  }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${c.primary}`,
+                    background: c.primary,
+                    color: c.primaryFg,
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Añadir nuevo
+                </button>
+                {connectorProfiles.length > 0 && settingsProfileId && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={duplicateConnectorProfile}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.btnGhostBorder}`,
+                        background: c.btnGhostBg,
+                        color: c.text,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Duplicar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteConnectorProfile}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.licWarnBorder}`,
+                        background: c.licWarnBg,
+                        color: c.text,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {connectorProfiles.length === 0 && (
+                <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
+                  Sin perfiles aún: pulsa «Añadir nuevo» para crear el primero.
+                </div>
+              )}
+
+              {connectorProfiles.length > 0 && settingsProfileId && (
+                <>
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
+                    Edita el perfil seleccionado (nombre, Jira y Value Edge). Usa «Guardar» al terminar.
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                      Nombre del perfil
+                    </label>
+                    <input
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.name ?? ""
+                      }
+                      onChange={(e) =>
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, name: e.target.value } : p,
+                          ),
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Jira</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="URL de instancia"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.url ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, url: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Usuario / Email"
+                      type="email"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.email ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, email: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="API token"
+                      type="password"
+                      autoComplete="new-password"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.api_token ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, api_token: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "jira",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                          });
+                          const data = r as { ok?: boolean; connection_ok?: boolean };
+                          const okConn = data.connection_ok ?? data.ok ?? false;
+                          setSettingsTestMsg(
+                            okConn ? "Jira · conexión correcta." : "Jira · conexión rechazada o credenciales inválidas.",
+                          );
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Jira · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Jira
+                  </button>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Value Edge</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="URL de instancia"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.url ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, url: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Shared space ID"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.shared_space ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, shared_space: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Workspace ID"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.workspace ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, workspace: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder='Tech preview flag (ej. "true")'
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge
+                          .tech_preview_flag ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, tech_preview_flag: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="URL de login (opcional)"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.login ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, login: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Usuario"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.user ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, user: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Contraseña"
+                      type="password"
+                      autoComplete="new-password"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.password ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, value_edge: { ...p.value_edge, password: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "value_edge",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                          });
+                          const data = r as { ok?: boolean; connection_ok?: boolean };
+                          const okConn = data.connection_ok ?? data.ok ?? false;
+                          setSettingsTestMsg(
+                            okConn ? "Value Edge · login correcto." : "Value Edge · login rechazado o credenciales inválidas.",
+                          );
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Value Edge · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Value Edge
+                  </button>
+                </>
+              )}
+
+              {settingsTestMsg && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    fontSize: 13,
+                    color: c.text,
+                    background: c.hintBg,
+                    border: `1px solid ${c.hintBorder}`,
+                    borderRadius: 10,
+                    padding: 10,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {settingsTestMsg}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      setSettingsSaveMsg(null);
+                      try {
+                        await persistConnectorProfiles(connectorProfiles);
+                        setSettingsSaveMsg("Guardado en el navegador y en el backend (si está disponible).");
+                      } catch (e: unknown) {
+                        setSettingsSaveMsg(`Error al guardar: ${String((e as Error)?.message ?? e)}`);
+                      }
+                    })();
+                  }}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: c.primary,
+                    color: c.primaryFg,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Guardar perfiles
+                </button>
+              </div>
+              {settingsSaveMsg && (
+                <div style={{ marginTop: 10, fontSize: 13, color: c.muted }}>{settingsSaveMsg}</div>
+              )}
+            </div>
+            )}
+
+            {settingsTab === "about" && (
+            <div
+              data-testid="elia-about-panel"
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                background: c.neutralBg,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Acerca de ELIA</div>
+              {aboutInfo ? (
+                <>
+                  <div style={{ fontSize: 14, marginBottom: 6 }}>
+                    <b>{aboutInfo.app_name}</b> — {aboutInfo.tagline}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "8px 12px",
+                      fontSize: 13,
+                      color: c.muted,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span>
+                      Versión: <span style={{ color: c.text }}>{aboutInfo.version_display}</span>
+                    </span>
+                    {aboutInfo.changelog.length > 0 && (
+                      <button
+                        type="button"
+                        data-testid="elia-changelog-toggle"
+                        aria-expanded={aboutChangelogOpen}
+                        onClick={() => setAboutChangelogOpen((open) => !open)}
+                        style={{
+                          border: `1px solid ${c.border}`,
+                          borderRadius: 999,
+                          padding: "2px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: c.muted,
+                          background: c.inputBg,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {aboutChangelogOpen ? "▾ Ver novedades" : "▸ Ver novedades"}
+                      </button>
+                    )}
+                  </div>
+                  {aboutChangelogOpen && aboutInfo.changelog.length > 0 && (
+                    <div
+                      data-testid="elia-changelog-panel"
+                      style={{
+                        marginBottom: 12,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.border}`,
+                        background: c.inputBg,
+                        maxHeight: "min(36vh, 320px)",
+                        overflow: "auto",
+                      }}
+                    >
+                      {aboutInfo.changelog.map((entry, entryIndex) => {
+                        const isCurrent = entry.version === aboutInfo.version;
+                        const isLast = entryIndex === aboutInfo.changelog.length - 1;
+                        const sections: Array<{
+                          key: "added" | "fixed" | "changed";
+                          label: string;
+                          items: string[];
+                        }> = [];
+                        if (entry.added.length > 0) {
+                          sections.push({ key: "added", label: "Añadido", items: entry.added });
+                        }
+                        if (entry.fixed.length > 0) {
+                          sections.push({ key: "fixed", label: "Corregido", items: entry.fixed });
+                        }
+                        if (entry.changed.length > 0) {
+                          sections.push({ key: "changed", label: "Cambiado", items: entry.changed });
+                        }
+
+                        return (
+                          <div
+                            key={entry.version}
+                            data-testid={`elia-changelog-entry-${entry.version}`}
+                            style={{
+                              marginBottom: isLast ? 0 : 16,
+                              paddingBottom: isLast ? 0 : 16,
+                              borderBottom: isLast ? "none" : `1px solid ${c.border}`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                alignItems: "baseline",
+                                gap: "6px 10px",
+                                marginBottom: 8,
+                              }}
+                            >
+                              <span style={{ fontWeight: 800, fontSize: 13, color: c.text }}>
+                                {entry.version}
+                                {isCurrent ? " (actual)" : ""}
+                              </span>
+                              {entry.date && (
+                                <span style={{ fontSize: 11, color: c.muted }}>{entry.date}</span>
+                              )}
+                            </div>
+                            {sections.map((section) => (
+                              <div key={section.key} style={{ marginBottom: 10 }}>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: c.muted,
+                                    marginBottom: 4,
+                                    letterSpacing: "0.02em",
+                                  }}
+                                >
+                                  [{section.label}]
+                                </div>
+                                <ul
+                                  style={{
+                                    margin: 0,
+                                    paddingLeft: 18,
+                                    fontSize: 12,
+                                    lineHeight: 1.55,
+                                    color: c.text,
+                                  }}
+                                >
+                                  {section.items.map((item, i) => (
+                                    <li key={i} style={{ marginBottom: 4 }}>
+                                      {item}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 14, marginBottom: 12 }}>
+                    Desarrollador: {aboutInfo.developer}
+                  </div>
+                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>Licencia de uso</div>
+                  <div
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.border}`,
+                      background: c.inputBg,
+                      color: c.text,
+                      maxHeight: "min(42vh, 360px)",
+                      overflow: "auto",
+                    }}
+                  >
+                    {aboutInfo.license_text ? (
+                      parseLicenseDisplayBlocks(aboutInfo.license_text).map((block, i) => {
+                        if (block.kind === "title") {
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                fontWeight: 800,
+                                fontSize: 13,
+                                lineHeight: 1.45,
+                                marginBottom: 10,
+                                letterSpacing: "0.01em",
+                              }}
+                            >
+                              {block.text}
+                            </div>
+                          );
+                        }
+                        if (block.kind === "heading") {
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 12,
+                                lineHeight: 1.45,
+                                marginTop: i > 0 ? 14 : 0,
+                                marginBottom: 6,
+                              }}
+                            >
+                              {block.text}
+                            </div>
+                          );
+                        }
+                        if (block.kind === "list") {
+                          return (
+                            <ul
+                              key={i}
+                              style={{
+                                margin: "0 0 12px",
+                                paddingLeft: 20,
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              {block.items.map((item, j) => (
+                                <li key={j} style={{ marginBottom: 8 }}>
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        }
+                        return (
+                          <p
+                            key={i}
+                            style={{
+                              margin: "0 0 12px",
+                              fontSize: 12,
+                              lineHeight: 1.65,
+                              textAlign: "justify",
+                            }}
+                          >
+                            {block.text}
+                          </p>
+                        );
+                      })
+                    ) : (
+                      <div style={{ fontSize: 12, color: c.muted }}>(Licence.txt no disponible)</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: c.muted }}>Cargando información…</div>
+              )}
+            </div>
+            )}
+          </div>
+        </div>
+
+  );
+}

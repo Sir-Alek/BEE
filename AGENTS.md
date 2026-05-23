@@ -33,7 +33,7 @@ ELIA_SKIP_LICENSE=1 python main.py
 
 ### Gotchas
 
-- **TypeScript strict check fails**: `npx tsc --noEmit` in `frontend/` reports pre-existing type errors in `App.tsx`. The Vite build (`npm run build`) succeeds because it doesn't enforce type checking. This is a known state of the codebase.
+- **TypeScript en CI**: `npm run typecheck` (vía `npm run build`) debe pasar sin errores. Vite no typecheckea por sí solo; el script `build` ejecuta `tsc --noEmit` primero.
 - **`llama-cpp-python`** is listed in `requirements.txt` but is optional (local AI inference). It requires C++ compilation and a GGUF model file. The app gracefully degrades without it (`AI status` shows unavailable).
 - **No database or external services required**: all state is file-based. Jira and Value Edge integrations are optional and require external credentials.
 - **Puppeteer recording** requires Chrome/Chromium and a display server. In headless cloud environments, recording may not work but conversion and the web UI function normally.

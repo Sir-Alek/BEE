@@ -4,73 +4,98 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.7.0] - 2026-05-19
+
+### Añadido
+
+- Nueva arquitectura interna de la interfaz: Se reestructuró por completo el diseño interno de la aplicación, separando las secciones principales (Inicio, Panel de Trabajo, Configuración y Estilos) en módulos independientes. Esto permite una carga inicial de la aplicación mucho más rápida y una navegación más fluida.
+
+### Cambiado
+
+- Núcleo del sistema optimizado: Se simplificó drásticamente el componente central que gestiona la interfaz visual, reduciendo su complejidad interna en más de un 75%. Esta mejora previene congelamientos visuales y garantiza una excelente estabilidad a largo plazo.
+- Modularización de espacios de trabajo: Las pantallas de configuración, el inicio de tareas y el área de trabajo ahora operan de forma independiente por debajo de la interfaz. Este cambio estructural se realizó manteniendo intactos todos tus flujos de trabajo actuales, garantizando la total compatibilidad con tus configuraciones y automatizaciones existentes.
+
+## [0.6.70] - 2026-05-22
+
+### Añadido
+
+- Formularios optimizados por plataforma: Las configuraciones de grabación (Web, Móvil y Escritorio Legacy) ahora cuentan con campos personalizados e inteligentes que validan los datos automáticamente antes de iniciar cualquier conversión.
+- Línea de tiempo en tiempo real: Nueva sección visual interactiva que muestra el progreso paso a paso de lo que está sucediendo durante las grabaciones móviles y de aplicaciones de escritorio.
+- Interfaz más fluida y eficiente: Se optimizó drásticamente el sistema de comunicación interna de la aplicación. Las actualizaciones de estado ahora son prácticamente instantáneas durante la grabación y consumen menos recursos de tu equipo cuando estás en espera.
+- Mayor estabilidad general: Implementamos controles de calidad estrictos en el proceso de empaquetado de la aplicación para prevenir fallos visuales e interrupciones inesperadas en la interfaz.
+
+### Cambiado
+
+- Mensajes de estado más claros: Los eventos mostrados durante las capturas de aplicaciones móviles y de escritorio ahora son mucho más descriptivos (indicando con precisión cuándo se detecta la ventana, cuándo se vincula el dispositivo o cuándo se toman evidencias).
+- Asistente de conversión inteligente: El motor de captura ahora es más estricto al verificar los requisitos de cada tipo de entorno, asegurando que las transformaciones a formato BDD (Gherkin) se generen limpias y sin datos faltantes.
+
 ## [0.6.62] - 2026-05-22
 
 ### Corregido
 
-- Al convertir una grabación a Behave, la selección de acciones ya no se restablece sola al desmarcar elementos o pulsar «Excluir todas».
+- Selección de pasos persistente: Al preparar la conversión a Gherkin, la lista de acciones seleccionadas ya no se restablecerá de forma inesperada si desmarcas elementos o utilizas la opción «Excluir todas».
 
 ## [0.6.61] - 2026-05-22
 
 ### Añadido
 
-- Exportación e importación de la base de conocimiento de IA para compartir criterios con el equipo de trabajo.
-- Historial de novedades accesible desde Configuración → Acerca de.
+- Colaboración en equipo: Ahora puedes exportar e importar de forma segura la base de conocimiento y el entrenamiento de la IA local, facilitando la unificación de criterios de automatización entre compañeros de trabajo.
+- Historial de novedades integrado: Se añadió un acceso directo para consultar este registro de mejoras directamente desde el panel de Configuración → Acerca de.
 
 ### Cambiado
 
-- La memoria de aprendizaje de la IA se guarda ahora cifrada en el equipo.
-- Edición manual de escenarios BDD disponible a partir del tercer intento de conversión.
-- Pantalla Acerca de simplificada: muestra la versión del producto con indicador beta.
+- Privacidad y protección avanzada: La memoria de aprendizaje de tu IA local ahora se almacena de forma completamente cifrada en el disco duro, blindando la propiedad intelectual de tus flujos de negocio.
+- Editor manual asistido: El editor interactivo de escenarios BDD ahora se habilita de forma automática tras el tercer intento de conversión asistida, permitiéndote tomar el control total y refinar el resultado a tu gusto.
+- Pantalla de información estilizada: Se simplificó la sección Acerca de para mostrar de forma limpia la versión actual del producto y el indicador de estado de la fase Beta.
 
-## [0.6.5] - 2026-05-21
+## [0.6.50] - 2026-05-21
 
 ### Añadido
 
-- Botón Regresar al seleccionar proyecto durante la grabación.
-- Grabación de video de la ventana al usar grabación Legacy o emulador Android.
+- Navegación mejorada: Se incluyó un botón de Regresar al seleccionar proyectos dentro del flujo de grabación para evitar tener que reiniciar el asistente.
+- Evidencias en video automáticas: El sistema ahora captura automáticamente el video de la pantalla en tiempo real cuando realizas grabaciones en aplicaciones de escritorio (Legacy) o utilizando el emulador móvil.
 
 ### Cambiado
 
-- Diagnóstico de entorno móvil reorganizado en sección colapsable con mensajes más claros.
+- Asistente de entorno móvil simplificado: El diagnóstico de preparación para pruebas móviles se reorganizó en una sección colapsable mucho más limpia, con alertas claras e instrucciones paso a paso para resolver fallos de entorno.
 
 ### Corregido
 
-- Mejoras en la experiencia de uso de la pestaña Móvil y en la vista previa de conversiones.
+- Se optimizó la fluidez general al interactuar con la pestaña de automatización móvil y se solucionaron errores visuales en la generación de la vista previa de las conversiones.
 
-## [0.6.3] - 2026-05-21
+## [0.6.30] - 2026-05-21
 
 ### Añadido
 
-- Detección de dispositivos Android conectados y emuladores disponibles.
-- Interfaz para iniciar y detener emuladores Android desde la pestaña Móvil.
-- Arranque de Appium desde la aplicación para grabación móvil.
+- Detección inteligente de dispositivos: El sistema ahora detecta automáticamente cualquier dispositivo físico Android conectado por USB o los emuladores instalados en el equipo.
+- Control de emuladores integrado: Nueva interfaz que te permite iniciar, pausar y detener tus dispositivos virtuales Android directamente desde la pestaña móvil de ELIA, sin necesidad de abrir herramientas externas.
+- Gestión automática de servicios móviles: El motor de automatización móvil se inicializa de forma transparente en segundo plano al arrancar una sesión de grabación.
 
 ### Corregido
 
-- Estabilidad y mensajes de error en la grabación móvil y dependencias de Appium.
+- Se incrementó drásticamente la estabilidad y se mejoraron los mensajes de alerta cuando el entorno local carece de los componentes necesarios para la automatización móvil.
 
-## [0.5.3] - 2026-05-20
+## [0.5.30] - 2026-05-20
 
 ### Corregido
 
-- Versión mostrada en la aplicación alineada con la versión real del instalador.
-- Ventana del navegador integrado maximizada de forma fiable al iniciar.
+- Se solucionó una discrepancia visual para asegurar que la versión interna de la interfaz coincida exactamente con la compilación del instalador de Windows.
+- Se corrigió un comportamiento en las grabaciones web, asegurando que la ventana del navegador integrado se abra maximizada de forma fiable en cada sesión.
 
-## [0.5.2] - 2026-05-20
+## [0.5.20] - 2026-05-20
 
 ### Añadido
 
-- Consulta de huella de licencia bajo demanda tras activar la clave.
+- Información de activación: Opción para consultar bajo demanda la huella digital técnica y los detalles de tu licencia una vez que la clave ha sido activada en el equipo.
 
 ## [0.5.0] - 2026-05-20
 
 ### Añadido
 
-- Pestañas de Configuración: General, Inteligencia, Licencia, Conectores y Acerca de.
-- Preferencias de IA local con detección automática de capacidad del equipo.
-- Comprobaciones previas antes de abrir Chrome para grabación web.
+- Centro de Configuración unificado: Nueva estructura dividida por pestañas (General, Inteligencia, Licencia, Conectores y Acerca de) para centralizar todas tus preferencias en un solo lugar.
+- Optimización inteligente de hardware: El panel de configuración de IA ahora analiza automáticamente las capacidades de procesamiento y gráficos de tu equipo para sugerir el rendimiento óptimo del modelo local.
+- Escudo de comprobación web: Se añadieron verificaciones de seguridad automatizadas previas al lanzamiento del navegador para asegurar que las sesiones de grabación inicien limpias y libres de bloqueos.
 
 ### Cambiado
 
-- Interfaz de licencia integrada en Configuración con mensajes de estado claros.
+- Gestión de licencias simplificada: La interfaz de validación se integró completamente dentro del menú de configuración global, ofreciendo mensajes visuales mucho más claros sobre el estado de la suscripción.

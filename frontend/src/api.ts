@@ -529,6 +529,28 @@ export async function getJob(jobId: string): Promise<JobStateResponse> {
   return res.json();
 }
 
+export type JobEventRecord = {
+  type: string;
+  ts?: number;
+  prompt_id?: string;
+  prompt_type?: string;
+  message?: string;
+  payload?: Record<string, unknown>;
+};
+
+export async function getJobEvents(
+  jobId: string,
+  since = 0,
+): Promise<{ job_id: string; events: JobEventRecord[]; next_index: number }> {
+  const res = await fetch(
+    `/api/jobs/${encodeURIComponent(jobId)}/events?since=${encodeURIComponent(String(since))}`,
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch job events: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function stopRecording(jobId: string): Promise<void> {
   const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/stop-recording`, {
     method: "POST",

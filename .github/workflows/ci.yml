@@ -50,7 +50,7 @@ jobs:
           python -m pip install -U pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Build frontend
+      - name: Typecheck + build frontend
         working-directory: frontend
         run: |
           npm ci
