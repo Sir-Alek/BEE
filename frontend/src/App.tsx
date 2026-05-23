@@ -4174,6 +4174,7 @@ export default function App() {
                 <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, padding: 12, maxHeight: 320, overflow: "auto" }}>
                   <ActionsCheckboxList
                     c={c}
+                    promptId={activePrompt.prompt_id}
                     actions={activePrompt.actions}
                     minSelected={2}
                     onSubmit={async (selectedLines) => {
@@ -4197,6 +4198,7 @@ export default function App() {
                 <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, padding: 12, maxHeight: 320, overflow: "auto" }}>
                   <ActionsCheckboxList
                     c={c}
+                    promptId={activePrompt.prompt_id}
                     actions={activePrompt.actions}
                     onSubmit={async (selectedLines) => {
                       if (!jobId) return;
@@ -4808,6 +4810,7 @@ export default function App() {
 
 function ActionsCheckboxList(props: {
   c: import("./eliaTheme").EliaPalette;
+  promptId?: string;
   actions: { type: string; description: string; original_line: string }[];
   minSelected?: number;
   onSubmit: (selectedLines: string[]) => void | Promise<void>;
@@ -4815,11 +4818,20 @@ function ActionsCheckboxList(props: {
   const { c } = props;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
+  const actionsFingerprint = props.actions
+    .map((a) => a.original_line)
+    .sort()
+    .join("\0");
+
   useEffect(() => {
-    const next: Record<string, boolean> = {};
-    for (const a of props.actions) next[a.original_line] = true;
-    setSelected(next);
-  }, [props.actions]);
+    setSelected((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const a of props.actions) {
+        next[a.original_line] = prev[a.original_line] ?? true;
+      }
+      return next;
+    });
+  }, [props.promptId, actionsFingerprint]);
 
   const selectedLines = useMemo(() => {
     return props.actions.filter((a) => selected[a.original_line]).map((a) => a.original_line);

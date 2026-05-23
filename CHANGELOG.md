@@ -4,6 +4,12 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.6.62] - 2026-05-22
+
+### Corregido
+
+- Al convertir una grabación a Behave, la selección de acciones ya no se restablece sola al desmarcar elementos o pulsar «Excluir todas».
+
 ## [0.6.61] - 2026-05-22
 
 ### Añadido
