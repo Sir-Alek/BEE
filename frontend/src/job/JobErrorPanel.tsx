@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { downloadJobErrorReport } from "../api";
 import { goHomeInThisTab, tryFocusOpenerAndCloseThisTab } from "../app/utils";
+import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 
 type Props = {
   c: Record<string, string>;
@@ -59,14 +60,7 @@ export function JobErrorPanel(props: Props) {
             {downloading ? "Generando…" : "Descargar reporte de error"}
           </button>
           {betaFeedbackUrl ? (
-            <a
-              href={betaFeedbackUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ fontSize: 13, color: c.primary }}
-            >
-              Reportar en formulario beta →
-            </a>
+            <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />
           ) : null}
         </div>
       </div>

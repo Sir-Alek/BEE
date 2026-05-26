@@ -14,7 +14,7 @@ class WebCaptureStepBuilder:
         self.base_dir = base_dir
         from core.elia_paths import behave_projects_dir, step_by_step_dir
 
-        self.projects_dir = str(behave_projects_dir())
+        self.projects_dir = str(behave_projects_dir("web"))
         self.step_by_step_dir = str(step_by_step_dir())
         self.selected_actions = []
         self.ui = ui

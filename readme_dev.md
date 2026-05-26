@@ -5,12 +5,21 @@
 | Dónde | Qué editar |
 |-------|------------|
 | **Pestaña Acerca de** (UI) | `core/_version.py` → `ELIA_VERSION` |
+| **Correo de contacto** (Acerca de) | `core/_version.py` → `ELIA_CONTACT_EMAIL` |
+| **Formulario beta** (feedback / errores) | `core/_version.py` → `ELIA_BETA_FEEDBACK_URL` (URL de Google Forms) |
 | **Consola al arrancar** | Mismo `core/_version.py` (importado desde `main.py`) |
 | **Instalador Windows** | `ELIA_Setup.iss` → `#define MyAppVersion` |
 
 Edita **`core/_version.py`** (y sincroniza `ELIA_Setup.iss`). Esos módulos **no van a Cython**. Si existe un `core/version*.pyd` antiguo, cierra ELIA y bórralo (o ejecuta `build_release.py`, que intenta limpiarlo).
 
 Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a ejecutar PyInstaller.
+
+### Formulario de feedback beta
+
+- **URL por defecto:** `core/_version.py` → `ELIA_BETA_FEEDBACK_URL` (pega la URL pública de Google Forms).
+- **Override opcional:** variable de entorno `ELIA_BETA_FEEDBACK_URL` (tiene prioridad sobre el archivo).
+- **Dónde se muestra en la UI:** Configuración → **Acerca de** y **Licencia**; junto a «Descargar reporte de error» cuando un job falla.
+- Si la URL está vacía y no hay env var, los enlaces no aparecen (comportamiento seguro).
 
 ## Entorno virtual (Python)
 

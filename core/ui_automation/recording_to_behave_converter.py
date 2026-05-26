@@ -158,7 +158,7 @@ class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
         use_ai: bool = False,
         link_scenario: Optional[str] = None,
     ) -> None:
-        super().__init__(base_dir, ui, use_ai=use_ai)
+        super().__init__(base_dir, ui, use_ai=use_ai, link_scenario=link_scenario, platform=platform)
         if platform not in ("mobile", "legacy"):
             raise ValueError(f"Plataforma no soportada: {platform}")
         self.platform = platform

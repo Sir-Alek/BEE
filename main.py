@@ -147,7 +147,7 @@ class main:
             self.base_dir = os.path.dirname(os.path.abspath(__file__))
         from core.elia_paths import behave_projects_dir
 
-        self.projects_dir = str(behave_projects_dir())
+        self.projects_dir = str(behave_projects_dir("web"))
         # self.behave_dir = os.path.join(self.base_dir, "behave")
         self.recordings_dir = os.path.join(self.base_dir, "grabaciones")
         self.logo_path = os.path.join(self.base_dir, "resources", "logo_elia.png")

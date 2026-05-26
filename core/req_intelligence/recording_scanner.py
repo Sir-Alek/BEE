@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 
 @dataclass
@@ -83,4 +83,20 @@ def scan_all_recordings(projects_root: str, project_filter: Optional[str] = None
         full = os.path.join(projects_root, entry)
         if os.path.isdir(full):
             out.extend(scan_project_recordings(full, entry))
+    return out
+
+
+def scan_all_recordings_from_roots(
+    projects_roots: Sequence[str],
+    project_filter: Optional[str] = None,
+) -> List[RecordingRef]:
+    """Escanea varias raíces (p. ej. behave/web, behave/mobile, …)."""
+    out: List[RecordingRef] = []
+    seen: set[str] = set()
+    for root in projects_roots:
+        for ref in scan_all_recordings(root, project_filter):
+            if ref.file_path in seen:
+                continue
+            seen.add(ref.file_path)
+            out.append(ref)
     return out

@@ -31,10 +31,39 @@ def ensure_user_data_root() -> Path:
     return root
 
 
-def behave_projects_dir() -> Path:
-    d = ensure_user_data_root() / "behave" / "proyectos"
+BEHAVE_PLATFORMS = ("web", "mobile", "legacy", "api")
+
+
+def behave_platform_dir(platform: str) -> Path:
+    """Raíz de proyectos Behave para un módulo (web, mobile, legacy, api)."""
+    if platform not in BEHAVE_PLATFORMS:
+        raise ValueError(f"Plataforma Behave no soportada: {platform}")
+    d = ensure_user_data_root() / "behave" / platform
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def behave_projects_dir(platform: str = "web") -> Path:
+    """Compat: proyectos Behave del módulo indicado (por defecto web)."""
+    return behave_platform_dir(platform)
+
+
+def legacy_behave_proyectos_dir() -> Path:
+    """Ubicación legada antes de separar por módulo (solo lectura/migración)."""
+    return ensure_user_data_root() / "behave" / "proyectos"
+
+
+def behave_project_search_roots() -> list[Path]:
+    """Raíces donde buscar proyectos (todas las plataformas + legado si existe)."""
+    roots = [behave_platform_dir(p) for p in BEHAVE_PLATFORMS]
+    legacy = legacy_behave_proyectos_dir()
+    if legacy.is_dir():
+        try:
+            if any(legacy.iterdir()):
+                roots.append(legacy)
+        except OSError:
+            pass
+    return roots
 
 
 def step_by_step_dir() -> Path:

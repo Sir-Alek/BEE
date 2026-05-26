@@ -1,12 +1,14 @@
 """Tests for offline error reporting and sanitization."""
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from webui.error_reporting import (
+    beta_feedback_url,
     build_error_report,
     persist_job_error_snapshot,
     prune_error_reports,
@@ -72,6 +74,28 @@ class TestErrorReporting(unittest.TestCase):
             self.assertEqual(removed, 3)
             remaining = list(report_dir.glob("*.txt"))
             self.assertEqual(len(remaining), 2)
+
+    def test_beta_feedback_url_env_overrides_constant(self) -> None:
+        with patch.dict(os.environ, {"ELIA_BETA_FEEDBACK_URL": "https://env.example/form"}, clear=False):
+            self.assertEqual(beta_feedback_url(), "https://env.example/form")
+
+    def test_beta_feedback_url_uses_constant_when_env_empty(self) -> None:
+        env_value = os.environ.pop("ELIA_BETA_FEEDBACK_URL", None)
+        try:
+            with patch("core._version.ELIA_BETA_FEEDBACK_URL", "https://default.example/form"):
+                self.assertEqual(beta_feedback_url(), "https://default.example/form")
+        finally:
+            if env_value is not None:
+                os.environ["ELIA_BETA_FEEDBACK_URL"] = env_value
+
+    def test_beta_feedback_url_empty_when_unconfigured(self) -> None:
+        env_value = os.environ.pop("ELIA_BETA_FEEDBACK_URL", None)
+        try:
+            with patch("core._version.ELIA_BETA_FEEDBACK_URL", ""):
+                self.assertEqual(beta_feedback_url(), "")
+        finally:
+            if env_value is not None:
+                os.environ["ELIA_BETA_FEEDBACK_URL"] = env_value
 
 
 if __name__ == "__main__":

@@ -369,6 +369,7 @@ export type AppAboutResponse = {
   version: string;
   version_display: string;
   developer: string;
+  contact_email?: string | null;
   tagline: string;
   license_text: string;
   changelog: ChangelogEntry[];

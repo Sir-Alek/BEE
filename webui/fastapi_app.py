@@ -159,10 +159,10 @@ def _repo_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
-def _projects_dir() -> str:
+def _projects_dir(platform: str = "web") -> str:
     from core.elia_paths import behave_projects_dir
 
-    return str(behave_projects_dir())
+    return str(behave_projects_dir(platform))
 
 def _user_data_root() -> str:
     from core.elia_paths import ensure_user_data_root
@@ -230,9 +230,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/app/about")
     def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core._version import ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
+        from core._version import ELIA_CONTACT_EMAIL, ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
         from core.changelog import load_changelog
-        from webui.error_reporting import beta_feedback_url, execution_log_retention_label
+        from webui.error_reporting import beta_feedback_url, execution_log_about_hint
 
         licence_path = os.path.join(base_dir, "Licence.txt")
         license_text = ""
@@ -248,14 +248,12 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "version": ELIA_VERSION,
             "version_display": elia_version_display(),
             "developer": ELIA_DEVELOPER,
+            "contact_email": ELIA_CONTACT_EMAIL,
             "tagline": ELIA_TAGLINE,
             "license_text": license_text,
             "changelog": load_changelog(base_dir),
             "beta_feedback_url": feedback or None,
-            "local_logs_hint": (
-                "Documents/ELIA/logs/elia_execution.log — "
-                + execution_log_retention_label()
-            ),
+            "local_logs_hint": execution_log_about_hint(),
         }
 
     @app.get("/api/ai/status")
@@ -660,7 +658,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.mark_error(job_id, message="Missing url", details="url is required for puppeteer_recorder")
                         return
 
-                    projects_dir = _projects_dir()
+                    projects_dir = _projects_dir("web")
 
                     import re
                     import time
@@ -959,7 +957,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     recorder.record(
                         apk_path=req.apk_path or "",
                         device_id=req.device_id or "",
-                        projects_dir=_projects_dir(),
+                        projects_dir=_projects_dir("mobile"),
                         app_package=req.app_package or "",
                         app_activity=req.app_activity or "",
                     )
@@ -979,7 +977,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     recorder.record(
                         window_name=req.window_name or "",
                         exe_path=req.exe_path or "",
-                        projects_dir=_projects_dir(),
+                        projects_dir=_projects_dir("legacy"),
                     )
                     return
 
@@ -1029,7 +1027,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     jm.update_progress(job_id, {"stage": f"Convirtiendo {len(chunks)} bloques a BDD…"})
 
-                    from core.elia_paths import behave_projects_dir
+                    from core.elia_paths import doc_features_dir
 
                     output_dir = str(doc_features_dir())
                     converter = BDDDocConverter(use_ai=use_ai, ui=adapter)
@@ -1040,7 +1038,6 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         link_scenario_by_doc=req.link_scenario_by_doc,
                         link_recording=req.link_recording,
                         link_recording_by_doc=req.link_recording_by_doc,
-                        projects_dir=str(behave_projects_dir()),
                     )
 
                     summary = (
@@ -1224,25 +1221,25 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         from core.req_intelligence.feature_scanner import scan_project_scenarios
-        from core.elia_paths import behave_projects_dir, doc_features_dir
+        from core.elia_paths import behave_project_search_roots, doc_features_dir
 
         results: List[Dict[str, str]] = []
         dirs_to_scan: List[str] = []
 
-        # Scan behave projects
-        proj_root = behave_projects_dir()
         if project:
-            candidate = os.path.join(str(proj_root), project)
-            if os.path.isdir(candidate):
-                dirs_to_scan.append(candidate)
+            for root in behave_project_search_roots():
+                candidate = os.path.join(str(root), project)
+                if os.path.isdir(candidate):
+                    dirs_to_scan.append(candidate)
         else:
-            try:
-                for entry in os.listdir(str(proj_root)):
-                    full = os.path.join(str(proj_root), entry)
-                    if os.path.isdir(full):
-                        dirs_to_scan.append(full)
-            except OSError:
-                pass
+            for root in behave_project_search_roots():
+                try:
+                    for entry in os.listdir(str(root)):
+                        full = os.path.join(str(root), entry)
+                        if os.path.isdir(full):
+                            dirs_to_scan.append(full)
+                except OSError:
+                    pass
 
         # Also scan doc_features dir
         dirs_to_scan.append(str(doc_features_dir()))
@@ -1266,11 +1263,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         _: None = Depends(_require_localhost),
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
-        from core.elia_paths import behave_projects_dir
-        from core.req_intelligence.recording_scanner import scan_all_recordings
+        from core.elia_paths import behave_project_search_roots
+        from core.req_intelligence.recording_scanner import scan_all_recordings_from_roots
 
-        proj_root = str(behave_projects_dir())
-        refs = scan_all_recordings(proj_root, project_filter=project)
+        roots = [str(p) for p in behave_project_search_roots()]
+        refs = scan_all_recordings_from_roots(roots, project_filter=project)
         return {
             "recordings": [
                 {

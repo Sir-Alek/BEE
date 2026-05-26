@@ -65,6 +65,14 @@ def execution_log_retention_label() -> str:
     return f"rotación ~{max_mb} MB × {backups + 1} archivos (máx. ~{max_mb * (backups + 1)} MB)"
 
 
+def execution_log_about_hint() -> str:
+    """Texto breve para Acerca de: ruta del log y para qué sirve."""
+    return (
+        "Registro local de diagnóstico y errores: "
+        "Documents/ELIA/logs/"
+    )
+
+
 def get_execution_logger() -> logging.Logger:
     """Logger dedicado a ELIA; no captura uvicorn/fastapi en el archivo."""
     configure_execution_logging()
@@ -229,4 +237,9 @@ def load_job_error_report(job_id: str) -> Optional[str]:
 
 
 def beta_feedback_url() -> str:
-    return (os.environ.get("ELIA_BETA_FEEDBACK_URL") or "").strip()
+    from core._version import ELIA_BETA_FEEDBACK_URL
+
+    override = (os.environ.get("ELIA_BETA_FEEDBACK_URL") or "").strip()
+    if override:
+        return override
+    return (ELIA_BETA_FEEDBACK_URL or "").strip()

@@ -21,6 +21,7 @@ import type { SettingsTabId } from "../app/settingsTabs";
 import { emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../connectorDefaults";
 import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
 import type { EliaConnectorProfile } from "../types";
+import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 import { useConnectorContext } from "../context/ConnectorContext";
 import { useLicenseContext } from "../context/LicenseContext";
 import { useSettingsUiContext } from "../context/SettingsUiContext";
@@ -597,6 +598,65 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       </div>
                     </div>
                   )}
+                  {license.reason === "license_expired" && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: c.text,
+                        marginBottom: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.licWarnBorder}`,
+                        background: c.licWarnBg,
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        Tu licencia ha caducado. Copia tu huella y solicita extensión o una nueva clave por el
+                        formulario de soporte.
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          wordBreak: "break-all",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>Huella de máquina:</span>
+                        <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
+                          {license.machine_fingerprint}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await copyTextToClipboard(license.machine_fingerprint);
+                              if (ok) {
+                                setFpCopyAck(true);
+                                window.setTimeout(() => setFpCopyAck(false), 2000);
+                              } else {
+                                setLicenseActivateMsg("No se pudo copiar. Selecciona el código manualmente.");
+                              }
+                            })();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${c.btnGhostBorder}`,
+                            background: c.btnGhostBg,
+                            color: c.text,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {fpCopyAck ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {license.activated && licenseFpVisible && (
                     <div
                       style={{
@@ -736,6 +796,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       Obtener huella de máquina
                     </button>
                   )}
+                  <BetaFeedbackLink url={aboutInfo?.beta_feedback_url} c={c} variant="license" />
                 </>
               ) : (
                 <div style={{ fontSize: 13, color: c.muted }}>No se pudo consultar el estado de la licencia.</div>
@@ -1311,45 +1372,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       })}
                     </div>
                   )}
-                  {aboutInfo.beta_feedback_url ? (
-                    <div
-                      style={{
-                        marginBottom: 12,
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        border: `1px solid ${c.border}`,
-                        background: c.inputBg,
-                        fontSize: 13,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, marginBottom: 6 }}>Beta — reporte de errores</div>
-                      <div style={{ color: c.muted, marginBottom: 8 }}>
-                        Si encuentras un fallo, descarga el reporte desde la pantalla del trabajo y compártelo solo
-                        tras revisarlo. Sin telemetría automática en la nube.
-                      </div>
-                      <a
-                        href={aboutInfo.beta_feedback_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: c.primary, fontWeight: 600 }}
-                      >
-                        Abrir formulario de feedback →
-                      </a>
-                      {aboutInfo.local_logs_hint ? (
-                        <div style={{ marginTop: 8, fontSize: 12, color: c.muted }}>
-                          Log local: {aboutInfo.local_logs_hint}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : aboutInfo.local_logs_hint ? (
-                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
-                      Log local de diagnóstico: {aboutInfo.local_logs_hint}
-                    </div>
-                  ) : null}
                   <div style={{ fontSize: 14, marginBottom: 12 }}>
                     Desarrollador: {aboutInfo.developer}
                   </div>
+                  {aboutInfo.contact_email ? (
+                    <div style={{ fontSize: 14, marginBottom: 12 }}>
+                      Contacto:{" "}
+                      <a href={`mailto:${aboutInfo.contact_email}`} style={{ color: c.primary }}>
+                        {aboutInfo.contact_email}
+                      </a>
+                    </div>
+                  ) : null}
+                  <BetaFeedbackLink url={aboutInfo.beta_feedback_url} c={c} variant="about" />
+                  {aboutInfo.local_logs_hint ? (
+                    <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
+                      {aboutInfo.local_logs_hint}
+                    </div>
+                  ) : null}
                   <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>Licencia de uso</div>
                   <div
                     style={{

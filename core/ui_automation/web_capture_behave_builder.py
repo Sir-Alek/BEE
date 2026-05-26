@@ -21,12 +21,20 @@ def _trim_script_for_preview(script_content: str, max_chars: int = 10000) -> str
 
 class WebCaptureBehaveBuilder:
     
-    def __init__(self, base_dir, ui: IUI, use_ai: bool = False, link_scenario: Optional[str] = None):
+    def __init__(
+        self,
+        base_dir,
+        ui: IUI,
+        use_ai: bool = False,
+        link_scenario: Optional[str] = None,
+        platform: str = "web",
+    ):
         self.base_dir = base_dir
         from core.elia_paths import behave_projects_dir
         from core.ui_automation.recording_linkage import decode_scenario_link
 
-        self.projects_dir = str(behave_projects_dir())
+        self.platform = platform
+        self.projects_dir = str(behave_projects_dir(platform))
         self.selected_actions = []
         self.ui = ui
         self.use_ai = use_ai
@@ -188,13 +196,14 @@ class WebCaptureBehaveBuilder:
         # Normalizar la ruta para manejar correctamente las barras
         js_file_path = os.path.normpath(js_file_path)
         
-        # Buscar la carpeta 'proyectos' en la ruta
+        # Buscar carpeta de proyecto bajo behave/{web|mobile|legacy|api|proyectos}/
         parts = js_file_path.split(os.sep)
         try:
-            proyectos_index = parts.index('proyectos')
-            if proyectos_index + 1 < len(parts):
-                project_path = os.path.join(*parts[:proyectos_index + 2])
-                return project_path
+            behave_idx = parts.index("behave")
+            if behave_idx + 2 < len(parts):
+                segment = parts[behave_idx + 1]
+                if segment in ("web", "mobile", "legacy", "api", "proyectos"):
+                    return os.path.join(*parts[: behave_idx + 3])
         except ValueError:
             pass
         

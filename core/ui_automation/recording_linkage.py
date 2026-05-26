@@ -169,7 +169,7 @@ def decode_recording_link(link: Optional[str]) -> Optional[Tuple[str, str]]:
 
 def resolve_recording_basename_for_doc(
     doc_path: str,
-    projects_dir: str,
+    projects_dir: Optional[str] = None,
     explicit: Optional[str] = None,
 ) -> Optional[str]:
     """
@@ -187,17 +187,35 @@ def resolve_recording_basename_for_doc(
         return os.path.basename(str(explicit).strip())
 
     stem = os.path.splitext(os.path.basename(doc_path))[0]
-    if not stem or not os.path.isdir(projects_dir):
+    if not stem:
         return None
 
-    for name in os.listdir(projects_dir):
-        scripts = os.path.join(projects_dir, name, "scripts")
-        if not os.path.isdir(scripts):
+    roots: list[str] = []
+    if projects_dir and os.path.isdir(projects_dir):
+        roots.append(projects_dir)
+    try:
+        from core.elia_paths import behave_project_search_roots
+
+        for root in behave_project_search_roots():
+            path = str(root)
+            if path not in roots:
+                roots.append(path)
+    except Exception:
+        pass
+
+    for root in roots:
+        try:
+            entries = os.listdir(root)
+        except OSError:
             continue
-        for ext in (".json", ".js"):
-            candidate = os.path.join(scripts, stem + ext)
-            if os.path.isfile(candidate):
-                return stem + ext
+        for name in entries:
+            scripts = os.path.join(root, name, "scripts")
+            if not os.path.isdir(scripts):
+                continue
+            for ext in (".json", ".js"):
+                candidate = os.path.join(scripts, stem + ext)
+                if os.path.isfile(candidate):
+                    return stem + ext
     return None
 
 
