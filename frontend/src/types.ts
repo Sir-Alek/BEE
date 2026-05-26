@@ -164,6 +164,7 @@ export type ModulesStatus = {
   mobile_recording: boolean;
   legacy_recording: boolean;
   doc_to_bdd: boolean;
+  api_testing: boolean;
 };
 
 export type LoadedDoc = {

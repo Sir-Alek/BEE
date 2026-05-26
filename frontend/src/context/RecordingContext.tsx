@@ -53,6 +53,8 @@ export type RecordingContextValue = {
   setApkPath: (v: string) => void;
   detectingForegroundApp: boolean;
   detectForegroundApp: () => Promise<{ package: string; activity: string } | null>;
+  captureApiTraffic: boolean;
+  setCaptureApiTraffic: (v: boolean) => void;
 };
 
 const RecordingContext = createContext<RecordingContextValue | null>(null);

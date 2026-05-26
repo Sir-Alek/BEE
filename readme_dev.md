@@ -21,6 +21,14 @@ Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a 
 - **Dónde se muestra en la UI:** Configuración → **Acerca de** y **Licencia**; junto a «Descargar reporte de error» cuando un job falla.
 - Si la URL está vacía y no hay env var, los enlaces no aparecen (comportamiento seguro).
 
+### Módulo Pruebas API (`api_testing`)
+
+- **Código:** `core/api_automation/`, `webui/api_routes.py`, pestaña **Pruebas API** en la UI.
+- **Datos:** `Documents/ELIA/behave/api/{proyecto}/` (escenarios JSON, features, `locustfile.py`).
+- **Captura web:** checkbox en Automatización UI o prompt tras video; genera `{grabacion}_api_traffic.json`.
+- **Locust (opcional):** `pip install locust`.
+- **Ejecución en vivo:** `POST /api/runs` y SSE `/api/runs/{id}/stream`.
+
 ## Entorno virtual (Python)
 
 Desde la raíz del repositorio:

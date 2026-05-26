@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import traceback
 import sys
 from typing import Any, Dict, List, Literal, Optional
@@ -67,6 +68,9 @@ class ConvertRequest(BaseModel):
         "mobile_to_behave",
         "legacy_to_behave",
         "doc_to_bdd",
+        "api_to_behave",
+        "api_run_behave",
+        "api_load_test",
     ]
     url: Optional[str] = None
     use_ai: bool = False
@@ -88,6 +92,15 @@ class ConvertRequest(BaseModel):
     link_scenario: Optional[str] = None
     link_scenario_by_doc: Optional[Dict[str, str]] = None
     link_recording_by_doc: Optional[Dict[str, str]] = None
+    capture_api: bool = False
+    api_project: Optional[str] = None
+    api_traffic_path: Optional[str] = None
+    api_scenario_ids: Optional[List[str]] = None
+    api_feature_name: Optional[str] = None
+    load_test_users: int = 5
+    load_test_spawn_rate: float = 1.0
+    load_test_run_time: str = "1m"
+    load_test_host: str = ""
 
     @model_validator(mode="after")
     def validate_mode_requirements(self) -> "ConvertRequest":
@@ -760,6 +773,24 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         ),
                     )
 
+                    if grabar_video is None:
+                        grabar_video = False
+
+                    capture_api = bool(req.capture_api)
+                    if not capture_api:
+                        from core.modules_config import is_module_enabled
+
+                        if is_module_enabled("api_testing"):
+                            capture_api_answer = jm.create_prompt_and_wait(
+                                job_id,
+                                prompt=mk_prompt(
+                                    "yes_no",
+                                    title="Captura de tráfico API",
+                                    message="¿Deseas capturar peticiones XHR/fetch (estilo JMeter) durante la grabación?",
+                                ),
+                            )
+                            capture_api = capture_api_answer is True
+
                     # Video: se prepara el objeto pero NO se inicia aún.
                     # La grabación comienza solo cuando web_capture_engine.js señaliza BROWSER_READY,
                     # es decir, cuando el browser ya abrió la URL y está listo para interactuar.
@@ -801,7 +832,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                         result = script_runtime_host.run_obfuscated_js(
                             "web_capture_engine.js",
-                            [output_file, req.url],
+                            [output_file, req.url, "1" if capture_api else "0"],
                             subprocess_timeout=None,
                             focus_automation_browser=True,
                             on_browser_ready=_on_browser_ready,
@@ -812,7 +843,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         recorder_js_path = os.path.join(base_dir, "core", "ui_automation", "web_capture_engine.js")
                         result = run_subprocess_with_automation_focus(
-                            ["node", recorder_js_path, output_file, req.url],
+                            ["node", recorder_js_path, output_file, req.url, "1" if capture_api else "0"],
                             cwd=base_dir,
                             timeout=None,
                             on_browser_ready=_on_browser_ready,
@@ -837,6 +868,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from webui.conversion_result import conversion_result, file_entry
 
                     generated = [file_entry(output_file, "grabación")]
+                    api_traffic_path = output_file.replace(".js", "_api_traffic.json")
+                    if capture_api and os.path.isfile(api_traffic_path):
+                        generated.append(file_entry(api_traffic_path, "tráfico API"))
                     if video_path and os.path.isfile(video_path):
                         generated.append(file_entry(video_path, "video"))
                     jm.update_progress(
@@ -979,6 +1013,117 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         exe_path=req.exe_path or "",
                         projects_dir=_projects_dir("legacy"),
                     )
+                    return
+
+                if req.mode == "api_to_behave":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("api_testing"):
+                        jm.mark_error(job_id, message="Módulo no habilitado", details="api_testing requiere licencia vigente.")
+                        return
+                    from core.api_automation.api_to_behave_converter import convert_traffic_to_feature, write_api_feature
+                    from core.api_automation.traffic_store import load_scenario
+
+                    project = (req.api_project or "DefaultApi").strip()
+                    jm.update_progress(job_id, {"stage": "Convirtiendo a Behave API"})
+                    try:
+                        if req.api_traffic_path and os.path.isfile(req.api_traffic_path):
+                            feature = convert_traffic_to_feature(
+                                project, req.api_traffic_path, feature_name=req.api_feature_name
+                            )
+                        else:
+                            requests = [load_scenario(project, sid) for sid in (req.api_scenario_ids or [])]
+                            if not requests:
+                                raise ValueError("Sin escenarios ni tráfico para convertir")
+                            feature = write_api_feature(
+                                project,
+                                requests,
+                                feature_name=req.api_feature_name or "Escenario API",
+                            )
+                        jm.update_progress(job_id, {"stage": "Listo", "feature_file": feature})
+                        adapter.info("ELIA · API → Behave", f"Feature generado:\n{feature}")
+                        jm.mark_done(job_id)
+                    except Exception as e:
+                        jm.mark_error(job_id, message="Error API → Behave", details=f"{e}\n{traceback.format_exc()}")
+                    return
+
+                if req.mode == "api_run_behave":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("api_testing"):
+                        jm.mark_error(job_id, message="Módulo no habilitado", details="api_testing requiere licencia vigente.")
+                        return
+                    from core.elia_paths import behave_projects_dir
+                    from core.test_runner.runner_service import test_runner_service
+
+                    project = (req.api_project or "DefaultApi").strip()
+                    project_path = str(behave_projects_dir("api") / project)
+                    feature = req.api_feature_name or "features"
+                    cmd = [sys.executable, "-m", "behave", feature]
+                    run_id = test_runner_service.start(kind="behave_api", command=cmd, cwd=project_path)
+                    jm.update_progress(job_id, {"stage": "Ejecutando Behave API", "run_id": run_id})
+                    while True:
+                        run = test_runner_service.get(run_id)
+                        if run is None or run.state != "running":
+                            break
+                        time.sleep(0.5)
+                    run = test_runner_service.get(run_id)
+                    if run and run.state == "done":
+                        jm.update_progress(job_id, {"stage": "Completado", "run_id": run_id})
+                        jm.mark_done(job_id)
+                    else:
+                        jm.mark_error(
+                            job_id,
+                            message="Behave API falló",
+                            details="\n".join((run.lines if run else [])[-40:]),
+                        )
+                    return
+
+                if req.mode == "api_load_test":
+                    from core.modules_config import is_module_enabled
+                    if not is_module_enabled("api_testing"):
+                        jm.mark_error(job_id, message="Módulo no habilitado", details="api_testing requiere licencia vigente.")
+                        return
+                    from core.api_automation.locust_generator import write_locustfile
+                    from core.api_automation.traffic_store import list_scenarios, load_scenario
+                    from core.elia_paths import behave_projects_dir
+                    from core.test_runner.runner_service import test_runner_service
+
+                    project = (req.api_project or "DefaultApi").strip()
+                    project_path = str(behave_projects_dir("api") / project)
+                    scenarios = [load_scenario(project, s["id"]) for s in list_scenarios(project)]
+                    locust_path = write_locustfile(project_path, scenarios, host=req.load_test_host or "")
+                    try:
+                        import locust  # noqa: F401
+                    except ImportError:
+                        jm.mark_error(job_id, message="Locust no instalado", details="pip install locust")
+                        return
+                    cmd = [
+                        sys.executable,
+                        "-m",
+                        "locust",
+                        "-f",
+                        os.path.basename(locust_path),
+                        "--headless",
+                        "-u",
+                        str(req.load_test_users),
+                        "-r",
+                        str(req.load_test_spawn_rate),
+                        "-t",
+                        req.load_test_run_time,
+                    ]
+                    if req.load_test_host:
+                        cmd.extend(["--host", req.load_test_host])
+                    run_id = test_runner_service.start(kind="locust", command=cmd, cwd=project_path)
+                    jm.update_progress(job_id, {"stage": "Ejecutando Locust", "run_id": run_id})
+                    while True:
+                        run = test_runner_service.get(run_id)
+                        if run is None or run.state != "running":
+                            break
+                        time.sleep(0.5)
+                    run = test_runner_service.get(run_id)
+                    if run and run.state == "done":
+                        jm.mark_done(job_id)
+                    else:
+                        jm.mark_error(job_id, message="Locust falló", details="\n".join((run.lines if run else [])[-40:]))
                     return
 
                 if req.mode == "doc_to_bdd":
@@ -1280,6 +1425,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                 for r in refs
             ]
         }
+
+    from webui.api_routes import register_api_routes
+
+    register_api_routes(app, require_localhost=_require_localhost, require_active_license=_require_active_license)
 
     # -----------------------
     # SPA static serving

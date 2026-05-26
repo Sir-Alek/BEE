@@ -8,9 +8,10 @@ export type HomeUiContextValue = {
   c: Record<string, string>;
   dark: boolean;
   initialChecked: boolean;
-  homeTab: "ui" | "req";
-  setHomeTab: (tab: "ui" | "req") => void;
+  homeTab: "ui" | "req" | "api";
+  setHomeTab: (tab: "ui" | "req" | "api") => void;
   homeHint: string | null;
+  setHomeHint: React.Dispatch<React.SetStateAction<string | null>>;
   aiCaps: AiCapabilitiesResponse | null;
   license: LicenseState | null;
   setSettingsOpen: (open: boolean) => void;

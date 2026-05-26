@@ -36,7 +36,8 @@ export default function App() {
   const { c, dark, toggle } = useEliaTheme();
 
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
-  const [homeTab, setHomeTab] = useState<"ui" | "req">("ui");
+  const [homeTab, setHomeTab] = useState<"ui" | "req" | "api">("ui");
+  const [captureApiTraffic, setCaptureApiTraffic] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
   const { job, events: jobEvents, errorText: jobPollError } = useJobProgress(jobId, polling);
@@ -329,6 +330,7 @@ export default function App() {
             mode,
             config: recordingConfig,
             urlValue,
+            captureApi: captureApiTraffic,
             mobilePackageOverride:
               mode === "mobile_recorder" ? { package: mobilePkg, activity: mobileAct } : undefined,
             docExtras:
@@ -545,7 +547,7 @@ export default function App() {
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
       appPackage, setAppPackage, appActivity, setAppActivity, apkPath, setApkPath,
-      detectingForegroundApp, detectForegroundApp,
+      detectingForegroundApp, detectForegroundApp, captureApiTraffic, setCaptureApiTraffic,
     }),
     [
       platform, urlValue, windowName, exePath, recorderPreflight, recorderPreflightLoading,
@@ -555,6 +557,7 @@ export default function App() {
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, appPackage,
       appActivity, apkPath, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
+      captureApiTraffic,
     ],
   );
 
@@ -576,7 +579,7 @@ export default function App() {
 
   const homeUiCtx = useMemo(
     () => ({
-      c, dark, initialChecked, homeTab, setHomeTab, homeHint, aiCaps, license,
+      c, dark, initialChecked, homeTab, setHomeTab, homeHint, setHomeHint, aiCaps, license,
       setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
       showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
       autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,

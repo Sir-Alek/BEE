@@ -4,6 +4,19 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.8.0] - 2026-05-19
+
+### Añadido
+
+- **Módulo Pruebas API (JMeter-lite):** pestaña «Pruebas API», captura XHR/fetch en grabación web Puppeteer, escenarios Postman-lite, conversión a Behave HTTP, ejecución con consola en vivo (SSE) y generación Locust.
+- **Infraestructura:** `core/api_automation/` (modelos, tráfico, conversor, Locust), `core/test_runner/` (subprocesos + streaming), rutas `/api/api/*` y `/api/runs/*`.
+- **Licencia:** módulo `api_testing` incluido en licencia vigente (beta 0.8.0).
+
+### Cambiado
+
+- Versión **0.8.0** — consolida mejoras beta previas (refactor UI 0.7.x, reportes offline, feedback, carpetas Behave por plataforma).
+- Grabación web: checkbox/prompt «Capturar tráfico API»; exporta `{grabacion}_api_traffic.json`.
+
 ## [0.7.20] - 2026-05-22
 
 ### Añadido

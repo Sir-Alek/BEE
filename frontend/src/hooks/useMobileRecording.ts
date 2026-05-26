@@ -17,7 +17,7 @@ export type ShowHomeErrorFn = (message: string, opts?: { mobileInline?: boolean 
 
 export type UseMobileRecordingOptions = {
   isHomeSurface: boolean;
-  homeTab: "ui" | "req";
+  homeTab: "ui" | "req" | "api";
   platform: "web" | "mobile" | "legacy";
   canRunJobs: boolean;
   onShowError: ShowHomeErrorFn;

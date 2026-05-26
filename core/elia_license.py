@@ -570,6 +570,7 @@ def _licensed_modules_dict(parsed: ParsedLicenseKey) -> Dict[str, bool]:
     return {
         "mobile_recording": parsed.mobile,
         "legacy_recording": parsed.legacy,
+        "api_testing": True,
     }
 
 
@@ -604,7 +605,7 @@ def get_active_license_modules() -> Optional[Dict[str, bool]]:
         return None
     if st.licensed_modules is not None:
         return dict(st.licensed_modules)
-    return {"mobile_recording": False, "legacy_recording": False}
+    return {"mobile_recording": False, "legacy_recording": False, "api_testing": False, "doc_to_bdd": False}
 
 
 def activate_with_key(key: str) -> bool:
@@ -672,7 +673,12 @@ def get_license_status() -> LicenseStatus:
             activated=True,
             machine_fingerprint=get_machine_fingerprint(),
             message="Licencia omitida (ELIA_SKIP_LICENSE).",
-            licensed_modules={"mobile_recording": True, "legacy_recording": True},
+            licensed_modules={
+                "mobile_recording": True,
+                "legacy_recording": True,
+                "api_testing": True,
+                "doc_to_bdd": True,
+            },
         )
 
     if kill_switch_active():

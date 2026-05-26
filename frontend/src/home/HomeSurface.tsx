@@ -10,6 +10,7 @@ import {
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
+import { ApiSurface } from "./ApiSurface";
 import { useConnectorContext } from "../context/ConnectorContext";
 import { useHomeUiContext } from "../context/HomeUiContext";
 import { useRecordingContext } from "../context/RecordingContext";
@@ -22,7 +23,7 @@ export function HomeSurface() {
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
     setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
-    availableRecordings, setAvailableScenarios, setAvailableRecordings,
+    availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
   } = useHomeUiContext();
   const {
     connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -37,6 +38,7 @@ export function HomeSurface() {
     emulatorMessage, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
     detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
     windowName, setWindowName, exePath, setExePath,
+    captureApiTraffic, setCaptureApiTraffic,
   } = useRecordingContext();
 
   if (!initialChecked) return null;
@@ -101,6 +103,22 @@ export function HomeSurface() {
                 }}
               >
                 Inteligencia de Requerimientos
+              </button>
+              <button
+                type="button"
+                data-testid="elia-home-tab-api"
+                onClick={() => setHomeTab("api")}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${homeTab === "api" ? c.primary : c.btnGhostBorder}`,
+                  background: homeTab === "api" ? c.primary : c.btnGhostBg,
+                  color: homeTab === "api" ? c.primaryFg : c.text,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Pruebas API
               </button>
             </div>
 
@@ -376,6 +394,32 @@ export function HomeSurface() {
                     onExePathChange={setExePath}
                   />
                 )}
+
+                {modules?.api_testing ? (
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
+                      fontSize: 13,
+                      color: platform === "web" ? c.text : c.muted,
+                      marginBottom: 14,
+                      cursor: platform === "web" ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={captureApiTraffic}
+                      disabled={platform !== "web"}
+                      onChange={(e) => setCaptureApiTraffic(e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      Capturar tráfico API (XHR/fetch) junto con la grabación.
+                      {platform !== "web" ? " Disponible solo en Web por ahora." : null}
+                    </span>
+                  </label>
+                ) : null}
 
                 {aiCaps && (
                   <div style={{ fontSize: 13, color: c.muted, marginBottom: 14, lineHeight: 1.45 }}>
@@ -832,6 +876,15 @@ export function HomeSurface() {
                   >Lote .json → .feature</button>
                 </div>
               </div>
+            )}
+            {homeTab === "api" && (
+              <ApiSurface
+                c={c}
+                modules={modules}
+                canRunJobs={canRunJobs}
+                onShowError={showHomeError}
+                setHomeHint={setHomeHint}
+              />
             )}
           </div>
 

@@ -49,6 +49,9 @@ numpy==2.2.6
 PyAutoGUI==0.9.54
 PyGetWindow==0.0.9
 
+# --- Pruebas de carga API (opcional; módulo api_testing) ---
+# locust>=2.32.0
+
 # --- Behave y utilidades de proyectos (resources/behave, step_by_step) ---
 behave==1.2.6
 fpdf2==2.7.4

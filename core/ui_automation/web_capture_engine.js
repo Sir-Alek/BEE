@@ -445,7 +445,64 @@ let actionRecorder = null;
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
     const outputFile = process.argv[2] || path.join(__dirname, 'grabaciones', 'recorded_actions.js');
+    const captureApi = (process.argv[4] || '').trim() === '1';
+    const apiTrafficPath = outputFile.replace(/\.js$/i, '') + '_api_traffic.json';
+    const apiEntries = [];
     actionRecorder = new ActionRecorder(outputFile);
+
+    function shouldCaptureApiUrl(url) {
+        try {
+            const u = new URL(url);
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+            const noise = [
+                'google-analytics.com', 'googletagmanager.com', 'facebook.com/tr',
+                'hotjar.com', 'segment.io', 'doubleclick.net', 'clarity.ms',
+            ];
+            const lower = url.toLowerCase();
+            return !noise.some((n) => lower.includes(n));
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function attachApiSniffer(pageRef) {
+        if (!captureApi) return;
+        pageRef.on('response', async (response) => {
+            try {
+                const request = response.request();
+                const rt = request.resourceType();
+                if (rt !== 'xhr' && rt !== 'fetch') return;
+                const url = request.url();
+                if (!shouldCaptureApiUrl(url)) return;
+                let responseBody = null;
+                try {
+                    const ct = (response.headers()['content-type'] || '').toLowerCase();
+                    if (ct.includes('json') || ct.includes('text') || ct.includes('xml')) {
+                        responseBody = await response.text();
+                        if (responseBody && responseBody.length > 50000) {
+                            responseBody = responseBody.slice(0, 50000) + '...[truncado]';
+                        }
+                    }
+                } catch (e) {
+                    responseBody = null;
+                }
+                apiEntries.push({
+                    id: 'req-' + (apiEntries.length + 1),
+                    method: request.method(),
+                    url,
+                    resource_type: rt,
+                    request_headers: request.headers(),
+                    request_body: request.postData() || null,
+                    response_status: response.status(),
+                    response_headers: response.headers(),
+                    response_body: responseBody,
+                    timestamp: Date.now(),
+                });
+            } catch (e) {
+                // ignore individual capture errors
+            }
+        });
+    }
 
     // Sistema de cola ultra-optimizado para logAction
     let logActionQueue = [];
@@ -901,6 +958,8 @@ let actionRecorder = null;
       });
     });
 
+    await attachApiSniffer(page);
+
     await page.goto(targetUrl);
     initialUrl = page.url();
 
@@ -934,6 +993,22 @@ let actionRecorder = null;
             actionRecorder.write(action);
           });
           logActionQueue = [];
+        }
+
+        if (captureApi && apiEntries.length > 0) {
+          try {
+            const fs = require('fs');
+            const payload = {
+              version: 1,
+              captured_at: new Date().toISOString(),
+              source_url: initialUrl || targetUrl,
+              entries: apiEntries,
+            };
+            fs.writeFileSync(apiTrafficPath, JSON.stringify(payload, null, 2), 'utf8');
+            console.log('API_TRAFFIC_SAVED:' + apiTrafficPath);
+          } catch (e) {
+            console.error('API_TRAFFIC_ERROR:' + String(e));
+          }
         }
         
         actionRecorder.end();

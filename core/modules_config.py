@@ -6,7 +6,7 @@ incluido doc_to_bdd.
 
 Con licencia vigente:
   - doc_to_bdd: true (producto base)
-  - mobile_recording / legacy_recording: flags M/L de la clave activa
+  - mobile_recording / legacy_recording / api_testing: flags M/L/A de la clave activa
 
 Desarrollo:
   - ELIA_SKIP_LICENSE=1 → todos los módulos true
@@ -25,6 +25,7 @@ _MODULE_NAMES: Dict[str, bool] = {
     "mobile_recording": False,
     "legacy_recording": False,
     "doc_to_bdd": False,
+    "api_testing": False,
 }
 
 
@@ -68,6 +69,7 @@ def _modules_from_license() -> Dict[str, bool]:
             "mobile_recording": bool(lic.get("mobile_recording")),
             "legacy_recording": bool(lic.get("legacy_recording")),
             "doc_to_bdd": True,
+            "api_testing": bool(lic.get("api_testing")),
         }
     except Exception:
         return dict(_MODULE_NAMES)

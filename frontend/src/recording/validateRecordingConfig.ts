@@ -109,8 +109,9 @@ export function buildConvertJobBody(params: {
   mobilePackageOverride?: { package: string; activity: string };
   docExtras?: DocToBddExtras;
   connectorProfile?: EliaConnectorProfile;
+  captureApi?: boolean;
 }): Parameters<typeof import("../api").startConvertJob>[0] {
-  const { mode, config, urlValue, mobilePackageOverride, docExtras, connectorProfile } = params;
+  const { mode, config, urlValue, mobilePackageOverride, docExtras, connectorProfile, captureApi } = params;
 
   const linkScenarioByDoc =
     mode === "doc_to_bdd" && docExtras
@@ -146,6 +147,7 @@ export function buildConvertJobBody(params: {
   return {
     mode,
     url: mode === "puppeteer_recorder" ? urlValue.trim() : undefined,
+    ...(mode === "puppeteer_recorder" && captureApi ? { capture_api: true } : {}),
     ...(ELIA_PROFILE_MODES.has(mode)
       ? {
           elia_use_inline_connectors: true,

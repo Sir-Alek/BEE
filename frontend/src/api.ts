@@ -34,6 +34,9 @@ export async function startConvertJob(params: {
     | "mobile_to_behave"
     | "legacy_to_behave"
     | "doc_to_bdd"
+    | "api_to_behave"
+    | "api_run_behave"
+    | "api_load_test"
     // ELIA
     | "elia_jira_smoke"
     | "elia_value_edge_smoke"
@@ -59,11 +62,22 @@ export async function startConvertJob(params: {
   link_scenario?: string;
   link_scenario_by_doc?: Record<string, string>;
   link_recording_by_doc?: Record<string, string>;
+  capture_api?: boolean;
+  api_project?: string;
+  api_traffic_path?: string;
+  api_scenario_ids?: string[];
+  api_feature_name?: string;
+  load_test_users?: number;
+  load_test_spawn_rate?: number;
+  load_test_run_time?: string;
+  load_test_host?: string;
 }): Promise<{ job_id: string }> {
   const {
     mode, url, elia_use_inline_connectors, elia_jira, elia_value_edge,
     platform, apk_path, device_id, app_package, app_activity, window_name, exe_path,
     doc_files, link_recording, link_scenario, link_scenario_by_doc, link_recording_by_doc,
+    capture_api, api_project, api_traffic_path, api_scenario_ids, api_feature_name,
+    load_test_users, load_test_spawn_rate, load_test_run_time, load_test_host,
   } = params;
   const res = await fetch("/api/jobs/convert", {
     method: "POST",
@@ -86,6 +100,15 @@ export async function startConvertJob(params: {
       ...(link_scenario != null ? { link_scenario } : {}),
       ...(link_scenario_by_doc != null ? { link_scenario_by_doc } : {}),
       ...(link_recording_by_doc != null ? { link_recording_by_doc } : {}),
+      ...(capture_api != null ? { capture_api } : {}),
+      ...(api_project != null ? { api_project } : {}),
+      ...(api_traffic_path != null ? { api_traffic_path } : {}),
+      ...(api_scenario_ids != null ? { api_scenario_ids } : {}),
+      ...(api_feature_name != null ? { api_feature_name } : {}),
+      ...(load_test_users != null ? { load_test_users } : {}),
+      ...(load_test_spawn_rate != null ? { load_test_spawn_rate } : {}),
+      ...(load_test_run_time != null ? { load_test_run_time } : {}),
+      ...(load_test_host != null ? { load_test_host } : {}),
     }),
   });
   if (!res.ok) {
@@ -600,5 +623,93 @@ export async function sendPromptResponse(params: {
     const text = await res.text();
     throw new Error(`Failed to send response: ${res.status} ${text}`);
   }
+}
+
+export async function getApiProjects(): Promise<{ projects: string[] }> {
+  const res = await fetch("/api/api/projects");
+  if (!res.ok) throw new Error(`Failed to list API projects: ${res.status}`);
+  return res.json();
+}
+
+export async function createApiProject(name: string): Promise<{ ok: boolean; project: string }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(name)}`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to create API project: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiScenarios(project: string): Promise<{ scenarios: { id: string; name: string; path: string }[] }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/scenarios`);
+  if (!res.ok) throw new Error(`Failed to list scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiScenario(body: {
+  project: string;
+  scenario: Record<string, unknown>;
+  scenario_id?: string;
+}): Promise<{ ok: boolean; scenario_id: string }> {
+  const res = await fetch("/api/api/scenarios", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to save scenario: ${res.status}`);
+  return res.json();
+}
+
+export async function convertApiScenarios(body: {
+  project: string;
+  traffic_path?: string;
+  scenario_ids?: string[];
+  feature_name?: string;
+}): Promise<{ ok: boolean; feature_file: string }> {
+  const res = await fetch("/api/api/convert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to convert API scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function startTestRun(body: {
+  project: string;
+  kind?: string;
+  feature_file?: string;
+}): Promise<{ run_id: string }> {
+  const res = await fetch("/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to start run: ${res.status}`);
+  return res.json();
+}
+
+export async function getTestRun(runId: string): Promise<{
+  run_id: string;
+  state: string;
+  return_code: number | null;
+  lines: string[];
+}> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`Failed to get run: ${res.status}`);
+  return res.json();
+}
+
+export async function runLoadTest(body: {
+  project: string;
+  users: number;
+  spawn_rate: number;
+  run_time: string;
+  host?: string;
+}): Promise<{ run_id: string; locustfile: string }> {
+  const res = await fetch("/api/api/load-test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to start load test: ${res.status}`);
+  return res.json();
 }
 
