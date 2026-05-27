@@ -331,6 +331,20 @@ class MobileRecorder:
             if grabar_video:
                 video_path = build_video_path(project_path, prefix="video_emulador")
 
+        capture_api = False
+        from core.modules_config import is_module_enabled
+
+        if is_module_enabled("api_testing"):
+            cap_ans = jm.create_prompt_and_wait(
+                job_id,
+                prompt=_mk_prompt(
+                    "yes_no",
+                    title="Captura API",
+                    message="¿Capturar tráfico API (WebView/Chrome) durante la grabación móvil?",
+                ),
+            )
+            capture_api = cap_ans is True if cap_ans is not None else False
+
         resolved_package = (app_package or "").strip()
         resolved_activity = (app_activity or "").strip()
         if not (apk_path or "").strip() and not resolved_package:
@@ -376,6 +390,8 @@ class MobileRecorder:
         }
         if device_id.strip():
             capabilities["appium:udid"] = device_id.strip()
+        if capture_api:
+            capabilities["goog:loggingPrefs"] = {"performance": "ALL"}
 
         app_err = _apply_android_app_capabilities(
             capabilities,
@@ -434,6 +450,7 @@ class MobileRecorder:
 
         # 5. Captura de interacciones
         recorded_events = []
+        api_traffic_path: Optional[str] = None
         target_package = _target_package_from_capabilities(
             capabilities,
             app_package=app_package,
@@ -486,6 +503,23 @@ class MobileRecorder:
                         _emit(jm, job_id, "screen_captured", count=len(recorded_events))
                 except Exception:
                     break
+            if capture_api:
+                try:
+                    from core.api_automation.mobile_traffic_capture import (
+                        capture_from_appium_driver,
+                        save_mobile_capture,
+                    )
+
+                    cap_dict = capture_from_appium_driver(
+                        driver,
+                        source_url=target_package or resolved_package or "",
+                    )
+                    if cap_dict:
+                        api_project = os.path.basename(project_path)
+                        api_traffic_path = save_mobile_capture(api_project, rec_name, cap_dict)
+                        _emit(jm, job_id, "api_traffic_saved", path=api_traffic_path)
+                except Exception as exc:
+                    _emit(jm, job_id, "api_traffic_failed", error=str(exc))
             _emit(jm, job_id, "recording_stopped", events=len(recorded_events))
         finally:
             try:
@@ -519,6 +553,8 @@ class MobileRecorder:
         generated_files = [("grabación", output_file)]
         if video_path and os.path.isfile(video_path) and os.path.getsize(video_path) > 0:
             generated_files.append(("video", video_path))
+        if api_traffic_path and os.path.isfile(api_traffic_path):
+            generated_files.append(("tráfico API", api_traffic_path))
 
         adapter.info(
             "Grabación Móvil",

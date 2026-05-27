@@ -963,37 +963,23 @@ class WebCaptureBehaveBuilder:
         return json.dumps(combined, indent=4, ensure_ascii=False)
 
     def _copy_support_files(self, project_path):
-        """Copia toda la estructura de soporte al proyecto destino"""
+        """Copia utils, logo y plantilla environment según plataforma (web/mobile/legacy/api)."""
         try:
-            # 1. Copiar environment.py a features/
-            # Modelo final: environment y utils provienen de resources/behave
-            src_env = os.path.join(self.base_dir, "resources", "behave", "features", "environment.py")
-            dst_env = os.path.join(project_path, "features", "environment.py")
-            shutil.copy2(src_env, dst_env)
-            
-            # 2. Crear carpeta outputs vacía
-            os.makedirs(os.path.join(project_path, "outputs"), exist_ok=True)
-            
-            # 3. Copiar recursos PDF
-            src_resources = os.path.join(self.base_dir, "resources", "behave", "resources", "resourcesPDF")
-            dst_resources = os.path.join(project_path, "resources", "resourcesPDF")
-            if os.path.exists(src_resources):
-                shutil.copytree(src_resources, dst_resources, dirs_exist_ok=True)
-            
-            # 4. Copiar utils completa — excluir artefactos de desarrollo
-            src_utils = os.path.join(self.base_dir, "resources", "behave", "utils")
-            dst_utils = os.path.join(project_path, "utils")
-            _EXCLUDE_FROM_UTILS = {"button_functions_mod.py"}
-            if os.path.exists(src_utils):
-                shutil.copytree(
-                    src_utils, dst_utils, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(*_EXCLUDE_FROM_UTILS),
-                )
-                
+            from pathlib import Path
+
+            from core.test_runner.behave_support import ensure_platform_behave_support
+
+            ensure_platform_behave_support(
+                Path(project_path),
+                self.platform or "web",
+                elia_root=self.base_dir,
+            )
         except Exception as e:
-            self.ui.warning("Advertencia", 
+            self.ui.warning(
+                "Advertencia",
                 f"No se pudieron copiar algunos archivos de soporte:\n{str(e)}\n"
-                "El proyecto puede necesitar configuración manual adicional.")            
+                "El proyecto puede necesitar configuración manual adicional.",
+            )
             
     def _script_content_to_unique_actions(self, script_content: str) -> List[Tuple[str, str]]:
         """Convierte líneas de script Puppeteer a acciones (tipo, descripción) para BDD."""

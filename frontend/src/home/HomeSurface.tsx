@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { stopMobileAppium, getRecordings, getScenarios, uploadDocs } from "../api";
 import { encodeRecordingLink, encodeScenarioLink } from "../app/linkUtils";
 import {
@@ -11,6 +11,7 @@ import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
 import { ApiSurface } from "./ApiSurface";
+import { RunWorkspacePanel, usePlatformProjects } from "./RunWorkspacePanel";
 import { useConnectorContext } from "../context/ConnectorContext";
 import { useHomeUiContext } from "../context/HomeUiContext";
 import { useRecordingContext } from "../context/RecordingContext";
@@ -39,6 +40,9 @@ export function HomeSurface() {
     detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
     windowName, setWindowName, exePath, setExePath,
   } = useRecordingContext();
+
+  const [runProject, setRunProject] = useState("");
+  const runProjects = usePlatformProjects(platform);
 
   if (!initialChecked) return null;
 
@@ -547,6 +551,47 @@ export function HomeSurface() {
                     Convertir a step by step
                   </button>
                   )}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTop: `1px solid ${c.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
+                    Ejecutar Behave, editar .feature / steps y generar PDF (proyecto en behave/{platform}/).
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+                    <input
+                      list={`elia-run-projects-${platform}`}
+                      value={runProject}
+                      onChange={(e) => setRunProject(e.target.value)}
+                      placeholder="Nombre del proyecto Behave"
+                      style={{
+                        flex: "1 1 200px",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.inputBorder}`,
+                        background: c.inputBg,
+                        color: c.text,
+                      }}
+                    />
+                    <datalist id={`elia-run-projects-${platform}`}>
+                      {runProjects.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <RunWorkspacePanel
+                    c={c}
+                    platform={platform}
+                    project={runProject}
+                    canRunJobs={canRunJobs}
+                    onShowError={showHomeError}
+                    showLocust={false}
+                  />
                 </div>
                 </div>
               </>

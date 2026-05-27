@@ -1008,6 +1008,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "api_to_behave":
                     from core.modules_config import is_module_enabled
+                    from core.ai_policy import resolve_use_ai
+
                     if not is_module_enabled("api_testing"):
                         jm.mark_error(job_id, message="Módulo no habilitado", details="api_testing requiere licencia vigente.")
                         return
@@ -1015,11 +1017,15 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from core.api_automation.traffic_store import load_scenario
 
                     project = (req.api_project or "DefaultApi").strip()
+                    use_ai = resolve_use_ai().use_ai
                     jm.update_progress(job_id, {"stage": "Convirtiendo a Behave API"})
                     try:
                         if req.api_traffic_path and os.path.isfile(req.api_traffic_path):
                             feature = convert_traffic_to_feature(
-                                project, req.api_traffic_path, feature_name=req.api_feature_name
+                                project,
+                                req.api_traffic_path,
+                                feature_name=req.api_feature_name,
+                                use_ai=use_ai,
                             )
                         else:
                             requests = [load_scenario(project, sid) for sid in (req.api_scenario_ids or [])]
@@ -1029,8 +1035,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                                 project,
                                 requests,
                                 feature_name=req.api_feature_name or "Escenario API",
+                                use_ai=use_ai,
                             )
-                        jm.update_progress(job_id, {"stage": "Listo", "feature_file": feature})
+                        jm.update_progress(job_id, {"stage": "Listo", "feature_file": feature, "use_ai": use_ai})
                         adapter.info("ELIA · API → Behave", f"Feature generado:\n{feature}")
                         jm.mark_done(job_id)
                     except Exception as e:
@@ -1039,17 +1046,23 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                 if req.mode == "api_run_behave":
                     from core.modules_config import is_module_enabled
+                    from core.test_runner.run_launcher import build_behave_command, build_run_env, prepare_project
+                    from core.test_runner.runner_service import test_runner_service
+
                     if not is_module_enabled("api_testing"):
                         jm.mark_error(job_id, message="Módulo no habilitado", details="api_testing requiere licencia vigente.")
                         return
-                    from core.elia_paths import behave_projects_dir
-                    from core.test_runner.runner_service import test_runner_service
 
                     project = (req.api_project or "DefaultApi").strip()
-                    project_path = str(behave_projects_dir("api") / project)
+                    project_path = prepare_project("api", project)
                     feature = req.api_feature_name or "features"
-                    cmd = [sys.executable, "-m", "behave", feature]
-                    run_id = test_runner_service.start(kind="behave_api", command=cmd, cwd=project_path)
+                    cmd = build_behave_command(feature)
+                    run_id = test_runner_service.start(
+                        kind="behave_api",
+                        command=cmd,
+                        cwd=project_path,
+                        env=build_run_env("api", generate_evidence=True, headless=True),
+                    )
                     jm.update_progress(job_id, {"stage": "Ejecutando Behave API", "run_id": run_id})
                     while True:
                         run = test_runner_service.get(run_id)
@@ -1418,8 +1431,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         }
 
     from webui.api_routes import register_api_routes
+    from webui.run_routes import register_run_routes
 
     register_api_routes(app, require_localhost=_require_localhost, require_active_license=_require_active_license)
+    register_run_routes(app, require_localhost=_require_localhost, require_active_license=_require_active_license)
 
     # -----------------------
     # SPA static serving

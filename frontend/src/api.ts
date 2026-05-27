@@ -703,16 +703,96 @@ export async function convertApiScenarios(body: {
 }
 
 export async function startTestRun(body: {
+  platform?: string;
   project: string;
   kind?: string;
   feature_file?: string;
+  generate_evidence?: boolean;
+  headless?: boolean;
+  locust_users?: number;
+  locust_spawn_rate?: number;
+  locust_run_time?: string;
+  locust_host?: string;
 }): Promise<{ run_id: string }> {
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      platform: body.platform ?? "api",
+      project: body.project,
+      kind: body.kind ?? "behave",
+      feature_file: body.feature_file,
+      generate_evidence: body.generate_evidence ?? true,
+      headless: body.headless ?? true,
+      locust_users: body.locust_users,
+      locust_spawn_rate: body.locust_spawn_rate,
+      locust_run_time: body.locust_run_time,
+      locust_host: body.locust_host,
+    }),
   });
   if (!res.ok) throw new Error(`Failed to start run: ${res.status}`);
+  return res.json();
+}
+
+export async function startUnifiedRun(body: {
+  platform: string;
+  project: string;
+  kind: "behave" | "locust";
+  feature_file?: string;
+  generate_evidence?: boolean;
+  headless?: boolean;
+  locust_users?: number;
+  locust_spawn_rate?: number;
+  locust_run_time?: string;
+  locust_host?: string;
+}): Promise<{ run_id: string }> {
+  return startTestRun(body);
+}
+
+export async function getPlatformProjects(platform: string): Promise<{ projects: string[] }> {
+  const res = await fetch(`/api/projects/${encodeURIComponent(platform)}`);
+  if (!res.ok) throw new Error(`Failed to list projects: ${res.status}`);
+  return res.json();
+}
+
+export async function listProjectFiles(
+  platform: string,
+  project: string,
+): Promise<{ files: { path: string; name: string; size: number }[] }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/files`,
+  );
+  if (!res.ok) throw new Error(`Failed to list files: ${res.status}`);
+  return res.json();
+}
+
+export async function readProjectFile(
+  platform: string,
+  project: string,
+  path: string,
+): Promise<{ path: string; content: string }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/file?path=${encodeURIComponent(path)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to read file: ${res.status}`);
+  return res.json();
+}
+
+export async function writeProjectFile(
+  platform: string,
+  project: string,
+  path: string,
+  content: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/file?path=${encodeURIComponent(path)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to write file: ${res.status}`);
   return res.json();
 }
 

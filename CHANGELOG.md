@@ -4,6 +4,26 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.1] - 2026-05-27
+
+### Añadido
+
+- **Runner unificado con edición de código:** panel «Ejecutar y editar proyecto» en Web, Móvil, Legacy y Pruebas API — lista archivos `.feature`, `.py` y `locustfile.py`, editor integrado (guardar/recargar), ejecución Behave con PDF + logo ELIA y Locust (API).
+- **Rutas de ejecución y archivos:** `POST /api/runs`, `GET /api/projects/{platform}`, `GET/PUT /api/projects/{platform}/{project}/file`, stream SSE `/api/runs/{id}/stream`; núcleo en `core/test_runner/` (`run_launcher`, `project_files`, `behave_support`).
+- **IA Gemma para aserciones API:** `core/api_automation/api_assertion_ai.py` — heurística offline + sugerencias Gemma al convertir tráfico/escenarios a steps `Then` Behave HTTP.
+- **PDF y entorno Behave por plataforma:** plantillas `environment.py` con marcadores `ELIA_ENV_*_V2` (web, mobile, legacy, api), utils API (`api_run_support.py`) y logo desde `resources/logo_elia.png` / `ELIA_LOGO_PATH`.
+- **Captura API móvil:** prompt opcional en grabación Appium; performance logs WebView/Chrome → `behave/api/{proyecto}/scripts/{grabacion}_api_traffic.json`.
+- **Captura API legacy:** prompt opcional con URL del componente web híbrido (WebView2); Puppeteer en paralelo hacia la misma ruta API.
+- **Tests unitarios:** `test_run_launcher.py`, `test_api_assertion_ai.py`.
+
+### Cambiado
+
+- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.1**.
+- Conversión Behave (web/móvil/legacy): `_copy_support_files` usa `ensure_platform_behave_support()` según plataforma en lugar de copiar solo el `environment.py` web.
+- Pestaña **Pruebas API:** Behave y Locust migrados al panel unificado (`RunWorkspacePanel`); constructor manual y capturas web se mantienen arriba.
+- Pestaña **UI** (web/móvil/legacy): sección inferior para elegir proyecto Behave, editar código y ejecutar pruebas sin salir del flujo principal.
+- Proyectos API existentes: al ejecutar o convertir, se actualiza `environment.py` si falta el marcador `ELIA_ENV_*_V2`.
+
 ## [0.8.10] - 2026-05-26
 
 ### Añadido

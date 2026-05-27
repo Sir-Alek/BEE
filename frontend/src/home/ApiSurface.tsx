@@ -6,11 +6,9 @@ import {
   getApiScenarios,
   getApiTrafficCaptures,
   importApiTrafficCapture,
-  runLoadTest,
   saveApiScenario,
-  startTestRun,
 } from "../api";
-import { RunConsolePanel } from "./RunConsolePanel";
+import { RunWorkspacePanel } from "./RunWorkspacePanel";
 
 type Props = {
   c: Record<string, string>;
@@ -31,9 +29,7 @@ export function ApiSurface(props: Props) {
   const [url, setUrl] = useState("");
   const [body, setBody] = useState("");
   const [expectedStatus, setExpectedStatus] = useState("200");
-  const [runId, setRunId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [loadUsers, setLoadUsers] = useState("5");
   const initialized = useRef(false);
 
   const refreshProjects = () => {
@@ -123,28 +119,6 @@ export function ApiSurface(props: Props) {
     setBusy(true);
     void convertApiScenarios({ project, scenario_ids: scenarios.map((s) => s.id) })
       .then(() => setHomeHint("Feature Behave API generado correctamente."))
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
-      .finally(() => setBusy(false));
-  };
-
-  const handleRunBehave = () => {
-    setBusy(true);
-    void startTestRun({ project, kind: "behave_api" })
-      .then((r) => setRunId(r.run_id))
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
-      .finally(() => setBusy(false));
-  };
-
-  const handleLoadTest = () => {
-    setBusy(true);
-    void runLoadTest({
-      project,
-      users: Number(loadUsers) || 5,
-      spawn_rate: 1,
-      run_time: "1m",
-      host: url.startsWith("http") ? new URL(url).origin : "",
-    })
-      .then((r) => setRunId(r.run_id))
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
   };
@@ -281,9 +255,6 @@ export function ApiSurface(props: Props) {
           <button type="button" disabled={!canRunJobs || busy || scenarios.length === 0} onClick={handleConvert} style={btn(c)}>
             Generar .feature Behave
           </button>
-          <button type="button" disabled={!canRunJobs || busy} onClick={handleRunBehave} style={btn(c)}>
-            Ejecutar Behave API
-          </button>
         </div>
       </div>
 
@@ -343,30 +314,14 @@ export function ApiSurface(props: Props) {
         ) : null}
       </div>
 
-      <div
-        style={{
-          border: `1px solid ${c.border}`,
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 14,
-          background: c.surface,
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Prueba de carga (Locust)</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            value={loadUsers}
-            onChange={(e) => setLoadUsers(e.target.value)}
-            placeholder="Usuarios"
-            style={{ width: 90, padding: "8px 10px", borderRadius: 8, border: `1px solid ${c.inputBorder}` }}
-          />
-          <button type="button" disabled={!canRunJobs || busy || scenarios.length === 0} onClick={handleLoadTest} style={btn(c)}>
-            Ejecutar Locust
-          </button>
-        </div>
-      </div>
-
-      {runId ? <RunConsolePanel c={c} runId={runId} onClose={() => setRunId(null)} /> : null}
+      <RunWorkspacePanel
+        c={c}
+        platform="api"
+        project={project}
+        canRunJobs={canRunJobs}
+        onShowError={onShowError}
+        showLocust
+      />
     </div>
   );
 }

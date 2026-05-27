@@ -317,10 +317,56 @@ class LegacyRecorder:
             except Exception:
                 pass
 
+        api_traffic_path: Optional[str] = None
+        from core.modules_config import is_module_enabled
+
+        if is_module_enabled("api_testing"):
+            url_ans = jm.create_prompt_and_wait(
+                job_id,
+                prompt=_mk_prompt(
+                    "input_text",
+                    title="Captura API (opcional)",
+                    message=(
+                        "URL del componente web (WebView2/híbrido) para capturar tráfico API. "
+                        "Deja vacío para omitir."
+                    ),
+                ),
+            )
+            hybrid_url = str(url_ans or "").strip()
+            if hybrid_url.startswith("http"):
+                jm.update_progress(job_id, {"stage": "Capturando tráfico API…"})
+                try:
+                    from core.api_automation.legacy_traffic_capture import (
+                        capture_from_url_via_puppeteer,
+                        save_legacy_capture,
+                    )
+                    from core.test_runner.behave_support import elia_base_dir
+
+                    elia_root = elia_base_dir()
+                    probe_path = os.path.join(
+                        project_path,
+                        "scripts",
+                        f"{rec_name}_api_probe_traffic.json",
+                    )
+                    if capture_from_url_via_puppeteer(
+                        hybrid_url,
+                        probe_path,
+                        cwd=elia_root,
+                    ):
+                        api_project = os.path.basename(project_path)
+                        api_traffic_path = save_legacy_capture(api_project, rec_name, probe_path)
+                        _emit(jm, job_id, "api_traffic_saved", path=api_traffic_path)
+                    else:
+                        _emit(jm, job_id, "api_traffic_failed", error="Puppeteer no generó captura")
+                except Exception as exc:
+                    _emit(jm, job_id, "api_traffic_failed", error=str(exc))
+
         # 7. Guardar resultado
         generated_files = [("grabación", output_file)]
         if video_path and os.path.isfile(video_path) and os.path.getsize(video_path) > 0:
             generated_files.append(("video", video_path))
+        if api_traffic_path and os.path.isfile(api_traffic_path):
+            generated_files.append(("tráfico API", api_traffic_path))
 
         result: Dict[str, Any] = {
             "platform": "legacy",

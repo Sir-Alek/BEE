@@ -28,6 +28,10 @@ Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a 
 - **Captura web:** prompt «Opciones de captura» en el flujo de grabación; genera `{grabacion}_api_traffic.json` en `behave/api/{proyecto}/scripts/` (mismo nombre que el proyecto web).
 - **Locust:** incluido en `requirements.txt` (`pip install -r requirements.txt`); ya no es instalación manual aparte.
 - **Ejecución en vivo:** `POST /api/runs` y SSE `/api/runs/{id}/stream`.
+- **Edición de código:** `GET/PUT /api/projects/{platform}/{project}/file` — archivos `.feature`, steps `.py`, `locustfile.py`, etc.
+- **Runner unificado (UI):** `RunWorkspacePanel` en pestaña UI (web/móvil/legacy) y Pruebas API; selector de proyecto + editor + consola en vivo.
+- **Captura API móvil/legacy:** prompts opcionales al finalizar grabación; JSON en `behave/api/{proyecto}/scripts/`.
+- **Aserciones IA en conversión API:** `api_assertion_ai.py` (Gemma + heurística) al generar `.feature` Behave HTTP.
 
 ## Entorno virtual (Python)
 

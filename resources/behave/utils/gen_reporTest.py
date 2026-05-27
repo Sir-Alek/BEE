@@ -266,10 +266,9 @@ class PdfReportDocument(FPDF):
         pdf.set_text_color(0, 0, 0)
         pdf.multi_cell(0, 5, testName, align='C')
 
-        # Ruta al logo personalizado del reporte (opcional).
-        # Edita esta línea para apuntar a tu propio logo; déjala en None para generar sin logo.
-        # Ejemplo: logo_path = os.path.join(BASE_DIR, 'resources', 'resourcesPDF', 'mi_logo.png')
-        logo_path = None
+        logo_path = os.path.join(BASE_DIR, 'resources', 'logo_elia.png')
+        if not os.path.exists(logo_path):
+            logo_path = os.environ.get('ELIA_LOGO_PATH') or logo_path
         if logo_path and os.path.exists(logo_path):
             pdf.image(logo_path, 70, 19, 60, 15)
 
