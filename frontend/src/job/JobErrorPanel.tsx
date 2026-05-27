@@ -2,12 +2,16 @@ import React, { useState } from "react";
 import { downloadJobErrorReport } from "../api";
 import { goHomeInThisTab, tryFocusOpenerAndCloseThisTab } from "../app/utils";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
+// Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
+// import { SupportContactLink } from "../components/SupportContactLink";
 
 type Props = {
   c: Record<string, string>;
   jobId: string;
   errorMessage: string;
   betaFeedbackUrl?: string | null;
+  /** Versión comercial: pasar aboutInfo?.support_email desde App.tsx → JobWorkspace */
+  // supportEmail?: string | null;
   onDownloadError?: (message: string | null) => void;
 };
 
@@ -62,6 +66,12 @@ export function JobErrorPanel(props: Props) {
           {betaFeedbackUrl ? (
             <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />
           ) : null}
+          {/* Versión comercial (≥1.0): quitar BetaFeedbackLink de arriba y descomentar:
+          {supportEmail ? (
+            <SupportContactLink email={supportEmail} jobId={jobId} c={c} />
+          ) : null}
+          También: import SupportContactLink, prop supportEmail, y App.tsx → supportEmail={aboutInfo?.support_email}
+          */}
         </div>
       </div>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>

@@ -1,6 +1,7 @@
 import React from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
+import { cancelJobFlow } from "../promptNav";
 
 type Props = {
   c: Record<string, string>;
@@ -59,8 +60,8 @@ export function GroupedFeatureReviewPrompt(props: Props) {
         </button>
         <button
           type="button"
-          onClick={async () => {
-            await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: null });
+          onClick={() => {
+            void cancelJobFlow(jobId);
           }}
           style={{
             padding: "10px 14px",

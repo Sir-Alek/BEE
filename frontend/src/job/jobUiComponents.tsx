@@ -113,10 +113,13 @@ export function ActionsCheckboxList(props: {
   promptId?: string;
   actions: { type: string; description: string; original_line: string }[];
   minSelected?: number;
+  emptySelectionMessage?: string;
   onSubmit: (selectedLines: string[]) => void | Promise<void>;
 }) {
   const { c } = props;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [emptyHint, setEmptyHint] = useState(false);
+  const minSelected = props.minSelected ?? 1;
 
   const actionsFingerprint = props.actions
     .map((a) => a.original_line)
@@ -124,6 +127,7 @@ export function ActionsCheckboxList(props: {
     .join("\0");
 
   useEffect(() => {
+    setEmptyHint(false);
     setSelected((prev) => {
       const next: Record<string, boolean> = {};
       for (const a of props.actions) {
@@ -156,6 +160,13 @@ export function ActionsCheckboxList(props: {
         ))}
       </div>
 
+      {emptyHint ? (
+        <div style={{ marginTop: 10, fontSize: 13, color: c.errorTitle }}>
+          {props.emptySelectionMessage ??
+            "Selecciona al menos una acción para continuar."}
+        </div>
+      ) : null}
+
       <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
         <button
           onClick={() => setSelected((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, true])))}
@@ -184,9 +195,12 @@ export function ActionsCheckboxList(props: {
           Excluir todas
         </button>
         <button
-          disabled={props.minSelected != null && selectedLines.length < props.minSelected}
-          onClick={async () => {
-            await props.onSubmit(selectedLines);
+          onClick={() => {
+            if (selectedLines.length < minSelected) {
+              setEmptyHint(true);
+              return;
+            }
+            void props.onSubmit(selectedLines);
           }}
           style={{
             padding: "8px 12px",
@@ -194,11 +208,7 @@ export function ActionsCheckboxList(props: {
             background: c.primary,
             color: c.primaryFg,
             border: "none",
-            cursor:
-              props.minSelected != null && selectedLines.length < props.minSelected
-                ? "not-allowed"
-                : "pointer",
-            opacity: props.minSelected != null && selectedLines.length < props.minSelected ? 0.5 : 1,
+            cursor: "pointer",
           }}
         >
           Continuar

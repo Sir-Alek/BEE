@@ -36,7 +36,7 @@ export function formatLicenseStatusLabel(license: LicenseState): string {
     return "Desarrollo (licencia omitida).";
   }
   if (license.reason === "killed") {
-    return "Inactiva — instalación deshabilitada.";
+    return "Inactiva — no disponible en este equipo.";
   }
   if (!license.can_run_jobs) {
     if (license.reason === "not_activated") {

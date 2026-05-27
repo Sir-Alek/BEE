@@ -1,7 +1,6 @@
 import React from "react";
-import { PROMPT_ANSWER_BACK, sendPromptResponse } from "../../api";
+import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
-import { promptAllowsBack } from "../../types";
 
 type Props = {
   c: Record<string, string>;
@@ -33,29 +32,6 @@ export function PickOptionsPrompt(props: Props) {
           </button>
         ))}
       </div>
-      {promptAllowsBack(activePrompt.payload) && (
-        <button
-          type="button"
-          onClick={async () => {
-            await sendPromptResponse({
-              jobId,
-              promptId: activePrompt.prompt_id,
-              answer: PROMPT_ANSWER_BACK,
-            });
-          }}
-          style={{
-            alignSelf: "flex-start",
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
-        >
-          Regresar
-        </button>
-      )}
     </div>
   );
 }

@@ -243,7 +243,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/app/about")
     def app_about(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core._version import ELIA_CONTACT_EMAIL, ELIA_DEVELOPER, ELIA_TAGLINE, ELIA_VERSION, elia_version_display
+        from core._version import (
+            ELIA_CONTACT_EMAIL,
+            ELIA_DEVELOPER,
+            ELIA_SUPPORT_EMAIL,
+            ELIA_TAGLINE,
+            ELIA_VERSION,
+            elia_version_display,
+        )
         from core.changelog import load_changelog
         from webui.error_reporting import beta_feedback_url, execution_log_about_hint
 
@@ -262,6 +269,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "version_display": elia_version_display(),
             "developer": ELIA_DEVELOPER,
             "contact_email": ELIA_CONTACT_EMAIL,
+            # Versión comercial (≥1.0): consumido por SupportContactLink en JobErrorPanel.tsx
+            "support_email": ELIA_SUPPORT_EMAIL,
             "tagline": ELIA_TAGLINE,
             "license_text": license_text,
             "changelog": load_changelog(base_dir),
@@ -677,15 +686,16 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     import time
                     import uuid
 
-                    def mk_prompt(prompt_type: str, *, title: str, message: str, options=None, actions=None) -> Prompt:
+                    def mk_prompt(*, type: str, title: str, message: str, options=None, actions=None, payload=None) -> Prompt:
                         prompt_id = str(uuid.uuid4())
                         return Prompt(
                             prompt_id=prompt_id,
-                            type=prompt_type,
+                            type=type,
                             title=title,
                             message=message,
                             options=options,
                             actions=actions,
+                            payload=payload,
                         )
 
                     def sanitize_filename(file_name: str) -> str:
@@ -731,7 +741,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     ans_file = jm.create_prompt_and_wait(
                         job_id,
                         prompt=mk_prompt(
-                            "input_text",
+                            type="input_text",
                             title="Nombre del Archivo de Grabación",
                             message=f"Ingresa el nombre (sugerido: {default_hint})",
                         ),
@@ -749,47 +759,21 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     os.makedirs(scripts_dir, exist_ok=True)
                     output_file = os.path.join(scripts_dir, file_name)
 
-                    # --- Confirmación grabando
-                    jm.update_progress(job_id, {"stage": "Confirmar grabación"})
-                    proceed = jm.create_prompt_and_wait(
-                        job_id,
-                        prompt=mk_prompt(
-                            "yes_no_cancel",
-                            title="Grabando",
-                            message="Se abrirá el navegador.\nPara finalizar la grabación, cierra el navegador.\n¿Deseas continuar?",
-                        ),
+                    from webui.web_recording_prompts import (
+                        prompt_web_recording_options,
+                        prompt_web_recording_proceed,
                     )
-                    if proceed is not True:
+
+                    extras = prompt_web_recording_options(jm, job_id, mk_prompt)
+                    if extras is None:
                         jm.cancel_job(job_id)
                         return
+                    grabar_video, capture_api = extras
 
-                    # --- Video opcional
-                    grabar_video = jm.create_prompt_and_wait(
-                        job_id,
-                        prompt=mk_prompt(
-                            "yes_no",
-                            title="Grabación de Video",
-                            message="¿Deseas grabar video de la pantalla?",
-                        ),
-                    )
-
-                    if grabar_video is None:
-                        grabar_video = False
-
-                    capture_api = bool(req.capture_api)
-                    if not capture_api:
-                        from core.modules_config import is_module_enabled
-
-                        if is_module_enabled("api_testing"):
-                            capture_api_answer = jm.create_prompt_and_wait(
-                                job_id,
-                                prompt=mk_prompt(
-                                    "yes_no",
-                                    title="Captura de tráfico API",
-                                    message="¿Deseas capturar peticiones XHR/fetch (estilo JMeter) durante la grabación?",
-                                ),
-                            )
-                            capture_api = capture_api_answer is True
+                    proceed = prompt_web_recording_proceed(jm, job_id, mk_prompt)
+                    if proceed is None or not proceed:
+                        jm.cancel_job(job_id)
+                        return
 
                     # Video: se prepara el objeto pero NO se inicia aún.
                     # La grabación comienza solo cuando web_capture_engine.js señaliza BROWSER_READY,
@@ -821,6 +805,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                     jm.update_progress(job_id, {"stage": "Preparando runtime de grabación"})
 
+                    recorder_args = [output_file, req.url, "1" if capture_api else "0"]
+                    api_traffic_path: Optional[str] = None
+                    if capture_api:
+                        from core.api_automation.traffic_store import traffic_path_for_web_recording
+
+                        api_traffic_path = traffic_path_for_web_recording(project_path, output_file)
+                        recorder_args.append(api_traffic_path)
+
                     # --- Ejecutar web_capture_engine.js
                     if is_frozen():
                         from core.ui_automation.script_runtime_host import script_runtime_host
@@ -832,7 +824,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
                         result = script_runtime_host.run_obfuscated_js(
                             "web_capture_engine.js",
-                            [output_file, req.url, "1" if capture_api else "0"],
+                            recorder_args,
                             subprocess_timeout=None,
                             focus_automation_browser=True,
                             on_browser_ready=_on_browser_ready,
@@ -843,7 +835,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         recorder_js_path = os.path.join(base_dir, "core", "ui_automation", "web_capture_engine.js")
                         result = run_subprocess_with_automation_focus(
-                            ["node", recorder_js_path, output_file, req.url, "1" if capture_api else "0"],
+                            ["node", recorder_js_path, *recorder_args],
                             cwd=base_dir,
                             timeout=None,
                             on_browser_ready=_on_browser_ready,
@@ -868,8 +860,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
                     from webui.conversion_result import conversion_result, file_entry
 
                     generated = [file_entry(output_file, "grabación")]
-                    api_traffic_path = output_file.replace(".js", "_api_traffic.json")
-                    if capture_api and os.path.isfile(api_traffic_path):
+                    if capture_api and api_traffic_path and os.path.isfile(api_traffic_path):
                         generated.append(file_entry(api_traffic_path, "tráfico API"))
                     if video_path and os.path.isfile(video_path):
                         generated.append(file_entry(video_path, "video"))

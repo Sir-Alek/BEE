@@ -8,7 +8,15 @@ from pathlib import Path
 
 from core.api_automation.models import ApiRequest, ApiTrafficCapture
 from core.api_automation.sanitize import is_noise_url, sanitize_header_value
-from core.api_automation.traffic_store import ingest_capture_dict, save_scenario, list_scenarios
+from core.api_automation.traffic_store import (
+    api_traffic_path_for_recording,
+    ingest_capture_dict,
+    list_traffic_captures,
+    save_scenario,
+    list_scenarios,
+    traffic_path_for_script,
+    traffic_path_for_web_recording,
+)
 
 
 class TestApiAutomation(unittest.TestCase):
@@ -55,6 +63,27 @@ class TestApiAutomation(unittest.TestCase):
                 self.assertEqual(len(listed), 1)
             finally:
                 elia_paths.behave_projects_dir = original  # type: ignore
+
+    def test_api_traffic_path_under_api_scripts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            from core.api_automation import traffic_store as ts
+
+            original = ts.behave_projects_dir
+            try:
+                ts.behave_projects_dir = lambda platform="api": Path(tmp) / "behave" / platform  # type: ignore
+                web_project = str(Path(tmp) / "behave" / "web" / "MiProyecto")
+                output_js = str(Path(web_project) / "scripts" / "grabacion_test.js")
+                expected = Path(tmp) / "behave" / "api" / "MiProyecto" / "scripts" / "grabacion_test_api_traffic.json"
+                self.assertEqual(traffic_path_for_web_recording(web_project, output_js), str(expected))
+                self.assertEqual(traffic_path_for_script(output_js), str(expected))
+                path = api_traffic_path_for_recording("MiProyecto", "grabacion_test.js")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('{"version":1,"entries":[]}', encoding="utf-8")
+                listed = list_traffic_captures("MiProyecto")
+                self.assertEqual(len(listed), 1)
+                self.assertEqual(listed[0]["id"], "grabacion_test_api_traffic.json")
+            finally:
+                ts.behave_projects_dir = original  # type: ignore
 
 
 if __name__ == "__main__":

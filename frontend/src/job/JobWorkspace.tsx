@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { JobErrorActions, JobErrorPanel } from "./JobErrorPanel";
 import { JobPromptRouter } from "./JobPromptRouter";
 import { JobRunningPanel } from "./JobRunningPanel";
 import { JobCancelledPanel, JobDonePanel } from "./JobTerminalPanels";
+import { cancelConvertJob } from "../api";
+import { broadcastJobTabClosed } from "./promptNav";
 import type { JobEvent } from "./jobEvents";
 import type { JobProgressState } from "./useJobProgress";
 import type { ActivePrompt } from "../types";
@@ -21,6 +23,8 @@ export type JobWorkspaceProps = {
   bddPreviewText: string;
   setBddPreviewText: (v: string) => void;
   betaFeedbackUrl?: string | null;
+  /** Versión comercial: aboutInfo?.support_email (ver JobErrorPanel.tsx) */
+  // supportEmail?: string | null;
 };
 
 export function JobWorkspace(props: JobWorkspaceProps) {
@@ -28,6 +32,17 @@ export function JobWorkspace(props: JobWorkspaceProps) {
     c, jobId, job, jobEvents, activePrompt, stoppingRecording, setStoppingRecording,
     setErrorText, textValue, setTextValue, bddPreviewText, setBddPreviewText, betaFeedbackUrl,
   } = props;
+
+  useEffect(() => {
+    if (!jobId) return;
+    const onPageHide = () => {
+      if (sessionStorage.getItem(`elia_job_finished_broadcast:${jobId}`)) return;
+      broadcastJobTabClosed(jobId);
+      void cancelConvertJob(jobId).catch(() => {});
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [jobId]);
 
   return (
     <>

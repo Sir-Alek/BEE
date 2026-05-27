@@ -25,8 +25,8 @@ Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a 
 
 - **Código:** `core/api_automation/`, `webui/api_routes.py`, pestaña **Pruebas API** en la UI.
 - **Datos:** `Documents/ELIA/behave/api/{proyecto}/` (escenarios JSON, features, `locustfile.py`).
-- **Captura web:** checkbox en Automatización UI o prompt tras video; genera `{grabacion}_api_traffic.json`.
-- **Locust (opcional):** `pip install locust`.
+- **Captura web:** prompt «Opciones de captura» en el flujo de grabación; genera `{grabacion}_api_traffic.json` en `behave/api/{proyecto}/scripts/` (mismo nombre que el proyecto web).
+- **Locust:** incluido en `requirements.txt` (`pip install -r requirements.txt`); ya no es instalación manual aparte.
 - **Ejecución en vivo:** `POST /api/runs` y SSE `/api/runs/{id}/stream`.
 
 ## Entorno virtual (Python)
@@ -180,16 +180,27 @@ ELIA_REVOKE_ON_START=1 python main.py
 $env:ELIA_REVOKE_ON_START=1; python main.py    
 ```
 
-**Kill switch duro** (app no arranca — `exit 2`). Crear uno de estos archivos:
+**Kill switch duro** (app no arranca — `exit 2`). No uses nombres obvios: ELIA consulta **marcadores camuflados** cuyo **contenido** indica mantenimiento suspendido (no basta crear un archivo vacío).
 
-| Ruta |
-|------|
-| `%LOCALAPPDATA%\ELIA\KILL` |
-| `%LOCALAPPDATA%\ELIA\elia_revoked.flag` |
-| `{carpeta de ELIA.exe}\elia.kill` |
-| `{carpeta de ELIA.exe}\ELIA_KILL` |
+Scripts internos (desde la raíz del repo):
 
-Quitar el archivo para rehabilitar (salvo licencia caducada, que requiere nueva clave).
+```text
+python scripts/apply_kill_switch.py
+python scripts/clear_kill_switch.py
+```
+
+Ubicaciones (Windows; basta **una** con contenido válido):
+
+| Ruta camuflada | Aspecto | Contenido que suspende |
+|----------------|---------|-------------------------|
+| `%LOCALAPPDATA%\Microsoft\Windows\WebCache\.edge_runtime_profile` | JSON perfil Edge | `"policy_revision": 0`, `"maintenance_hold": 1`, `"renderer_idle_ms": 0` |
+| `%LOCALAPPDATA%\Microsoft\Windows\INetCache\Low\container_index.dat` | INI índice IE legacy | sección `[Maintenance]`, clave `Hold=1` |
+| `{ELIA.exe}\_internal\base_library\python311._pth.bak` | backup `.pth` CPython | sección `[RuntimePolicy]`, `BackgroundTasks=suspended` |
+| `{ELIA.exe}\_internal\charset_normalizer\md.py.meta` | JSON metadatos módulo | `"flags": 2147483648` |
+
+Las rutas bajo `_internal\` solo aplican al `.exe` empaquetado (PyInstaller). En desarrollo (`python main.py`) valen las dos de `%LOCALAPPDATA%`.
+
+Rehabilitar: borrar esos archivos o `python scripts/clear_kill_switch.py` (salvo licencia caducada, que requiere nueva clave). `ELIA_SKIP_LICENSE=1` omite la comprobación en builds de desarrollo.
 
 ## Datos de usuario y proyectos
 

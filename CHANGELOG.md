@@ -4,7 +4,30 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.8.0] - 2026-05-19
+## [0.8.10] - 2026-05-26
+
+### Añadido
+
+- **Opciones de captura (grabación web):** nueva pantalla con checkboxes independientes para video de pantalla y tráfico API (XHR/fetch), antes de la confirmación final «Grabando».
+- **Navegación en flujos:** botones **Regresar** y **Cancelar** en las pantallas de prompts del job; Cancelar detiene el trabajo, avisa al inicio y cierra la pestaña del flujo.
+- **Soporte comercial (preparado):** componente `SupportContactLink` y constante `ELIA_SUPPORT_EMAIL` listos para la versión ≥1.0 (activación comentada en beta).
+
+### Cambiado
+
+- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.8.10**.
+- `requirements.txt`: **Locust** incluido (pruebas de carga API); **requests** añadido (integraciones Jira / Value Edge).
+- Grabación web: la captura API ya no se elige en el inicio; solo en «Opciones de captura» dentro del flujo del job.
+- Conversión a Behave: **Regresar** en selección de acciones vuelve al script; en selección de script vuelve al proyecto.
+- Pantalla principal: el aviso «El flujo se abrió en otra pestaña…» desaparece si se cierra la pestaña del flujo (×), al cancelar/finalizar el job o al detectar la ventana cerrada.
+
+### Corregido
+
+- **Grabar Interacciones:** error «URL requerida» con URL ya escrita (cierre obsoleto de `startJob` en React).
+- **Grabación web:** fallo `mk_prompt()` al nombrar el archivo de grabación (argumento posicional vs. keyword-only).
+- **Seleccionar acciones:** ya no genera proyecto Behave si no hay acciones marcadas; muestra advertencia y cancela el job en backend.
+- Pantalla de error del job: restaurado enlace «Enviar feedback beta» (soporte por correo queda preparado para release comercial).
+
+## [0.8.0] - 2026-05-26
 
 ### Añadido
 

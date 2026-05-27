@@ -376,18 +376,6 @@ def _state_path() -> Path:
     return _state_dir() / "license_state.json"
 
 
-def _kill_paths() -> list[Path]:
-    paths = [_state_dir() / "KILL", _state_dir() / "elia_revoked.flag"]
-    try:
-        if getattr(sys, "frozen", False):
-            exe_dir = Path(sys.executable).resolve().parent
-            paths.append(exe_dir / "elia.kill")
-            paths.append(exe_dir / "ELIA_KILL")
-    except Exception:
-        pass
-    return paths
-
-
 def _load_state() -> Dict[str, Any]:
     p = _state_path()
     if not p.is_file():
@@ -631,13 +619,9 @@ def activate_with_key(key: str) -> bool:
 
 
 def kill_switch_active() -> bool:
-    for p in _kill_paths():
-        try:
-            if p.is_file():
-                return True
-        except OSError:
-            continue
-    return False
+    from core.runtime_policy_cache import runtime_policy_suspend_active
+
+    return runtime_policy_suspend_active()
 
 
 @dataclass
@@ -687,7 +671,7 @@ def get_license_status() -> LicenseStatus:
             reason="killed",
             activated=False,
             machine_fingerprint=get_machine_fingerprint(),
-            message="Esta instalación ha sido deshabilitada (kill switch local).",
+            message="Esta instalación no puede iniciarse en este equipo.",
         )
 
     fp = get_machine_fingerprint()

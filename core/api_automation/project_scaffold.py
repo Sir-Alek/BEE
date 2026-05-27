@@ -6,7 +6,7 @@ from pathlib import Path
 
 def scaffold_api_project(project_path: Path) -> None:
     project_path.mkdir(parents=True, exist_ok=True)
-    for sub in ("scenarios", "features/steps", "resources/data", "outputs/evidences", "outputs/reports"):
+    for sub in ("scripts", "scenarios", "features/steps", "resources/data", "outputs/evidences", "outputs/reports"):
         (project_path / sub).mkdir(parents=True, exist_ok=True)
 
     env_path = project_path / "features" / "environment.py"

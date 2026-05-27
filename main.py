@@ -1,6 +1,11 @@
 import sys
 import os
 
+if __name__ == "__main__":
+    from core.compile_profile_loader import assert_repository_gate_open_or_exit
+
+    assert_repository_gate_open_or_exit()
+
 # Detectar si estamos en modo empaquetado
 IS_FROZEN = getattr(sys, 'frozen', False)
 
@@ -86,7 +91,7 @@ try:
 except Exception:
     open_home_and_job_in_browser = None  # type: ignore
     open_url_in_new_browser_window = None  # type: ignore
-from typing import Any
+from typing import Any, Optional
 
 # Web UI imports are optional; only used when running with --web.
 try:
@@ -676,48 +681,53 @@ class main:
                     os.makedirs(scripts_dir, exist_ok=True)
                     output_file = os.path.join(scripts_dir, file_name)
 
-                    # Paso 3: Confirmación (askokcancel)
-                    jm.update_progress(job_id, {"stage": "Confirmar grabación"})
-                    proceed = jm.create_prompt_and_wait(
-                        job_id,
-                        prompt=mk_prompt(
-                            type="yes_no_cancel",
-                            title="Grabando",
-                            message="Se abrirá el navegador.\nPara finalizar la grabación, cierra el navegador.\n¿Deseas continuar?",
-                        ),
+                    from webui.web_recording_prompts import (
+                        prompt_web_recording_options,
+                        prompt_web_recording_proceed,
                     )
 
-                    if proceed is not True:
+                    extras = prompt_web_recording_options(jm, job_id, mk_prompt)
+                    if extras is None:
+                        jm.cancel_job(job_id)
+                        return
+                    grabar_video, capture_api = extras
+
+                    proceed = prompt_web_recording_proceed(jm, job_id, mk_prompt)
+                    if proceed is None or not proceed:
                         jm.cancel_job(job_id)
                         return
 
-                    # Paso extra: grabar video
-                    grabar_video = jm.create_prompt_and_wait(
-                        job_id,
-                        prompt=mk_prompt(
-                            type="yes_no",
-                            title="Grabación de Video",
-                            message="¿Deseas grabar video de la pantalla?",
-                        ),
-                    )
-
                     recorder_obj = None
+                    video_path = None
+                    _recorder_holder: list = [None]
+
                     if grabar_video:
-                        jm.update_progress(job_id, {"stage": "Grabando video"})
                         file_name_vid = "video_" + time.strftime("%Y%m%d_%H%M%S") + ".avi"
                         videos_dir = os.path.join(project_path, "grabaciones")
                         os.makedirs(videos_dir, exist_ok=True)
                         video_path = os.path.join(videos_dir, file_name_vid)
 
-                        try:
-                            recorder_obj = ViewportCaptureWriter(video_path)
-                            if recorder_obj.start():
-                                print(f"Grabación de video iniciada: {video_path}")
-                            else:
-                                recorder_obj = None
-                        except Exception as e:
-                            print(f"Error iniciando grabación: {e}")
-                            recorder_obj = None
+                        def _start_video_on_browser_ready() -> None:
+                            try:
+                                r = ViewportCaptureWriter(video_path)
+                                if r.start():
+                                    _recorder_holder[0] = r
+                                    jm.update_progress(job_id, {"stage": "Grabando video"})
+                            except Exception:
+                                pass
+
+                        _on_browser_ready = _start_video_on_browser_ready
+                    else:
+                        _on_browser_ready = None
+
+                    capture_flag = "1" if capture_api else "0"
+                    recorder_args = [output_file, url, capture_flag]
+                    api_traffic_path: Optional[str] = None
+                    if capture_api:
+                        from core.api_automation.traffic_store import traffic_path_for_web_recording
+
+                        api_traffic_path = traffic_path_for_web_recording(project_path, output_file)
+                        recorder_args.append(api_traffic_path)
 
                     # Ejecutar Puppeteer/Node web_capture_engine.js
                     if IS_FROZEN:
@@ -732,9 +742,10 @@ class main:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
                         result = script_runtime_host.run_obfuscated_js(
                             "web_capture_engine.js",
-                            [output_file, url],
+                            recorder_args,
                             subprocess_timeout=None,
                             focus_automation_browser=True,
+                            on_browser_ready=_on_browser_ready,
                         )
                     else:
                         jm.update_progress(job_id, {"stage": "Ejecutando Puppeteer recorder"})
@@ -743,10 +754,13 @@ class main:
                         recorder_js_path = os.path.join(self.base_dir, "core", "ui_automation", "web_capture_engine.js")
 
                         result = run_subprocess_with_automation_focus(
-                            ["node", recorder_js_path, output_file, url],
+                            ["node", recorder_js_path, *recorder_args],
                             cwd=self.base_dir,
                             timeout=None,
+                            on_browser_ready=_on_browser_ready,
                         )
+
+                    recorder_obj = _recorder_holder[0]
 
                     if result.returncode != 0:
                         error = result.stderr if result.stderr else "Error desconocido en Node.js"

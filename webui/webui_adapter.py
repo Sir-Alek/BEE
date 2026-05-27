@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Sequence
 
 from ui.interfaces import ActionItem, BDDUserCancelled, IUI
 
-from webui.job_manager import JobCancelledError, JobManager, Prompt
+from webui.job_manager import PROMPT_ANSWER_BACK, JobCancelledError, JobManager, Prompt
 
 
 class WebUIAdapter(IUI):
@@ -60,6 +60,7 @@ class WebUIAdapter(IUI):
             title="Seleccionar script de Interacciones",
             message=f"Selecciona un script ({project_name}):",
             options=[{"value": s, "label": s} for s in scripts],
+            payload={"allow_back": True},
         )
 
         try:
@@ -69,30 +70,40 @@ class WebUIAdapter(IUI):
 
         if answer is None:
             return None
+        if answer == PROMPT_ANSWER_BACK:
+            return PROMPT_ANSWER_BACK
         return str(answer)
 
     def pick_actions(self, actions: Sequence[ActionItem]) -> Sequence[str]:
         if not actions:
             return []
 
-        prompt_id = self._new_prompt_id()
-        prompt = Prompt(
-            prompt_id=prompt_id,
-            type="pick_actions",
-            title="Seleccionar acciones para conversión",
-            message="Selecciona las acciones a convertir:",
-            actions=[{"type": a["type"], "description": a["description"], "original_line": a["original_line"]} for a in actions],
-        )
+        while True:
+            prompt_id = self._new_prompt_id()
+            prompt = Prompt(
+                prompt_id=prompt_id,
+                type="pick_actions",
+                title="Seleccionar acciones para conversión",
+                message="Selecciona las acciones a convertir:",
+                actions=[
+                    {"type": a["type"], "description": a["description"], "original_line": a["original_line"]}
+                    for a in actions
+                ],
+                payload={"allow_back": True},
+            )
 
-        try:
-            answer = self._safe_wait(prompt)
-        except JobCancelledError:
-            return []
+            try:
+                answer = self._safe_wait(prompt)
+            except JobCancelledError:
+                return []
 
-        if not answer:
-            return []
-        # Contrato: lista de original_line (strings)
-        return list(answer)
+            if answer is None:
+                return []
+            if answer == PROMPT_ANSWER_BACK:
+                return PROMPT_ANSWER_BACK
+            selected = list(answer)
+            if selected:
+                return selected
 
     def pick_conversion_mode(self) -> str:
         prompt_id = self._new_prompt_id()

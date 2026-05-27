@@ -1,0 +1,9 @@
+{
+  "schema": 2,
+  "toolchain": "cpython-312",
+  "optimization_level": 0,
+  "strict_types": false,
+  "emit_debug_annotations": true,
+  "parallel_jobs": 4,
+  "runtime_gate": "hold"
+}

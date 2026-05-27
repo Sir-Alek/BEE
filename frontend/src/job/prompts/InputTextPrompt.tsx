@@ -2,6 +2,7 @@ import React from "react";
 import { PROMPT_ANSWER_BACK, sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { promptAllowsBack } from "../../types";
+import { cancelJobFlow } from "../promptNav";
 
 type Props = {
   c: Record<string, string>;
@@ -70,8 +71,8 @@ export function InputTextPrompt(props: Props) {
           </button>
         )}
         <button
-          onClick={async () => {
-            await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
+          onClick={() => {
+            void cancelJobFlow(jobId);
           }}
           style={{
             padding: "10px 14px",

@@ -37,7 +37,6 @@ export default function App() {
 
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
   const [homeTab, setHomeTab] = useState<"ui" | "req" | "api">("ui");
-  const [captureApiTraffic, setCaptureApiTraffic] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
   const { job, events: jobEvents, errorText: jobPollError } = useJobProgress(jobId, polling);
@@ -48,6 +47,7 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
   const [homeHint, setHomeHint] = useState<string | null>(null);
+  const flowTabRef = useRef<Window | null>(null);
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
   const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
   const [aiMemoryOpen, setAiMemoryOpen] = useState(false);
@@ -263,7 +263,7 @@ export default function App() {
     return () => { alive = false; };
   }, [isHomeSurface, homeTab, platform, canRunJobs]);
 
-  const startJob = async (
+  const startJob = useCallback(async (
     mode:
       | "puppeteer_recorder"
       | "puppeteer_to_behave"
@@ -330,7 +330,6 @@ export default function App() {
             mode,
             config: recordingConfig,
             urlValue,
-            captureApi: captureApiTraffic,
             mobilePackageOverride:
               mode === "mobile_recorder" ? { package: mobilePkg, activity: mobileAct } : undefined,
             docExtras:
@@ -357,6 +356,7 @@ export default function App() {
         } catch {
           newTab.location.href = jobUrl;
         }
+        flowTabRef.current = newTab;
         setHomeHint(
           "El flujo se abrió en otra pestaña. Esta vista es el inicio: déjala abierta y usa la otra pestaña para los pasos y el resultado.",
         );
@@ -369,7 +369,23 @@ export default function App() {
         setErrorText(String((e as Error)?.message ?? e));
       }
     })();
-  };
+  }, [
+    license,
+    showHomeError,
+    recordingConfig,
+    recorderPreflight,
+    mobilePreflight,
+    loadedDocs,
+    connectorProfiles,
+    reqConnectorProfileId,
+    urlValue,
+    detectForegroundApp,
+    linkMapping,
+    recordingMapping,
+    linkRecordings,
+    autoLinkToScenario,
+    autoLinkScenarioRef,
+  ]);
 
   useEffect(() => {
     if (activePrompt?.type === "input_text") {
@@ -443,7 +459,10 @@ export default function App() {
     try {
       bc = new BroadcastChannel(ELIA_UI_BC);
       bc.onmessage = (ev: MessageEvent) => {
-        if (ev.data?.type === "elia_job_finished") setHomeHint(null);
+        if (ev.data?.type === "elia_job_finished" || ev.data?.type === "elia_job_tab_closed") {
+          flowTabRef.current = null;
+          setHomeHint(null);
+        }
       };
     } catch {
       // ignore
@@ -456,6 +475,17 @@ export default function App() {
       }
     };
   }, [isHomeSurface]);
+
+  useEffect(() => {
+    if (!homeHint) return;
+    const poll = window.setInterval(() => {
+      if (flowTabRef.current?.closed) {
+        flowTabRef.current = null;
+        setHomeHint(null);
+      }
+    }, 400);
+    return () => window.clearInterval(poll);
+  }, [homeHint]);
 
   useEffect(() => {
     if (!homeHint) return;
@@ -547,7 +577,7 @@ export default function App() {
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
       appPackage, setAppPackage, appActivity, setAppActivity, apkPath, setApkPath,
-      detectingForegroundApp, detectForegroundApp, captureApiTraffic, setCaptureApiTraffic,
+      detectingForegroundApp, detectForegroundApp,
     }),
     [
       platform, urlValue, windowName, exePath, recorderPreflight, recorderPreflightLoading,
@@ -557,7 +587,6 @@ export default function App() {
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, appPackage,
       appActivity, apkPath, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
-      captureApiTraffic,
     ],
   );
 
@@ -591,7 +620,7 @@ export default function App() {
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
-      availableRecordings,
+      availableRecordings, startJob,
     ],
   );
 
@@ -629,6 +658,7 @@ export default function App() {
                   {isHomeSurface && <HomeSurface />}
 
                   {!isHomeSurface && (
+                    // Versión comercial (≥1.0): añadir supportEmail={aboutInfo?.support_email} en JobWorkspace.
                     <JobWorkspace
                       c={c}
                       jobId={jobId}

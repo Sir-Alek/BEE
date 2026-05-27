@@ -166,30 +166,53 @@ class WebCaptureBehaveBuilder:
             return
 
         # ── Modo simple (flujo original intacto) ────────────────────────
-        selected_file = self.ui.pick_script(sorted(js_files), project_name)
-        if not selected_file:
-            return
+        from webui.job_manager import PROMPT_ANSWER_BACK
 
-        js_file = os.path.join(scripts_dir, selected_file)
-
-        try:
-            with open(js_file, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            if not content:
-                content = "// Archivo vacío"
-
-            actions = self._extract_all_actions(content)
-            selected_lines = self.ui.pick_actions(actions)
-            if actions and not selected_lines:
+        while True:
+            selected_file = self.ui.pick_script(sorted(js_files), project_name)
+            if not selected_file:
                 return
-            self.selected_actions = list(selected_lines)
+            if selected_file == PROMPT_ANSWER_BACK:
+                project_name = self.ui.pick_project(sorted(projects))
+                if not project_name:
+                    return
+                project_path = os.path.join(self.projects_dir, project_name)
+                scripts_dir = os.path.join(project_path, "scripts")
+                if not os.path.exists(scripts_dir):
+                    self.ui.error("Error", "No se encontró la carpeta 'scripts' en el proyecto seleccionado.")
+                    return
+                js_files = [f for f in os.listdir(scripts_dir) if f.endswith(".js")]
+                if not js_files:
+                    self.ui.error("Error", "No se encontraron archivos JavaScript (.js) en la carpeta 'scripts'.")
+                    return
+                continue
 
-            filtered_content = self._filter_content_by_actions(content, self.selected_actions)
-            self._process_conversion(js_file, filtered_content, project_path)
+            js_file = os.path.join(scripts_dir, selected_file)
 
-        except Exception as e:
-            self.ui.error("Error", f"No se pudo convertir:\n{str(e)}")
+            try:
+                with open(js_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                if not content:
+                    content = "// Archivo vacío"
+
+                actions = self._extract_all_actions(content)
+                while True:
+                    selected_lines = self.ui.pick_actions(actions)
+                    if selected_lines == PROMPT_ANSWER_BACK:
+                        break
+                    if actions and not selected_lines:
+                        raise BDDUserCancelled()
+                    self.selected_actions = list(selected_lines)
+                    filtered_content = self._filter_content_by_actions(content, self.selected_actions)
+                    self._process_conversion(js_file, filtered_content, project_path)
+                    return
+
+            except BDDUserCancelled:
+                raise
+            except Exception as e:
+                self.ui.error("Error", f"No se pudo convertir:\n{str(e)}")
+                return
          
     def _find_project_path(self, js_file_path):
         """Busca la carpeta del proyecto basada en la ubicación del script"""

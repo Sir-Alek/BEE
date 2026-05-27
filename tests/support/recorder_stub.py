@@ -31,6 +31,14 @@ def fake_run_subprocess_with_automation_focus(
         out = Path(cmd[2])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(f"// stub recording\nmodule.exports = [];\n", encoding="utf-8")
+    capture_api = len(cmd) >= 4 and (cmd[3] or "").strip() == "1"
+    if capture_api and len(cmd) >= 6 and (cmd[5] or "").strip():
+        api_path = Path(cmd[5])
+        api_path.parent.mkdir(parents=True, exist_ok=True)
+        api_path.write_text(
+            '{"version":1,"captured_at":"stub","entries":[{"id":"req-1","method":"GET","url":"https://api.ejemplo.com/items","response_status":200}]}',
+            encoding="utf-8",
+        )
     stdout = (
         "BROWSER_READY\n"
         'WINDOW_INFO:{"x":0,"y":0,"width":1280,"height":720}\n'

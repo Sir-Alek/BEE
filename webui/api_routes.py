@@ -16,9 +16,12 @@ from core.api_automation.locust_generator import write_locustfile
 from core.api_automation.models import ApiRequest
 from core.api_automation.traffic_store import (
     ensure_api_project,
+    import_traffic_to_scenarios,
     list_api_projects,
     list_scenarios,
+    list_traffic_captures,
     load_scenario,
+    resolve_traffic_capture_path,
     save_scenario,
     traffic_path_for_script,
 )
@@ -37,6 +40,10 @@ class ApiConvertRequest(BaseModel):
     traffic_path: Optional[str] = None
     feature_name: Optional[str] = None
     scenario_ids: Optional[List[str]] = None
+
+
+class ApiImportTrafficRequest(BaseModel):
+    capture_id: str
 
 
 class ApiRunRequest(BaseModel):
@@ -89,6 +96,38 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         if not is_module_enabled("api_testing"):
             raise HTTPException(status_code=403, detail="Módulo api_testing no habilitado")
         return {"scenarios": list_scenarios(project_name)}
+
+    @app.get("/api/api/projects/{project_name}/traffic-captures")
+    def api_list_traffic_captures(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.modules_config import is_module_enabled
+
+        if not is_module_enabled("api_testing"):
+            raise HTTPException(status_code=403, detail="Módulo api_testing no habilitado")
+        return {"captures": list_traffic_captures(project_name)}
+
+    @app.post("/api/api/projects/{project_name}/import-traffic")
+    def api_import_traffic(
+        project_name: str,
+        body: ApiImportTrafficRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.modules_config import is_module_enabled
+
+        if not is_module_enabled("api_testing"):
+            raise HTTPException(status_code=403, detail="Módulo api_testing no habilitado")
+        try:
+            traffic_path = str(resolve_traffic_capture_path(project_name, body.capture_id))
+        except (ValueError, FileNotFoundError) as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        scenario_ids = import_traffic_to_scenarios(project_name, traffic_path)
+        if not scenario_ids:
+            raise HTTPException(status_code=400, detail="La captura no contiene peticiones importables")
+        return {"ok": True, "scenario_ids": scenario_ids, "count": len(scenario_ids)}
 
     @app.post("/api/api/scenarios")
     def api_save_scenario(

@@ -51,6 +51,7 @@ export type ActivePrompt =
       message: string;
       options: null;
       actions: { type: string; description: string; original_line: string }[];
+      payload?: PromptControlPayload | null;
     }
   | {
       prompt_id: string;
@@ -117,6 +118,17 @@ export type ActivePrompt =
       message: string;
       options: null;
       actions: { type: string; description: string; original_line: string }[];
+    }
+  | {
+      prompt_id: string;
+      type: "recording_options";
+      title: string;
+      message: string;
+      payload: {
+        options: { key: string; label: string; default?: boolean }[];
+      };
+      options: null;
+      actions: null;
     }
   | {
       prompt_id: string;

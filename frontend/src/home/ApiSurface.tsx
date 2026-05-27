@@ -4,6 +4,8 @@ import {
   createApiProject,
   getApiProjects,
   getApiScenarios,
+  getApiTrafficCaptures,
+  importApiTrafficCapture,
   runLoadTest,
   saveApiScenario,
   startTestRun,
@@ -24,6 +26,7 @@ export function ApiSurface(props: Props) {
   const [project, setProject] = useState("DefaultApi");
   const [newProject, setNewProject] = useState("");
   const [scenarios, setScenarios] = useState<{ id: string; name: string }[]>([]);
+  const [captures, setCaptures] = useState<{ id: string; name: string; path: string }[]>([]);
   const [method, setMethod] = useState("GET");
   const [url, setUrl] = useState("");
   const [body, setBody] = useState("");
@@ -46,6 +49,13 @@ export function ApiSurface(props: Props) {
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
   };
 
+  const refreshCaptures = () => {
+    if (!project.trim()) return;
+    void getApiTrafficCaptures(project)
+      .then((r) => setCaptures(r.captures))
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
+  };
+
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
@@ -55,6 +65,7 @@ export function ApiSurface(props: Props) {
 
   useEffect(() => {
     refreshScenarios();
+    refreshCaptures();
   }, [project]);
 
   if (!modules?.api_testing) {
@@ -85,6 +96,25 @@ export function ApiSurface(props: Props) {
       },
     })
       .then(() => refreshScenarios())
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setBusy(false));
+  };
+
+  const handleImportCapture = (captureId: string) => {
+    setBusy(true);
+    void importApiTrafficCapture(project, captureId)
+      .then((r) => {
+        refreshScenarios();
+        setHomeHint(`${r.count} escenario(s) importado(s) desde la captura web.`);
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setBusy(false));
+  };
+
+  const handleConvertCapture = (capturePath: string, captureName: string) => {
+    setBusy(true);
+    void convertApiScenarios({ project, traffic_path: capturePath, feature_name: captureName })
+      .then(() => setHomeHint("Feature Behave API generado desde captura web."))
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
   };
@@ -255,6 +285,51 @@ export function ApiSurface(props: Props) {
             Ejecutar Behave API
           </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          border: `1px solid ${c.border}`,
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 14,
+          background: c.surface,
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Capturas desde grabación web</div>
+        <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
+          Si grabaste con «Capturar tráfico API», los JSON quedan en{" "}
+          <code style={{ fontSize: 12 }}>behave/api/&lt;proyecto&gt;/scripts/</code> (mismo nombre que el proyecto web).
+        </div>
+        {captures.length === 0 ? (
+          <div style={{ fontSize: 13, color: c.muted }}>Sin capturas en este proyecto API.</div>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+            {captures.map((cap) => (
+              <li key={cap.id} style={{ marginBottom: 8 }}>
+                <span>{cap.name}</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                  <button
+                    type="button"
+                    disabled={!canRunJobs || busy}
+                    onClick={() => handleImportCapture(cap.id)}
+                    style={btn(c)}
+                  >
+                    Importar a escenarios
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canRunJobs || busy}
+                    onClick={() => handleConvertCapture(cap.path, cap.name)}
+                    style={btn(c)}
+                  >
+                    Generar .feature Behave
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div style={{ marginBottom: 12, fontSize: 13, color: c.muted }}>

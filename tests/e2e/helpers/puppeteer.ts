@@ -12,9 +12,10 @@ function answerForPrompt(
     projectName: string;
     fileName: string;
     recordVideo: boolean;
+    captureApi: boolean;
     preferNewProject: boolean;
   },
-): string | boolean | null {
+): string | boolean | Record<string, boolean> | null {
   const title = prompt.title ?? "";
   const type = prompt.type ?? "";
 
@@ -33,6 +34,9 @@ function answerForPrompt(
   if (type === "yes_no_cancel") {
     return true;
   }
+  if (type === "recording_options") {
+    return { video: options.recordVideo, capture_api: options.captureApi };
+  }
   if (type === "yes_no") {
     return options.recordVideo;
   }
@@ -47,6 +51,7 @@ export async function answerPuppeteerRecorderPrompts(
     projectName?: string;
     fileName?: string;
     recordVideo?: boolean;
+    captureApi?: boolean;
     preferNewProject?: boolean;
     timeoutMs?: number;
   },
@@ -55,6 +60,7 @@ export async function answerPuppeteerRecorderPrompts(
     projectName: options?.projectName ?? "E2EProyecto",
     fileName: options?.fileName ?? "grabacion_e2e.js",
     recordVideo: options?.recordVideo ?? false,
+    captureApi: options?.captureApi ?? false,
     preferNewProject: options?.preferNewProject ?? true,
     timeoutMs: options?.timeoutMs ?? 90_000,
   };

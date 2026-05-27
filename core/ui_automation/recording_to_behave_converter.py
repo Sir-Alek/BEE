@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ui.interfaces import ActionItem, BDDUserCancelled, IUI
 
+from webui.job_manager import PROMPT_ANSWER_BACK
+
 from core.ui_automation.flow_analyzer import ActionTuple, FlowAnalyzer
 from core.ui_automation.mobile_dom_parser import MobileElement, parse_android_page_source
 from core.ui_automation.web_capture_behave_builder import WebCaptureBehaveBuilder
@@ -251,8 +253,10 @@ class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
             )
             if action_items:
                 selected_lines = self.ui.pick_actions(action_items)
-                if not selected_lines:
+                if selected_lines == PROMPT_ANSWER_BACK:
                     return
+                if not selected_lines:
+                    raise BDDUserCancelled()
                 self.selected_actions = list(selected_lines)
                 self._recording_events = _filter_events_by_selection(
                     self._recording_events,

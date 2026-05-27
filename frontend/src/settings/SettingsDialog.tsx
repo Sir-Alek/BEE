@@ -22,6 +22,8 @@ import { emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../con
 import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
 import type { EliaConnectorProfile } from "../types";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
+// Versión comercial (≥1.0): descomentar y usar en Licencia en lugar de BetaFeedbackLink.
+// import { SupportSettingsContact } from "../components/SupportSettingsContact";
 import { useConnectorContext } from "../context/ConnectorContext";
 import { useLicenseContext } from "../context/LicenseContext";
 import { useSettingsUiContext } from "../context/SettingsUiContext";
@@ -797,6 +799,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </button>
                   )}
                   <BetaFeedbackLink url={aboutInfo?.beta_feedback_url} c={c} variant="license" />
+                  {/*
+                  Versión comercial (≥1.0): quitar BetaFeedbackLink de arriba y usar:
+                  <SupportSettingsContact
+                    email={aboutInfo?.support_email ?? ""}
+                    c={c}
+                  />
+                  */}
                 </>
               ) : (
                 <div style={{ fontSize: 13, color: c.muted }}>No se pudo consultar el estado de la licencia.</div>
@@ -1384,6 +1393,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </div>
                   ) : null}
                   <BetaFeedbackLink url={aboutInfo.beta_feedback_url} c={c} variant="about" />
+                  {/*
+                  Versión comercial (≥1.0): quitar BetaFeedbackLink de arriba.
+                  En Acerca de basta con la línea Contacto (contact_email) ya mostrada arriba.
+                  */}
                   {aboutInfo.local_logs_hint ? (
                     <div style={{ fontSize: 12, color: c.muted, marginBottom: 12 }}>
                       {aboutInfo.local_logs_hint}

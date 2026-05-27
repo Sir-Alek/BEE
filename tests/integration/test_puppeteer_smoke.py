@@ -46,7 +46,7 @@ class TestPuppeteerRecorderSmoke(unittest.TestCase):
             self.assertTrue(out.is_file(), proc.stdout + proc.stderr)
 
     def test_puppeteer_recorder_job_completes_with_stub(self) -> None:
-        answers = ["SmokeProyecto", "grabacion_smoke.js", True, False]
+        answers = ["SmokeProyecto", "grabacion_smoke.js", {"video": False, "capture_api": False}, True]
 
         with patch(
             "core.ui_automation.recorder_focus.run_subprocess_with_automation_focus",

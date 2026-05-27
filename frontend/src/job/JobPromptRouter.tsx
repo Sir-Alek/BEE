@@ -4,12 +4,15 @@ import { JobPromptShell } from "./prompts/JobPromptShell";
 import { PickConversionModePrompt } from "./prompts/PickConversionModePrompt";
 import { PickOptionsPrompt } from "./prompts/PickOptionsPrompt";
 import { PickActionsPrompt, PickScriptsMultiPrompt } from "./prompts/PickActionsPrompt";
+import { RecordingOptionsPrompt } from "./prompts/RecordingOptionsPrompt";
 import { YesNoPrompt } from "./prompts/YesNoPrompt";
 import { BddPreviewPrompt } from "./prompts/BddPreviewPrompt";
 import { GroupedFeatureReviewPrompt } from "./prompts/GroupedFeatureReviewPrompt";
 import { MessageAckPrompt } from "./prompts/MessageAckPrompt";
 import { InputTextPrompt } from "./prompts/InputTextPrompt";
+import { PromptNavButtons } from "./prompts/PromptNavButtons";
 import type { JobProgressState } from "./useJobProgress";
+import { promptAllowsBack } from "../types";
 
 type Props = {
   c: Record<string, string>;
@@ -39,6 +42,8 @@ export function JobPromptRouter(props: Props) {
       case "yes_no":
       case "yes_no_cancel":
         return <YesNoPrompt c={c} jobId={jobId} activePrompt={activePrompt} />;
+      case "recording_options":
+        return <RecordingOptionsPrompt c={c} jobId={jobId} activePrompt={activePrompt} />;
       case "bdd_preview":
         return (
           <BddPreviewPrompt
@@ -84,9 +89,23 @@ export function JobPromptRouter(props: Props) {
     );
   }
 
+  const usesOwnNav =
+    activePrompt.type === "input_text" ||
+    activePrompt.type === "bdd_preview" ||
+    activePrompt.type === "grouped_feature_review";
+  const showBack = "payload" in activePrompt && promptAllowsBack(activePrompt.payload);
+
   return (
     <JobPromptShell c={c} jobId={jobId} activePrompt={activePrompt}>
       {body}
+      {!usesOwnNav ? (
+        <PromptNavButtons
+          c={c}
+          jobId={jobId}
+          promptId={activePrompt.prompt_id}
+          showBack={showBack}
+        />
+      ) : null}
     </JobPromptShell>
   );
 }

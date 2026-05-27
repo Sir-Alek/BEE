@@ -118,6 +118,14 @@ export async function startConvertJob(params: {
   return res.json();
 }
 
+export async function cancelConvertJob(jobId: string): Promise<void> {
+  const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to cancel job: ${res.status} ${text}`);
+  }
+}
+
 export async function getModulesStatus(): Promise<ModulesStatus> {
   const res = await fetch("/api/modules/status");
   if (!res.ok) throw new Error(`Failed to fetch modules: ${res.status}`);
@@ -393,6 +401,7 @@ export type AppAboutResponse = {
   version_display: string;
   developer: string;
   contact_email?: string | null;
+  support_email?: string | null;
   tagline: string;
   license_text: string;
   changelog: ChangelogEntry[];
@@ -640,6 +649,27 @@ export async function createApiProject(name: string): Promise<{ ok: boolean; pro
 export async function getApiScenarios(project: string): Promise<{ scenarios: { id: string; name: string; path: string }[] }> {
   const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/scenarios`);
   if (!res.ok) throw new Error(`Failed to list scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiTrafficCaptures(
+  project: string,
+): Promise<{ captures: { id: string; name: string; path: string }[] }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/traffic-captures`);
+  if (!res.ok) throw new Error(`Failed to list traffic captures: ${res.status}`);
+  return res.json();
+}
+
+export async function importApiTrafficCapture(
+  project: string,
+  captureId: string,
+): Promise<{ ok: boolean; scenario_ids: string[]; count: number }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/import-traffic`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ capture_id: captureId }),
+  });
+  if (!res.ok) throw new Error(`Failed to import traffic capture: ${res.status}`);
   return res.json();
 }
 

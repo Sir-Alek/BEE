@@ -1,3 +1,10 @@
+/**
+ * Enlaces al formulario beta (Configuración y errores de job).
+ * Versión comercial (≥1.0):
+ * - Licencia: sustituir variant="license" por SupportSettingsContact en SettingsDialog.tsx.
+ * - Acerca de: quitar variant="about"; mantener solo la línea Contacto.
+ * - Job: ver JobErrorPanel.tsx → SupportContactLink.
+ */
 import React from "react";
 
 export const BETA_FEEDBACK_LINK_LABEL = "Ayúdanos a mejorar llenando el formulario de la Beta";

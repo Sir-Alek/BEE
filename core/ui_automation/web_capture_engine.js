@@ -446,7 +446,8 @@ let actionRecorder = null;
 
     const outputFile = process.argv[2] || path.join(__dirname, 'grabaciones', 'recorded_actions.js');
     const captureApi = (process.argv[4] || '').trim() === '1';
-    const apiTrafficPath = outputFile.replace(/\.js$/i, '') + '_api_traffic.json';
+    const apiTrafficArg = (process.argv[5] || '').trim();
+    const apiTrafficPath = apiTrafficArg || outputFile.replace(/\.js$/i, '') + '_api_traffic.json';
     const apiEntries = [];
     actionRecorder = new ActionRecorder(outputFile);
 

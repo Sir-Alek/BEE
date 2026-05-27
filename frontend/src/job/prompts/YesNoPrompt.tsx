@@ -10,7 +10,6 @@ type Props = {
 
 export function YesNoPrompt(props: Props) {
   const { c, jobId, activePrompt } = props;
-  const showCancel = activePrompt.type === "yes_no_cancel";
   return (
     <div style={{ display: "flex", gap: 10 }}>
       <button
@@ -43,23 +42,6 @@ export function YesNoPrompt(props: Props) {
       >
         No
       </button>
-      {showCancel && (
-        <button
-          onClick={async () => {
-            await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: null });
-          }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.muted,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
-        >
-          Cancelar
-        </button>
-      )}
     </div>
   );
 }

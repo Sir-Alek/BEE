@@ -1,5 +1,6 @@
 export function formatPromptType(t: string): string {
   if (t === "message_ack") return "Aviso";
+  if (t === "recording_options") return "Opciones";
   return t.replaceAll("_", " ");
 }
 

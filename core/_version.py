@@ -4,9 +4,14 @@ No compilar con Cython: este módulo se importa como core._version para que
 un .pyd obsoleto de core.version no oculte bumps de ELIA_VERSION en desarrollo.
 """
 
-ELIA_VERSION = "0.8.0"
+ELIA_VERSION = "0.8.10"
 ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
 ELIA_CONTACT_EMAIL = "elia.qa.software+contacto@gmail.com"
+# Versión comercial (≥1.0):
+# - Pantalla de error del job: SupportContactLink (JobErrorPanel.tsx)
+# - Configuración → Licencia: SupportSettingsContact (SettingsDialog.tsx)
+# - Configuración → Acerca de: solo ELIA_CONTACT_EMAIL (sin formulario beta)
+ELIA_SUPPORT_EMAIL = "elia.qa.software+soporte@gmail.com"
 ELIA_BETA_FEEDBACK_URL = "https://forms.gle/LxrfHressWy48jDZ6"
 ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
 

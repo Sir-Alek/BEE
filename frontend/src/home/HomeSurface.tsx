@@ -38,7 +38,6 @@ export function HomeSurface() {
     emulatorMessage, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
     detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
     windowName, setWindowName, exePath, setExePath,
-    captureApiTraffic, setCaptureApiTraffic,
   } = useRecordingContext();
 
   if (!initialChecked) return null;
@@ -394,32 +393,6 @@ export function HomeSurface() {
                     onExePathChange={setExePath}
                   />
                 )}
-
-                {modules?.api_testing ? (
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "flex-start",
-                      fontSize: 13,
-                      color: platform === "web" ? c.text : c.muted,
-                      marginBottom: 14,
-                      cursor: platform === "web" ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={captureApiTraffic}
-                      disabled={platform !== "web"}
-                      onChange={(e) => setCaptureApiTraffic(e.target.checked)}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span>
-                      Capturar tráfico API (XHR/fetch) junto con la grabación.
-                      {platform !== "web" ? " Disponible solo en Web por ahora." : null}
-                    </span>
-                  </label>
-                ) : null}
 
                 {aiCaps && (
                   <div style={{ fontSize: 13, color: c.muted, marginBottom: 14, lineHeight: 1.45 }}>

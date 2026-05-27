@@ -19,6 +19,7 @@ _SKIP_FILENAMES = frozenset(
         "version.py",
         "_version.py",
         "install_manifest.py",
+        "compile_profile_loader.py",
         "modules_config.py",
         "mobile_recorder.py",
         "mobile_android.py",

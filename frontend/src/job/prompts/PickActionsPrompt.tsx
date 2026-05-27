@@ -53,6 +53,7 @@ export function PickScriptsMultiPrompt(props: PickMultiProps) {
           promptId={activePrompt.prompt_id}
           actions={activePrompt.actions}
           minSelected={2}
+          emptySelectionMessage="Selecciona al menos dos grabaciones para continuar."
           onSubmit={async (selectedLines) => {
             await sendPromptResponse({
               jobId,
