@@ -4,6 +4,21 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.50] - 2026-05-19
+
+### Añadido
+
+- **Inteligencia de Requerimientos — publicación multi-destino (Estrategia 2):** tras revisar el Gherkin en el job, panel opcional de publicación antes de continuar.
+- Adaptadores backend: Git (GitHub/GitLab/Azure Repos), Jira vanilla (ADF), Jira Xray, ValueEdge `bdd_specs`, Azure DevOps Work Item, archivo `.feature` local.
+- API `POST /api/req/publish`, `POST /api/req/publish/test`, `GET /api/req/publish/targets`.
+- Perfiles de conectores **v2**: campos Git, Azure DevOps, modo Jira vanilla/Xray, IDs por defecto para publicación.
+- Configuración ampliada en **Conectores** (Git, Azure, campos Jira/VE de publicación).
+
+### Cambiado
+
+- Separación explícita **generación** (Gherkin) vs **publicación** (Multi-Target Adapter).
+- Migración automática de perfiles conectores v1 → v2 al cargar/guardar.
+
 ## [0.9.43] - 2026-05-28
 
 ### Añadido

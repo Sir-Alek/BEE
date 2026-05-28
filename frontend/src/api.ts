@@ -1,5 +1,8 @@
 import type {
+  BddPublishTarget,
+  EliaAzureDevOpsCreds,
   EliaConnectorsDocument,
+  EliaGitCreds,
   EliaJiraCreds,
   EliaValueEdgeCreds,
   LoadedDoc,
@@ -539,14 +542,28 @@ export async function putEliaConnectors(doc: EliaConnectorsDocument): Promise<{ 
 }
 
 export async function testEliaConnector(params: {
-  kind: "jira" | "value_edge";
+  kind: "jira" | "value_edge" | "git" | "azure_devops" | "jira_xray";
   jira: EliaJiraCreds;
   value_edge: EliaValueEdgeCreds;
-}): Promise<{ ok: boolean; connection_ok?: boolean; source?: string }> {
+  git?: EliaGitCreds;
+  azure_devops?: EliaAzureDevOpsCreds;
+}): Promise<{ ok: boolean; connection_ok?: boolean; source?: string; message?: string }> {
   const res = await fetch("/api/elia/connectors/test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      kind: params.kind,
+      jira: params.jira,
+      value_edge: params.value_edge,
+      git: params.git ?? { provider: "github", repo_url: "", branch: "main", base_path: "features/", token: "" },
+      azure_devops: params.azure_devops ?? {
+        org: "",
+        project: "",
+        pat: "",
+        default_work_item_id: "",
+        target_field: "System.Description",
+      },
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -554,6 +571,63 @@ export async function testEliaConnector(params: {
     throw new Error(`Prueba fallida (${res.status}): ${detail}`);
   }
   return data;
+}
+
+export type BddPublishRequest = {
+  target: BddPublishTarget;
+  profile_id: string;
+  gherkin_text: string;
+  feature_name?: string;
+  issue_key?: string;
+  requirement_id?: string;
+  work_item_id?: string;
+  file_path?: string;
+  branch?: string;
+  commit_message?: string;
+  output_dir?: string;
+};
+
+export async function publishBddFeature(body: BddPublishRequest): Promise<{
+  ok: boolean;
+  target: BddPublishTarget;
+  message: string;
+  external_id?: string;
+  url?: string;
+}> {
+  const res = await fetch("/api/req/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : JSON.stringify(data);
+    throw new Error(detail || `Publicación fallida (${res.status})`);
+  }
+  return data as {
+    ok: boolean;
+    target: BddPublishTarget;
+    message: string;
+    external_id?: string;
+    url?: string;
+  };
+}
+
+export async function testReqPublishTarget(params: {
+  target: BddPublishTarget;
+  profile_id: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch("/api/req/publish/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : JSON.stringify(data);
+    throw new Error(detail || `Prueba fallida (${res.status})`);
+  }
+  return data as { ok: boolean; message: string };
 }
 
 export async function getJob(jobId: string): Promise<JobStateResponse> {

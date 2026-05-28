@@ -42,6 +42,7 @@ def _fernet() -> Fernet:
 
 
 def save_document(doc: dict[str, Any]) -> None:
+    doc = normalize_document(doc)
     p = store_path()
     blob = _fernet().encrypt(json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     p.write_bytes(blob)
@@ -53,4 +54,62 @@ def load_document() -> dict[str, Any] | None:
         return None
     raw = _fernet().decrypt(p.read_bytes())
     data = json.loads(raw.decode("utf-8"))
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    return normalize_document(data)
+
+
+def normalize_document(doc: dict[str, Any]) -> dict[str, Any]:
+    """Migra v1 → v2 y rellena defaults de publicación."""
+    version = int(doc.get("version") or 1)
+    profiles_in = doc.get("profiles") if isinstance(doc.get("profiles"), list) else []
+    profiles: list[dict[str, Any]] = []
+    for item in profiles_in:
+        if not isinstance(item, dict):
+            continue
+        profiles.append(normalize_profile(item))
+    out_version = max(version, 2)
+    return {"version": out_version, "profiles": profiles}
+
+
+def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    jira = dict(profile.get("jira") or {})
+    jira.setdefault("mode", "vanilla")
+    jira.setdefault("project_key", "")
+    jira.setdefault("xray_base_url", "")
+    jira.setdefault("target_field", "description")
+    jira.setdefault("default_issue_key", "")
+    ve = dict(profile.get("value_edge") or {})
+    ve.setdefault("default_requirement_id", "")
+    git = dict(profile.get("git") or {})
+    git.setdefault("provider", "github")
+    git.setdefault("repo_url", "")
+    git.setdefault("branch", "main")
+    git.setdefault("base_path", "features/")
+    git.setdefault("token", "")
+    azure = dict(profile.get("azure_devops") or {})
+    azure.setdefault("org", "")
+    azure.setdefault("project", "")
+    azure.setdefault("pat", "")
+    azure.setdefault("default_work_item_id", "")
+    azure.setdefault("target_field", "System.Description")
+    return {
+        "id": str(profile.get("id") or ""),
+        "name": str(profile.get("name") or "Perfil"),
+        "jira": jira,
+        "value_edge": ve,
+        "git": git,
+        "azure_devops": azure,
+    }
+
+
+def load_profile_by_id(profile_id: str) -> dict[str, Any] | None:
+    doc = load_document()
+    if not doc:
+        return None
+    pid = (profile_id or "").strip()
+    for item in doc.get("profiles") or []:
+        if isinstance(item, dict) and str(item.get("id")) == pid:
+            return normalize_profile(item)
+    return None
+

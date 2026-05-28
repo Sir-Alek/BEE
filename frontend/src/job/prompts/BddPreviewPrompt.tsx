@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { cancelJobFlow } from "../promptNav";
+import { BddPublishPanel } from "./BddPublishPanel";
 
 type Props = {
   c: Record<string, string>;
@@ -13,7 +14,31 @@ type Props = {
 
 export function BddPreviewPrompt(props: Props) {
   const { c, jobId, activePrompt: ap, bddPreviewText, setBddPreviewText } = props;
+  const [phase, setPhase] = useState<"review" | "publish">("review");
+
   if (!ap.payload) return null;
+
+  async function acceptJob() {
+    const orig = String(ap.payload?.feature_text ?? "");
+    const edited = bddPreviewText.trim() !== orig.trim();
+    await sendPromptResponse({
+      jobId,
+      promptId: ap.prompt_id,
+      answer: { action: "accept", feature_text: bddPreviewText, edited },
+    });
+  }
+
+  if (phase === "publish") {
+    return (
+      <BddPublishPanel
+        c={c}
+        gherkinText={bddPreviewText}
+        onSkip={() => void acceptJob()}
+        onDone={() => void acceptJob()}
+      />
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 13, color: c.muted }}>
@@ -64,15 +89,7 @@ export function BddPreviewPrompt(props: Props) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <button
           type="button"
-          onClick={async () => {
-            const orig = String(ap.payload?.feature_text ?? "");
-            const edited = bddPreviewText.trim() !== orig.trim();
-            await sendPromptResponse({
-              jobId,
-              promptId: ap.prompt_id,
-              answer: { action: "accept", feature_text: bddPreviewText, edited },
-            });
-          }}
+          onClick={() => setPhase("publish")}
           style={{
             padding: "10px 14px",
             borderRadius: 10,

@@ -22,6 +22,11 @@ class JiraCreds(BaseModel):
     url: str = ""
     email: str = ""
     api_token: str = ""
+    mode: Literal["vanilla", "xray"] = "vanilla"
+    project_key: str = ""
+    xray_base_url: str = ""
+    target_field: str = "description"
+    default_issue_key: str = ""
 
 
 class ValueEdgeCreds(BaseModel):
@@ -32,6 +37,23 @@ class ValueEdgeCreds(BaseModel):
     login: str = ""
     user: str = ""
     password: str = ""
+    default_requirement_id: str = ""
+
+
+class GitCreds(BaseModel):
+    provider: Literal["github", "gitlab", "azure_repos"] = "github"
+    repo_url: str = ""
+    branch: str = "main"
+    base_path: str = "features/"
+    token: str = ""
+
+
+class AzureDevOpsCreds(BaseModel):
+    org: str = ""
+    project: str = ""
+    pat: str = ""
+    default_work_item_id: str = ""
+    target_field: str = "System.Description"
 
 
 class ConnectorProfile(BaseModel):
@@ -39,17 +61,21 @@ class ConnectorProfile(BaseModel):
     name: str
     jira: JiraCreds = Field(default_factory=JiraCreds)
     value_edge: ValueEdgeCreds = Field(default_factory=ValueEdgeCreds)
+    git: GitCreds = Field(default_factory=GitCreds)
+    azure_devops: AzureDevOpsCreds = Field(default_factory=AzureDevOpsCreds)
 
 
 class ConnectorsDocument(BaseModel):
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 2
     profiles: List[ConnectorProfile] = Field(default_factory=list)
 
 
 class EliaConnectorTestRequest(BaseModel):
-    kind: Literal["jira", "value_edge"]
+    kind: Literal["jira", "value_edge", "git", "azure_devops", "jira_xray"]
     jira: JiraCreds = Field(default_factory=JiraCreds)
     value_edge: ValueEdgeCreds = Field(default_factory=ValueEdgeCreds)
+    git: GitCreds = Field(default_factory=GitCreds)
+    azure_devops: AzureDevOpsCreds = Field(default_factory=AzureDevOpsCreds)
 
 
 class ConvertRequest(BaseModel):
@@ -547,7 +573,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
         doc = load_document()
         if not doc:
-            return {"version": 1, "profiles": []}
+            return {"version": 2, "profiles": []}
         try:
             return ConnectorsDocument.model_validate(doc).model_dump()
         except Exception as e:
@@ -559,10 +585,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         _: None = Depends(_require_localhost),
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
-        from core.req_intelligence.connectors_profiles_store import save_document
+        from core.req_intelligence.connectors_profiles_store import normalize_document, save_document
 
         try:
-            save_document(body.model_dump())
+            save_document(normalize_document(body.model_dump()))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"no se pudo guardar: {e}") from e
         return {"ok": True}
@@ -574,12 +600,36 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         import core.req_intelligence.integrations_service as elia_service
+        from core.req_intelligence.connectors_profiles_store import normalize_profile
+        from core.req_intelligence.publishers.dispatcher import PublisherDispatcher
 
+        profile = normalize_profile(
+            {
+                "id": "inline-test",
+                "name": "inline",
+                "jira": body.jira.model_dump(),
+                "value_edge": body.value_edge.model_dump(),
+                "git": body.git.model_dump(),
+                "azure_devops": body.azure_devops.model_dump(),
+            }
+        )
+        dispatcher = PublisherDispatcher()
         try:
             if body.kind == "jira":
                 out = elia_service.jira_smoke_test(inline=True, creds=body.jira.model_dump())
-            else:
+            elif body.kind == "value_edge":
                 out = elia_service.value_edge_smoke_test(inline=True, creds=body.value_edge.model_dump())
+            elif body.kind == "git":
+                result = dispatcher.smoke_test("git", profile)
+                return {"ok": result.ok, "message": result.message}
+            elif body.kind == "jira_xray":
+                result = dispatcher.smoke_test("jira_xray", profile)
+                return {"ok": result.ok, "message": result.message}
+            elif body.kind == "azure_devops":
+                result = dispatcher.smoke_test("azure_devops", profile)
+                return {"ok": result.ok, "message": result.message}
+            else:
+                raise HTTPException(status_code=400, detail=f"kind no soportado: {body.kind}")
             return {"ok": True, **out}
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1434,10 +1484,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         }
 
     from webui.api_routes import register_api_routes
+    from webui.req_publish_routes import register_req_publish_routes
     from webui.run_routes import register_run_routes
 
     register_api_routes(app, require_localhost=_require_localhost, require_active_license=_require_active_license)
     register_run_routes(app, require_localhost=_require_localhost, require_active_license=_require_active_license)
+    register_req_publish_routes(
+        app, require_localhost=_require_localhost, require_active_license=_require_active_license
+    )
 
     # -----------------------
     # SPA static serving

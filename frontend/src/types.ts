@@ -148,6 +148,11 @@ export type EliaJiraCreds = {
   url: string;
   email: string;
   api_token: string;
+  mode: "vanilla" | "xray";
+  project_key: string;
+  xray_base_url: string;
+  target_field: string;
+  default_issue_key: string;
 };
 
 export type EliaValueEdgeCreds = {
@@ -158,6 +163,23 @@ export type EliaValueEdgeCreds = {
   login: string;
   user: string;
   password: string;
+  default_requirement_id: string;
+};
+
+export type EliaGitCreds = {
+  provider: "github" | "gitlab" | "azure_repos";
+  repo_url: string;
+  branch: string;
+  base_path: string;
+  token: string;
+};
+
+export type EliaAzureDevOpsCreds = {
+  org: string;
+  project: string;
+  pat: string;
+  default_work_item_id: string;
+  target_field: string;
 };
 
 export type EliaConnectorProfile = {
@@ -165,12 +187,22 @@ export type EliaConnectorProfile = {
   name: string;
   jira: EliaJiraCreds;
   value_edge: EliaValueEdgeCreds;
+  git: EliaGitCreds;
+  azure_devops: EliaAzureDevOpsCreds;
 };
 
 export type EliaConnectorsDocument = {
-  version: 1;
+  version: 1 | 2;
   profiles: EliaConnectorProfile[];
 };
+
+export type BddPublishTarget =
+  | "local_file"
+  | "git"
+  | "jira_vanilla"
+  | "jira_xray"
+  | "value_edge"
+  | "azure_devops";
 
 export type ModulesStatus = {
   mobile_recording: boolean;

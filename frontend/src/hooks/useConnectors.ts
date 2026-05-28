@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getEliaConnectors, putEliaConnectors } from "../api";
-import { ELIA_CONNECTORS_LS_KEY, newConnectorProfile } from "../connectorDefaults";
+import { ELIA_CONNECTORS_LS_KEY, newConnectorProfile, normalizeConnectorProfile } from "../connectorDefaults";
 import type { EliaConnectorProfile } from "../types";
 
 export type UseConnectorsOptions = {
@@ -17,7 +17,8 @@ export function useConnectors(options: UseConnectorsOptions) {
   const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
 
   const persistConnectorProfiles = useCallback(async (next: EliaConnectorProfile[]) => {
-    const doc = { version: 1 as const, profiles: next };
+    const normalized = next.map((p) => normalizeConnectorProfile(p));
+    const doc = { version: 2 as const, profiles: normalized };
     try {
       localStorage.setItem(ELIA_CONNECTORS_LS_KEY, JSON.stringify(doc));
     } catch {
@@ -48,14 +49,14 @@ export function useConnectors(options: UseConnectorsOptions) {
         const remote = await getEliaConnectors();
         if (!alive) return;
         const r = remote?.profiles ?? [];
-        const use = r.length ? r : localProfiles;
+        const use = (r.length ? r : localProfiles).map((p) => normalizeConnectorProfile(p));
         setConnectorProfiles(use);
         const firstId = use[0]?.id ?? "";
         setReqConnectorProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
         setSettingsProfileId((prev) => (prev && use.some((x) => x.id === prev) ? prev : firstId));
       } catch {
         if (!alive) return;
-        setConnectorProfiles(localProfiles);
+        setConnectorProfiles(localProfiles.map((p) => normalizeConnectorProfile(p)));
         const firstId = localProfiles[0]?.id ?? "";
         setReqConnectorProfileId((prev) =>
           prev && localProfiles.some((x) => x.id === prev) ? prev : firstId,
@@ -86,12 +87,14 @@ export function useConnectors(options: UseConnectorsOptions) {
     const p = connectorProfiles.find((x) => x.id === settingsProfileId);
     if (!p) return;
     const np = newConnectorProfile(connectorProfiles.length + 1);
-    const copy = {
+    const copy = normalizeConnectorProfile({
       ...np,
       name: `${p.name} (copia)`,
       jira: { ...p.jira },
       value_edge: { ...p.value_edge },
-    };
+      git: { ...p.git },
+      azure_devops: { ...p.azure_devops },
+    });
     const next = [...connectorProfiles, copy];
     setConnectorProfiles(next);
     setSettingsProfileId(copy.id);

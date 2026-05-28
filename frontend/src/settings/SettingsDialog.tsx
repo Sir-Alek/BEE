@@ -18,7 +18,7 @@ import {
   type LicenseState,
 } from "../app/licenseUtils";
 import type { SettingsTabId } from "../app/settingsTabs";
-import { emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../connectorDefaults";
+import { emptyAzureDevOpsCreds, emptyGitCreds, emptyJiraCreds, emptyValueEdgeCreds, newConnectorProfile } from "../connectorDefaults";
 import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
 import type { EliaConnectorProfile } from "../types";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
@@ -822,10 +822,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 marginBottom: 14,
               }}
             >
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · Jira y Value Edge</div>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Conectores · ALM, Git y publicación BDD</div>
               <div style={{ color: c.muted, fontSize: 13, marginBottom: 12 }}>
-                Los datos se guardan en el navegador y, también cifrados
-                en disco (misma máquina). Usa solo en red local (<code>127.0.0.1</code>).
+                Perfiles para lectura (Jira/VE) y publicación multi-destino. Datos cifrados en disco (misma máquina).
+                Solo red local (<code>127.0.0.1</code>).
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
@@ -917,7 +917,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {connectorProfiles.length > 0 && settingsProfileId && (
                 <>
                   <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
-                    Edita el perfil seleccionado (nombre, Jira y Value Edge). Usa «Guardar» al terminar.
+                    Edita el perfil seleccionado (Jira, Value Edge, Git, Azure DevOps). Usa «Guardar» al terminar.
                   </div>
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
@@ -986,6 +986,77 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         setConnectorProfiles((list) =>
                           list.map((p) =>
                             p.id === settingsProfileId ? { ...p, jira: { ...p.jira, api_token: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <select
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.mode ?? "vanilla"}
+                      onChange={(e) => {
+                        const v = e.target.value as "vanilla" | "xray";
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, mode: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    >
+                      <option value="vanilla">Modo Jira vanilla (descripción)</option>
+                      <option value="xray">Modo Jira + Xray</option>
+                    </select>
+                    <input
+                      placeholder="Project key (Xray)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.project_key ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, project_key: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Xray base URL (opcional)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.xray_base_url ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, xray_base_url: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Campo destino (description | acceptance)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.target_field ?? "description"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, target_field: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Issue key por defecto"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.jira.default_issue_key ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, jira: { ...p.jira, default_issue_key: v } } : p,
                           ),
                         );
                       }}
@@ -1150,6 +1221,24 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       }}
                       style={modalFieldStyle(c)}
                     />
+                    <input
+                      placeholder="ID story/requerimiento por defecto (publicación BDD)"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.value_edge.default_requirement_id ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, value_edge: { ...p.value_edge, default_requirement_id: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
                   </div>
                   <button
                     type="button"
@@ -1183,6 +1272,186 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     }}
                   >
                     Probar conexión · Value Edge
+                  </button>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Git (publicación .feature)</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="URL repositorio (GitHub / GitLab / Azure Repos)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.git.repo_url ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) => (p.id === settingsProfileId ? { ...p, git: { ...p.git, repo_url: v } } : p)),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Token / PAT"
+                      type="password"
+                      autoComplete="new-password"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.git.token ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) => (p.id === settingsProfileId ? { ...p, git: { ...p.git, token: v } } : p)),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Rama (main)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.git.branch ?? "main"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) => (p.id === settingsProfileId ? { ...p, git: { ...p.git, branch: v } } : p)),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Carpeta base (features/)"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.git.base_path ?? "features/"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) => (p.id === settingsProfileId ? { ...p, git: { ...p.git, base_path: v } } : p)),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "git",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                            git: p?.git ?? emptyGitCreds(),
+                          });
+                          setSettingsTestMsg(r.ok ? `Git · ${r.message ?? "OK"}` : `Git · ${r.message ?? "falló"}`);
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Git · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Git
+                  </button>
+
+                  <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Azure DevOps</div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      placeholder="Organización"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.azure_devops.org ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, azure_devops: { ...p.azure_devops, org: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Proyecto"
+                      autoComplete="off"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.azure_devops.project ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, azure_devops: { ...p.azure_devops, project: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="PAT"
+                      type="password"
+                      autoComplete="new-password"
+                      value={connectorProfiles.find((x) => x.id === settingsProfileId)?.azure_devops.pat ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId ? { ...p, azure_devops: { ...p.azure_devops, pat: v } } : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                    <input
+                      placeholder="Work item ID por defecto"
+                      autoComplete="off"
+                      value={
+                        connectorProfiles.find((x) => x.id === settingsProfileId)?.azure_devops.default_work_item_id ?? ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConnectorProfiles((list) =>
+                          list.map((p) =>
+                            p.id === settingsProfileId
+                              ? { ...p, azure_devops: { ...p.azure_devops, default_work_item_id: v } }
+                              : p,
+                          ),
+                        );
+                      }}
+                      style={modalFieldStyle(c)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = connectorProfiles.find((x) => x.id === settingsProfileId);
+                      void (async () => {
+                        setSettingsTestMsg(null);
+                        try {
+                          const r = await testEliaConnector({
+                            kind: "azure_devops",
+                            jira: p?.jira ?? emptyJiraCreds(),
+                            value_edge: p?.value_edge ?? emptyValueEdgeCreds(),
+                            azure_devops: p?.azure_devops ?? emptyAzureDevOpsCreds(),
+                          });
+                          setSettingsTestMsg(
+                            r.ok ? `Azure DevOps · ${r.message ?? "OK"}` : `Azure DevOps · ${r.message ?? "falló"}`,
+                          );
+                        } catch (err: unknown) {
+                          setSettingsTestMsg(`Azure DevOps · ${String((err as Error)?.message ?? err)}`);
+                        }
+                      })();
+                    }}
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Probar conexión · Azure DevOps
                   </button>
                 </>
               )}
