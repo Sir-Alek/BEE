@@ -22,6 +22,11 @@ class RunState:
     created_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
     error: Optional[str] = None
+    platform: str = ""
+    project: str = ""
+    project_path: str = ""
+    generate_evidence: bool = False
+    artifacts: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -33,6 +38,10 @@ class RunState:
             "created_at": self.created_at,
             "finished_at": self.finished_at,
             "error": self.error,
+            "platform": self.platform,
+            "project": self.project,
+            "project_path": self.project_path,
+            "artifacts": list(self.artifacts),
         }
 
 
@@ -50,9 +59,22 @@ class TestRunnerService:
         cwd: str,
         env: Optional[Dict[str, str]] = None,
         on_line: Optional[Callable[[str], None]] = None,
+        platform: str = "",
+        project: str = "",
+        project_path: str = "",
+        generate_evidence: bool = False,
     ) -> str:
         run_id = str(uuid.uuid4())
-        run = RunState(run_id=run_id, kind=kind, command=list(command), cwd=cwd)
+        run = RunState(
+            run_id=run_id,
+            kind=kind,
+            command=list(command),
+            cwd=cwd,
+            platform=platform,
+            project=project,
+            project_path=project_path or cwd,
+            generate_evidence=generate_evidence,
+        )
         with self._lock:
             self._runs[run_id] = run
 
@@ -84,6 +106,15 @@ class TestRunnerService:
                 run.state = "error"
             finally:
                 run.finished_at = time.time()
+                if run.generate_evidence and run.project_path:
+                    from core.test_runner.run_artifacts import collect_run_artifacts
+
+                    run.artifacts = collect_run_artifacts(
+                        project_path=run.project_path,
+                        lines=run.lines,
+                        since_ts=run.created_at,
+                        generate_evidence=True,
+                    )
                 with self._line_cond:
                     self._line_cond.notify_all()
 

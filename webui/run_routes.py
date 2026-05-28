@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.elia_paths import behave_projects_dir
 from core.test_runner import project_files
+from core.test_runner.run_artifacts import list_pdfs_in_project, resolve_project_pdf
 from core.test_runner.run_launcher import (
     BEHAVE_KINDS,
     build_behave_command,
@@ -42,11 +46,35 @@ class ProjectFileWriteRequest(BaseModel):
     content: str
 
 
+class ProjectFolderOpenRequest(BaseModel):
+    subpath: str = "outputs/pdfReports"
+
+
+def _project_root(platform: str, project_name: str):
+    plat = _check_platform(platform)
+    root = behave_projects_dir(plat) / project_name
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    return plat, root
+
+
 def _check_platform(platform: str) -> str:
     p = (platform or "").strip().lower()
     if p not in VALID_PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Plataforma no válida: {platform}")
     return p
+
+
+def _open_folder_in_os(folder: str) -> None:
+    path = os.path.abspath(folder)
+    if not os.path.isdir(path):
+        raise FileNotFoundError(path)
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
 
 
 def _check_api_module(platform: str) -> None:
@@ -128,6 +156,60 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"ok": True, "path": path}
 
+    @app.get("/api/projects/{platform}/{project_name}/reports")
+    def list_project_reports(
+        platform: str,
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _, root = _project_root(platform, project_name)
+        reports = list_pdfs_in_project(root, since_ts=0)
+        return {
+            "reports": reports,
+            "folder": str((root / "outputs" / "pdfReports").resolve()),
+        }
+
+    @app.get("/api/projects/{platform}/{project_name}/reports/file")
+    def get_project_report_file(
+        platform: str,
+        project_name: str,
+        name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> FileResponse:
+        _, root = _project_root(platform, project_name)
+        try:
+            pdf_path = resolve_project_pdf(root, name)
+        except (ValueError, FileNotFoundError) as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return FileResponse(
+            path=str(pdf_path),
+            media_type="application/pdf",
+            filename=pdf_path.name,
+            headers={"Content-Disposition": f'inline; filename="{pdf_path.name}"'},
+        )
+
+    @app.post("/api/projects/{platform}/{project_name}/open-folder")
+    def open_project_folder(
+        platform: str,
+        project_name: str,
+        body: ProjectFolderOpenRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _, root = _project_root(platform, project_name)
+        rel = (body.subpath or "outputs/pdfReports").replace("\\", "/").strip("/")
+        target = (root / rel).resolve()
+        if not str(target).startswith(str(root.resolve())):
+            raise HTTPException(status_code=400, detail="Ruta no permitida")
+        try:
+            _open_folder_in_os(str(target))
+        except FileNotFoundError:
+            os.makedirs(target, exist_ok=True)
+            _open_folder_in_os(str(target))
+        return {"ok": True, "path": str(target)}
+
     @app.post("/api/runs")
     def start_unified_run(
         body: UnifiedRunRequest,
@@ -174,6 +256,9 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
                 command=cmd,
                 cwd=project_path,
                 env=build_run_env(plat, generate_evidence=False, headless=True, extra=extra),
+                platform=plat,
+                project=body.project.strip(),
+                project_path=project_path,
             )
             return {"run_id": run_id, "locustfile": locust_path}
 
@@ -188,10 +273,14 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
             cwd=project_path,
             env=build_run_env(
                 plat,
-                generate_evidence=body.generate_evidence,
+                generate_evidence=True,
                 headless=body.headless,
                 extra=extra,
             ),
+            platform=plat,
+            project=body.project.strip(),
+            project_path=project_path,
+            generate_evidence=True,
         )
         return {"run_id": run_id, "project_path": project_path}
 
@@ -227,7 +316,15 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
                 if current is None:
                     break
                 if current.state != "running" and cursor >= len(current.lines):
-                    payload = {"done": True, "return_code": current.return_code, "state": current.state}
+                    payload = {
+                        "done": True,
+                        "return_code": current.return_code,
+                        "state": current.state,
+                        "artifacts": current.artifacts,
+                        "platform": current.platform,
+                        "project": current.project,
+                        "project_path": current.project_path,
+                    }
                     yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                     break
                 await asyncio.sleep(0.2)

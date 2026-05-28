@@ -6,6 +6,8 @@ import {
   startUnifiedRun,
   writeProjectFile,
 } from "../api";
+import { useEliaTheme } from "../eliaTheme";
+import { CodeEditorPanel } from "./CodeEditorPanel";
 import { RunConsolePanel } from "./RunConsolePanel";
 
 type Props = {
@@ -19,6 +21,7 @@ type Props = {
 
 export function RunWorkspacePanel(props: Props) {
   const { c, platform, project, canRunJobs, onShowError, showLocust = platform === "api" } = props;
+  const { dark } = useEliaTheme();
   const [files, setFiles] = useState<{ path: string; name: string }[]>([]);
   const [selected, setSelected] = useState("");
   const [editor, setEditor] = useState("");
@@ -26,8 +29,8 @@ export function RunWorkspacePanel(props: Props) {
   const [busy, setBusy] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [featureFile, setFeatureFile] = useState("features");
-  const [generatePdf, setGeneratePdf] = useState(true);
   const [loadUsers, setLoadUsers] = useState("5");
+  const [fullscreen, setFullscreen] = useState(false);
 
   const refreshFiles = () => {
     if (!project.trim()) return;
@@ -74,7 +77,7 @@ export function RunWorkspacePanel(props: Props) {
       project,
       kind: "behave",
       feature_file: featureFile.trim() || "features",
-      generate_evidence: generatePdf,
+      generate_evidence: true,
     })
       .then((r) => setRunId(r.run_id))
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
@@ -100,8 +103,44 @@ export function RunWorkspacePanel(props: Props) {
     return <div style={{ fontSize: 13, color: c.muted }}>Selecciona un proyecto para ejecutar y editar código.</div>;
   }
 
-  return (
-    <div data-testid="elia-run-workspace" style={{ marginTop: 12 }}>
+  const editorToolbar = (
+    <>
+      {dirty ? <span style={{ color: c.primary, fontSize: 11 }}>● Sin guardar</span> : null}
+      <button type="button" disabled={!selected || !dirty || busy} onClick={saveFile} style={btn(c, undefined, undefined, true)}>
+        Guardar
+      </button>
+      <button type="button" disabled={!selected || busy} onClick={() => loadFile(selected)} style={btn(c, undefined, undefined, true)}>
+        Recargar
+      </button>
+      <button
+        type="button"
+        title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+        onClick={() => setFullscreen((v) => !v)}
+        style={btn(c, undefined, undefined, true)}
+      >
+        {fullscreen ? "⤓" : "⤢"}
+      </button>
+    </>
+  );
+
+  const editorBlock = (
+    <CodeEditorPanel
+      value={editor}
+      filePath={selected}
+      dark={dark}
+      readOnly={busy}
+      minHeight={fullscreen ? "calc(100vh - 120px)" : "min(52vh, 520px)"}
+      onChange={(v) => {
+        setEditor(v);
+        setDirty(true);
+      }}
+      onSave={saveFile}
+      toolbar={editorToolbar}
+    />
+  );
+
+  const workspaceBody = (
+    <>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>Ejecutar y editar proyecto</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
         <input
@@ -110,10 +149,6 @@ export function RunWorkspacePanel(props: Props) {
           placeholder="features o features/mi.feature"
           style={{ flex: "1 1 200px", padding: "8px 10px", borderRadius: 8, border: `1px solid ${c.inputBorder}` }}
         />
-        <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={generatePdf} onChange={(e) => setGeneratePdf(e.target.checked)} />
-          PDF + logo ELIA
-        </label>
         <button type="button" disabled={!canRunJobs || busy} onClick={runBehave} style={btn(c, c.primary, c.primaryFg)}>
           Ejecutar Behave
         </button>
@@ -131,12 +166,21 @@ export function RunWorkspacePanel(props: Props) {
         ) : null}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(160px, 220px) 1fr", gap: 10, marginBottom: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(180px, 240px) 1fr",
+          gap: 12,
+          marginBottom: 12,
+          minHeight: "min(52vh, 520px)",
+        }}
+      >
         <div
           style={{
             border: `1px solid ${c.border}`,
             borderRadius: 10,
-            maxHeight: 220,
+            minHeight: "inherit",
+            maxHeight: fullscreen ? "calc(100vh - 120px)" : "min(52vh, 520px)",
             overflow: "auto",
             fontSize: 12,
             background: c.surface,
@@ -167,52 +211,81 @@ export function RunWorkspacePanel(props: Props) {
             ))
           )}
         </div>
-        <div>
-          <textarea
-            value={editor}
-            onChange={(e) => {
-              setEditor(e.target.value);
-              setDirty(true);
-            }}
-            placeholder="Selecciona un .feature, .py o locustfile.py para editar"
-            rows={10}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              fontFamily: "monospace",
-              fontSize: 12,
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${c.inputBorder}`,
-              background: c.inputBg,
-              color: c.text,
-            }}
-          />
-          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button type="button" disabled={!selected || !dirty || busy} onClick={saveFile} style={btn(c)}>
-              Guardar archivo
-            </button>
-            <button type="button" disabled={!selected || busy} onClick={() => loadFile(selected)} style={btn(c)}>
-              Recargar
-            </button>
-          </div>
+        <div style={{ minHeight: "inherit", display: "flex", flexDirection: "column" }}>
+          {selected ? (
+            editorBlock
+          ) : (
+            <div
+              style={{
+                flex: 1,
+                border: `1px dashed ${c.border}`,
+                borderRadius: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: c.muted,
+                fontSize: 13,
+                minHeight: "min(52vh, 520px)",
+              }}
+            >
+              Selecciona un .feature, .py o locustfile.py en el árbol de archivos
+            </div>
+          )}
         </div>
       </div>
 
-      {runId ? <RunConsolePanel c={c} runId={runId} onClose={() => setRunId(null)} /> : null}
+      {runId ? (
+        <RunConsolePanel
+          c={c}
+          runId={runId}
+          platform={platform}
+          project={project}
+          onClose={() => setRunId(null)}
+        />
+      ) : null}
+    </>
+  );
+
+  if (fullscreen) {
+    return (
+      <div
+        data-testid="elia-run-workspace-fullscreen"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 2000,
+          background: c.pageBg,
+          padding: 16,
+          overflow: "auto",
+        }}
+      >
+        {workspaceBody}
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="elia-run-workspace" style={{ marginTop: 12 }}>
+      {workspaceBody}
     </div>
   );
 }
 
-function btn(c: Record<string, string>, bg?: string, fg?: string): React.CSSProperties {
+function btn(
+  c: Record<string, string>,
+  bg?: string,
+  fg?: string,
+  compact?: boolean,
+): React.CSSProperties {
   return {
-    padding: "8px 12px",
+    padding: compact ? "4px 8px" : "8px 12px",
     borderRadius: 8,
     border: bg ? "none" : `1px solid ${c.btnGhostBorder}`,
     background: bg ?? c.btnGhostBg,
     color: fg ?? c.text,
     fontWeight: 600,
     cursor: "pointer",
+    fontSize: compact ? 12 : 14,
   };
 }
 

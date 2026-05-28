@@ -208,7 +208,7 @@ class FeaturePdfReport(FPDF):
             feature_name = log_data.get('feature', feature_name)
             
             # Crear PDF            
-            pdf = PDFFeatureReport()
+            pdf = FeaturePdfReport()
             pdf.feature_name = feature_name
             pdf.execution_date = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
             pdf.duration = log_data.get('duration', '0m0.000s')
@@ -225,7 +225,9 @@ class FeaturePdfReport(FPDF):
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             pdf_filename = f"ReporteFeature_{feature_name}_{timestamp}.pdf"
-            pdf.output(os.path.join(output_dir, pdf_filename))
+            output_path = os.path.join(output_dir, pdf_filename)
+            pdf.output(output_path)
+            print(f"ELIA_PDF_REPORT:{os.path.abspath(output_path)}", flush=True)
             
             # Metadatos            
             pdf.set_author(author='AppWhere-2025')
@@ -243,7 +245,7 @@ class FeaturePdfReport(FPDF):
         feature_log_paths: Lista de rutas de logs de features.
         """
         try:
-            pdf = PDFFeatureReport()
+            pdf = FeaturePdfReport()
             pdf.alias_nb_pages()
             pdf.add_page()
             
@@ -288,7 +290,9 @@ class FeaturePdfReport(FPDF):
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             pdf_filename = f"ReporteConsolidado_{timestamp}.pdf"
-            pdf.output(os.path.join(output_dir, pdf_filename))
+            output_path = os.path.join(output_dir, pdf_filename)
+            pdf.output(output_path)
+            print(f"ELIA_PDF_REPORT:{os.path.abspath(output_path)}", flush=True)
             
             pdf.set_author(author='Sir-Alek-2026')
             pdf.set_creator('ELIA - Sir-Alek')

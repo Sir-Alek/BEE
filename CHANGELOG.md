@@ -4,6 +4,25 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.2] - 2026-05-27
+
+### Añadido
+
+- **Editor de código tipo IDE:** CodeMirror con resaltado Python/Gherkin, números de línea, tema claro/oscuro, atajo Ctrl+S, pantalla completa (⤢) y área de edición ampliada (~52vh).
+- **Reporte PDF tras ejecución:** vista previa embebida, descarga, selector si hay varios PDFs, botón «Abrir carpeta pdfReports» y detección automática vía `ELIA_PDF_REPORT` + escaneo de `outputs/pdfReports/`.
+- **Rutas de reportes:** `GET .../reports`, `GET .../reports/file`, `POST .../open-folder`; artefactos incluidos en `GET /api/runs/{id}` y en el evento SSE `done`.
+- **Tests:** `test_run_artifacts.py`.
+
+### Cambiado
+
+- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.2**.
+- **Consola de ejecución redimensionable** (arrastrar borde superior).
+- **Reportes PDF siempre activos** en ejecuciones Behave desde el runner unificado (sin checkbox; `GENERATE_EVIDENCE=true` forzado en backend).
+
+### Corregido
+
+- Los PDF generados durante una corrida quedan visibles en la UI aunque el usuario no conozca la ruta `Documents\ELIA\behave\{plataforma}\{proyecto}\outputs\pdfReports`.
+
 ## [0.9.1] - 2026-05-27
 
 ### Añadido

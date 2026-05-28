@@ -722,7 +722,7 @@ export async function startTestRun(body: {
       project: body.project,
       kind: body.kind ?? "behave",
       feature_file: body.feature_file,
-      generate_evidence: body.generate_evidence ?? true,
+      generate_evidence: true,
       headless: body.headless ?? true,
       locust_users: body.locust_users,
       locust_spawn_rate: body.locust_spawn_rate,
@@ -801,9 +801,46 @@ export async function getTestRun(runId: string): Promise<{
   state: string;
   return_code: number | null;
   lines: string[];
+  artifacts?: Array<{ kind: string; name: string; path: string; absolute_path?: string }>;
+  platform?: string;
+  project?: string;
+  project_path?: string;
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   if (!res.ok) throw new Error(`Failed to get run: ${res.status}`);
+  return res.json();
+}
+
+export function getProjectReportUrl(platform: string, project: string, filename: string): string {
+  const params = new URLSearchParams({ name: filename });
+  return `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/reports/file?${params.toString()}`;
+}
+
+export async function openProjectFolder(
+  platform: string,
+  project: string,
+  subpath = "outputs/pdfReports",
+): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/open-folder`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subpath }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to open folder: ${res.status}`);
+  return res.json();
+}
+
+export async function listProjectReports(
+  platform: string,
+  project: string,
+): Promise<{ reports: Array<{ name: string; path: string; absolute_path?: string }>; folder: string }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/reports`,
+  );
+  if (!res.ok) throw new Error(`Failed to list reports: ${res.status}`);
   return res.json();
 }
 

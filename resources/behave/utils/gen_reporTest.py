@@ -237,14 +237,14 @@ class PdfReportDocument(FPDF):
                                     fail_images[step_idx] = img
                                     break
                     else:
-                        step_key = PDF._extract_step_key_from_image_name(img)
+                        step_key = PdfReportDocument._extract_step_key_from_image_name(img)
                         if step_key:
                             step_images_map[step_key].append(img)
 
                 for step_key in step_images_map:
                     step_images_map[step_key].sort(
                         key=lambda x: (
-                            PDF._image_sort_key(x),
+                            PdfReportDocument._image_sort_key(x),
                             os.path.getmtime(os.path.join(evidence_dir, x))
                         )
                     )
@@ -252,7 +252,7 @@ class PdfReportDocument(FPDF):
         except (FileNotFoundError, OSError) as e:
             print(f"ADVERTENCIA: No se encontraron evidencias visuales: {e}")
 
-        pdf = PDF()
+        pdf = PdfReportDocument()
         pdf.alias_nb_pages()
         pdf.add_page()
 
@@ -435,5 +435,6 @@ class PdfReportDocument(FPDF):
 
         output_path = os.path.join(output_dir, f"{testName}_{dt_format}.pdf")
         pdf.output(output_path, 'F')
+        print(f"ELIA_PDF_REPORT:{output_path}", flush=True)
 
         return output_path

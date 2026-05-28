@@ -29,7 +29,8 @@ Tras cambiar la versión, reinicia ELIA en desarrollo; para el `.exe`, vuelve a 
 - **Locust:** incluido en `requirements.txt` (`pip install -r requirements.txt`); ya no es instalación manual aparte.
 - **Ejecución en vivo:** `POST /api/runs` y SSE `/api/runs/{id}/stream`.
 - **Edición de código:** `GET/PUT /api/projects/{platform}/{project}/file` — archivos `.feature`, steps `.py`, `locustfile.py`, etc.
-- **Runner unificado (UI):** `RunWorkspacePanel` en pestaña UI (web/móvil/legacy) y Pruebas API; selector de proyecto + editor + consola en vivo.
+- **Runner unificado (UI):** `RunWorkspacePanel` en pestaña UI (web/móvil/legacy) y Pruebas API; editor CodeMirror (Python/Gherkin), consola redimensionable y vista previa PDF tras cada ejecución Behave.
+- **Reportes PDF:** siempre generados al ejecutar Behave (`GENERATE_EVIDENCE=true`); salida en `outputs/pdfReports/` del proyecto.
 - **Captura API móvil/legacy:** prompts opcionales al finalizar grabación; JSON en `behave/api/{proyecto}/scripts/`.
 - **Aserciones IA en conversión API:** `api_assertion_ai.py` (Gemma + heurística) al generar `.feature` Behave HTTP.
 
