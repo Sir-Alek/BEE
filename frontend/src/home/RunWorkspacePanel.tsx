@@ -31,6 +31,7 @@ export function RunWorkspacePanel(props: Props) {
   const [busy, setBusy] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [featureFile, setFeatureFile] = useState("features");
+  const [showBrowser, setShowBrowser] = useState(false);
   const [loadUsers, setLoadUsers] = useState("5");
   const [fullscreen, setFullscreen] = useState(false);
   const [acRefresh, setAcRefresh] = useState(0);
@@ -117,6 +118,7 @@ export function RunWorkspacePanel(props: Props) {
       kind: "behave",
       feature_file: featureFile.trim() || "features",
       generate_evidence: true,
+      headless: !showBrowser,
     })
       .then((r) => setRunId(r.run_id))
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
@@ -192,6 +194,16 @@ export function RunWorkspacePanel(props: Props) {
         <button type="button" disabled={!canRunJobs || busy} onClick={runBehave} style={btn(c, c.primary, c.primaryFg)}>
           Ejecutar Behave
         </button>
+        {platform === "web" ? (
+          <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={showBrowser}
+              onChange={(e) => setShowBrowser(e.target.checked)}
+            />
+            Mostrar navegador
+          </label>
+        ) : null}
         {showLocust ? (
           <>
             <input
@@ -203,6 +215,14 @@ export function RunWorkspacePanel(props: Props) {
               Ejecutar Locust
             </button>
           </>
+        ) : null}
+      </div>
+      <div style={{ fontSize: 12, color: c.muted, marginBottom: 10, lineHeight: 1.45 }}>
+        Indica qué ejecutará Behave: <code style={{ fontSize: 11 }}>features</code> corre todos los
+        .feature del proyecto; <code style={{ fontSize: 11 }}>features/mi.feature</code> solo uno. El
+        editor de abajo sirve para editar archivos; este campo solo filtra la ejecución.
+        {platform === "web" ? (
+          <> Por defecto Chrome corre en segundo plano (headless); marca «Mostrar navegador» para ver la UI.</>
         ) : null}
       </div>
 

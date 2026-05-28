@@ -4,6 +4,16 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.43] - 2026-05-28
+
+### Añadido
+
+- Runner web Behave: checkbox **«Mostrar navegador»** para ejecutar con Chrome visible (`HEADLESS=false`); headless sigue siendo el valor por defecto.
+
+### Cambiado
+
+- Texto de ayuda bajo el campo `features` en «Ejecutar y editar proyecto», aclarando filtro de ejecución vs. editor de archivos.
+
 ## [0.9.42] - 2026-05-28
 
 ### Añadido
