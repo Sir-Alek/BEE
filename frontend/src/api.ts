@@ -762,6 +762,7 @@ export async function listProjectFiles(
   const res = await fetch(
     `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/files`,
   );
+  if (res.status === 404) return { files: [] };
   if (!res.ok) throw new Error(`Failed to list files: ${res.status}`);
   return res.json();
 }

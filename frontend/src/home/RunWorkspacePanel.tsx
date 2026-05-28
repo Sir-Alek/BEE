@@ -40,19 +40,49 @@ export function RunWorkspacePanel(props: Props) {
     [autocompleteContext, selected, editor],
   );
 
-  const refreshFiles = () => {
-    if (!project.trim()) return;
-    void listProjectFiles(platform, project)
-      .then((r) => setFiles(r.files))
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
-  };
-
   useEffect(() => {
-    refreshFiles();
+    setFiles([]);
     setSelected("");
     setEditor("");
     setDirty(false);
-  }, [platform, project]);
+    setRunId(null);
+
+    if (!project.trim()) return;
+
+    let cancelled = false;
+    void listProjectFiles(platform, project)
+      .then((r) => {
+        if (!cancelled) setFiles(r.files);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setFiles([]);
+        const msg = String((e as Error)?.message ?? e);
+        if (!msg.includes("404")) {
+          onShowError(msg);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, project, onShowError]);
+
+  const refreshFiles = () => {
+    if (!project.trim()) {
+      setFiles([]);
+      return;
+    }
+    void listProjectFiles(platform, project)
+      .then((r) => setFiles(r.files))
+      .catch((e: unknown) => {
+        setFiles([]);
+        const msg = String((e as Error)?.message ?? e);
+        if (!msg.includes("404")) {
+          onShowError(msg);
+        }
+      });
+  };
 
   const loadFile = (path: string) => {
     setBusy(true);
@@ -302,6 +332,7 @@ function btn(
 export function usePlatformProjects(platform: string) {
   const [projects, setProjects] = useState<string[]>([]);
   useEffect(() => {
+    setProjects([]);
     void getPlatformProjects(platform)
       .then((r) => setProjects(r.projects))
       .catch(() => setProjects([]));

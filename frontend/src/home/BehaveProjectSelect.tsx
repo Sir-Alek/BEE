@@ -20,17 +20,19 @@ export function BehaveProjectSelect(props: Props) {
   } = props;
 
   useEffect(() => {
-    if (!value.trim() && projects.length > 0) {
+    if (projects.length === 0) {
+      if (value.trim()) onChange("");
+      return;
+    }
+    if (!value.trim() || !projects.includes(value)) {
       onChange(projects[0]);
     }
-  }, [projects, value, onChange]);
-
-  const options = [...new Set([...(value.trim() ? [value.trim()] : []), ...projects])];
+  }, [projects, platform, value, onChange]);
 
   return (
     <select
       data-testid={`elia-behave-project-select-${platform}`}
-      value={value}
+      value={projects.includes(value) ? value : ""}
       onChange={(e) => onChange(e.target.value)}
       style={{
         flex: "1 1 220px",
@@ -46,7 +48,7 @@ export function BehaveProjectSelect(props: Props) {
       <option value="">
         {projects.length === 0 ? `Sin proyectos en behave/${platform}` : placeholder}
       </option>
-      {options.map((p) => (
+      {projects.map((p) => (
         <option key={p} value={p}>
           {p}
         </option>

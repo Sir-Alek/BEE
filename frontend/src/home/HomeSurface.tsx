@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { stopMobileAppium, getRecordings, getScenarios, uploadDocs } from "../api";
 import { encodeRecordingLink, encodeScenarioLink } from "../app/linkUtils";
 import {
@@ -44,6 +44,10 @@ export function HomeSurface() {
 
   const [runProject, setRunProject] = useState("");
   const runProjects = usePlatformProjects(platform);
+
+  useEffect(() => {
+    setRunProject("");
+  }, [platform]);
 
   if (!initialChecked) return null;
 
@@ -574,6 +578,7 @@ export function HomeSurface() {
                     />
                   </div>
                   <RunWorkspacePanel
+                    key={platform}
                     c={c}
                     platform={platform}
                     project={runProject}

@@ -4,6 +4,13 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.31] - 2026-05-27
+
+### Corregido
+
+- **Runner al cambiar de plataforma (web/móvil/legacy):** ya no conserva el proyecto ni los archivos del módulo anterior; se resetea el selector, se remonta el panel y se limpia el árbol de archivos.
+- **Error «Failed to list files: 404»** en móvil/legacy cuando el proyecto seleccionado en web no existía en esa plataforma; ahora se auto-selecciona el primer proyecto válido o lista vacía sin modal de error.
+
 ## [0.9.3] - 2026-05-27
 
 ### Añadido
