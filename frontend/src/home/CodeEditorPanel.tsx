@@ -1,10 +1,12 @@
 import React, { useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { autocompletion } from "@codemirror/autocomplete";
 import { python } from "@codemirror/lang-python";
 import { StreamLanguage } from "@codemirror/language";
 import { gherkin } from "@codemirror/legacy-modes/mode/gherkin";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
+import { createEliaCompletionSource, ProjectAutocompleteContext } from "./editorAutocomplete";
 
 type Props = {
   value: string;
@@ -12,6 +14,7 @@ type Props = {
   dark: boolean;
   readOnly?: boolean;
   minHeight?: string;
+  completionContext?: ProjectAutocompleteContext;
   onChange: (value: string) => void;
   onSave?: () => void;
   toolbar?: React.ReactNode;
@@ -31,13 +34,14 @@ export function CodeEditorPanel(props: Props) {
     dark,
     readOnly = false,
     minHeight = "min(52vh, 520px)",
+    completionContext,
     onChange,
     onSave,
     toolbar,
   } = props;
 
-  const extensions = useMemo(
-    () => [
+  const extensions = useMemo(() => {
+    const base = [
       languageExtension(filePath),
       EditorView.lineWrapping,
       EditorView.theme({
@@ -45,9 +49,18 @@ export function CodeEditorPanel(props: Props) {
         ".cm-scroller": { fontFamily: '"Cascadia Code", "Fira Code", Consolas, monospace' },
         ".cm-gutters": { border: "none" },
       }),
-    ],
-    [filePath],
-  );
+    ];
+    if (completionContext && filePath) {
+      base.push(
+        autocompletion({
+          activateOnTyping: true,
+          maxRenderedOptions: 24,
+          override: [createEliaCompletionSource(completionContext, filePath)],
+        }),
+      );
+    }
+    return base;
+  }, [filePath, completionContext]);
 
   return (
     <div
@@ -92,6 +105,7 @@ export function CodeEditorPanel(props: Props) {
           highlightActiveLine: true,
           indentOnInput: true,
           bracketMatching: true,
+          autocompletion: false,
         }}
         onChange={onChange}
         onKeyDown={(ev) => {

@@ -64,3 +64,29 @@ class TestProjectFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
                 project_files.read_project_file(tmp, "../outside.txt")
+
+    def test_runner_workspace_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = {
+                "features/environment.py": "# env",
+                "features/test1.feature": "Feature: x",
+                "features/steps/test1_steps.py": "pass",
+                "pages/test1_page.py": "pass",
+                "resources/data/test1.json": "{}",
+                "utils/button_functions.py": "# bf",
+                "utils/gen_reporTest.py": "# other",
+            }
+            for rel, content in paths.items():
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content, encoding="utf-8")
+
+            listed = {f["path"] for f in project_files.list_runner_workspace_files(root)}
+            self.assertNotIn("features/environment.py", listed)
+            self.assertNotIn("utils/gen_reporTest.py", listed)
+            self.assertIn("features/test1.feature", listed)
+            self.assertIn("features/steps/test1_steps.py", listed)
+            self.assertIn("pages/test1_page.py", listed)
+            self.assertIn("resources/data/test1.json", listed)
+            self.assertIn("utils/button_functions.py", listed)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   getPlatformProjects,
   listProjectFiles,
@@ -9,6 +9,8 @@ import {
 import { useEliaTheme } from "../eliaTheme";
 import { CodeEditorPanel } from "./CodeEditorPanel";
 import { RunConsolePanel } from "./RunConsolePanel";
+import { useProjectAutocomplete } from "./useProjectAutocomplete";
+import { patchContextWithEditor } from "./editorAutocomplete";
 
 type Props = {
   c: Record<string, string>;
@@ -31,6 +33,12 @@ export function RunWorkspacePanel(props: Props) {
   const [featureFile, setFeatureFile] = useState("features");
   const [loadUsers, setLoadUsers] = useState("5");
   const [fullscreen, setFullscreen] = useState(false);
+  const [acRefresh, setAcRefresh] = useState(0);
+  const autocompleteContext = useProjectAutocomplete(platform, project, files, acRefresh);
+  const liveAutocomplete = useMemo(
+    () => patchContextWithEditor(autocompleteContext, selected, editor),
+    [autocompleteContext, selected, editor],
+  );
 
   const refreshFiles = () => {
     if (!project.trim()) return;
@@ -65,6 +73,7 @@ export function RunWorkspacePanel(props: Props) {
       .then(() => {
         setDirty(false);
         refreshFiles();
+        setAcRefresh((n) => n + 1);
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
@@ -130,6 +139,7 @@ export function RunWorkspacePanel(props: Props) {
       dark={dark}
       readOnly={busy}
       minHeight={fullscreen ? "calc(100vh - 120px)" : "min(52vh, 520px)"}
+      completionContext={liveAutocomplete}
       onChange={(v) => {
         setEditor(v);
         setDirty(true);

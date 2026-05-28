@@ -12,6 +12,7 @@ import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
 import { ApiSurface } from "./ApiSurface";
 import { RunWorkspacePanel, usePlatformProjects } from "./RunWorkspacePanel";
+import { BehaveProjectSelect } from "./BehaveProjectSelect";
 import { useConnectorContext } from "../context/ConnectorContext";
 import { useHomeUiContext } from "../context/HomeUiContext";
 import { useRecordingContext } from "../context/RecordingContext";
@@ -564,25 +565,13 @@ export function HomeSurface() {
                     Ejecutar Behave, editar .feature / steps y generar PDF (proyecto en behave/{platform}/).
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
-                    <input
-                      list={`elia-run-projects-${platform}`}
+                    <BehaveProjectSelect
+                      c={c}
+                      platform={platform}
                       value={runProject}
-                      onChange={(e) => setRunProject(e.target.value)}
-                      placeholder="Nombre del proyecto Behave"
-                      style={{
-                        flex: "1 1 200px",
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.inputBorder}`,
-                        background: c.inputBg,
-                        color: c.text,
-                      }}
+                      onChange={setRunProject}
+                      projects={runProjects}
                     />
-                    <datalist id={`elia-run-projects-${platform}`}>
-                      {runProjects.map((p) => (
-                        <option key={p} value={p} />
-                      ))}
-                    </datalist>
                   </div>
                   <RunWorkspacePanel
                     c={c}

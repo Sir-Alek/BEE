@@ -8,6 +8,35 @@ from typing import List
 EDITABLE_SUFFIXES = (".feature", ".py", ".ini", ".json", ".txt")
 EDITABLE_NAMES = frozenset({"locustfile.py", "behave.ini"})
 
+# Archivos visibles en el panel «Ejecutar y editar» (el resto sigue en disco).
+_RUNNER_ROOT_FILES = frozenset({"locustfile.py"})
+_RUNNER_UTILS_FILES = frozenset({"utils/button_functions.py"})
+
+
+def is_runner_workspace_file(rel_path: str) -> bool:
+    """True si el archivo debe mostrarse en el árbol del runner (no incluye environment.py)."""
+    rel = rel_path.replace("\\", "/").lstrip("/")
+    lower = rel.lower()
+    name = Path(rel).name.lower()
+
+    if name == "environment.py":
+        return False
+    if rel in _RUNNER_ROOT_FILES or lower in _RUNNER_UTILS_FILES:
+        return True
+    if lower.startswith("features/steps/") and lower.endswith(".py"):
+        return True
+    if lower.startswith("pages/") and lower.endswith(".py"):
+        return True
+    if lower.startswith("features/") and lower.endswith(".feature"):
+        return True
+    if lower.startswith("resources/data/") and lower.endswith(".json"):
+        return True
+    return False
+
+
+def list_runner_workspace_files(project_root: str | Path) -> List[dict]:
+    return [f for f in list_editable_files(project_root) if is_runner_workspace_file(f["path"])]
+
 
 def _resolve_safe(project_root: Path, rel_path: str) -> Path:
     rel = rel_path.replace("\\", "/").lstrip("/")

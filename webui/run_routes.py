@@ -121,7 +121,7 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
         root = behave_projects_dir(plat) / project_name
         if not root.is_dir():
             raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-        return {"files": project_files.list_editable_files(root)}
+        return {"files": project_files.list_runner_workspace_files(root)}
 
     @app.get("/api/projects/{platform}/{project_name}/file")
     def read_project_file_route(

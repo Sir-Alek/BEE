@@ -4,6 +4,23 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.3] - 2026-05-27
+
+### Añadido
+
+- **Autocompletado contextual (nivel B)** en el editor del runner: sugerencias al escribir o con Ctrl+Space según el archivo abierto.
+  - `.feature`: keywords Gherkin, textos de steps del proyecto, escenarios existentes.
+  - `*_steps.py`: decoradores Behave, steps ya definidos, `context.page.` + métodos del page object vinculado.
+  - `resources/data/*.json`: claves del JSON del proyecto.
+  - `utils/button_functions.py`: funciones públicas del módulo.
+- Índice de sugerencias cargado desde el proyecto vía API; se actualiza al guardar y refleja el buffer sin guardar.
+
+### Cambiado
+
+- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.3**.
+- **Árbol del runner:** solo muestra steps, pages, `.feature`, JSON en `resources/data/` y `button_functions.py` (el resto sigue en disco para Behave).
+- **Selector de proyecto Behave:** `<select>` nativo en web/móvil/legacy (`BehaveProjectSelect`) en lugar de input + datalist del navegador.
+
 ## [0.9.2] - 2026-05-27
 
 ### Añadido
