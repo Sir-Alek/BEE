@@ -48,6 +48,8 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
   const [appiumStarting, setAppiumStarting] = useState(false);
   const [appPackage, setAppPackage] = useState("");
   const [appActivity, setAppActivity] = useState("");
+  const [appSource, setAppSource] = useState<"installed" | "apk">("installed");
+  const [deviceManualMode, setDeviceManualMode] = useState(false);
 
   const refreshMobileDevices = useCallback(async () => {
     setMobileDevicesLoading(true);
@@ -59,6 +61,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
       if (res.error) setMobileDevicesError(res.error);
       const online = devices.filter((d) => d.state === "device");
       setDeviceId((prev) => {
+        if (deviceManualMode) return prev;
         const filtered =
           deviceMode === "physical"
             ? online.filter((d) => d.kind === "physical")
@@ -73,7 +76,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     } finally {
       setMobileDevicesLoading(false);
     }
-  }, [deviceMode]);
+  }, [deviceMode, deviceManualMode]);
 
   const refreshMobileAvds = useCallback(async () => {
     setMobileAvdsLoading(true);
@@ -260,5 +263,9 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     setAppPackage,
     appActivity,
     setAppActivity,
+    appSource,
+    setAppSource,
+    deviceManualMode,
+    setDeviceManualMode,
   };
 }

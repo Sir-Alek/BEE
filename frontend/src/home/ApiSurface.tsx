@@ -804,31 +804,41 @@ export function ApiSurface(props: Props) {
             <> Límite licencia: {modules.api_limits.max_load_users} usuarios.</>
           ) : null}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-          <input
-            value={loadUsers}
-            onChange={(e) => setLoadUsers(e.target.value)}
-            placeholder="Usuarios"
-            style={inputStyle(c, { width: 80 })}
-          />
-          <input
-            value={loadSpawn}
-            onChange={(e) => setLoadSpawn(e.target.value)}
-            placeholder="Spawn/s"
-            style={inputStyle(c, { width: 80 })}
-          />
-          <input
-            value={loadRunTime}
-            onChange={(e) => setLoadRunTime(e.target.value)}
-            placeholder="1m"
-            style={inputStyle(c, { width: 72 })}
-          />
-          <input
-            value={loadHost}
-            onChange={(e) => setLoadHost(e.target.value)}
-            placeholder="Host base (opcional)"
-            style={inputStyle(c, { flex: "1 1 200px" })}
-          />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Usuarios</label>
+            <input
+              value={loadUsers}
+              onChange={(e) => setLoadUsers(e.target.value)}
+              style={inputStyle(c, { width: 80 })}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Tasa de subida</label>
+            <input
+              value={loadSpawn}
+              onChange={(e) => setLoadSpawn(e.target.value)}
+              style={inputStyle(c, { width: 80 })}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Duración</label>
+            <input
+              value={loadRunTime}
+              onChange={(e) => setLoadRunTime(e.target.value)}
+              placeholder="1m"
+              style={inputStyle(c, { width: 72 })}
+            />
+          </div>
+          <div style={{ flex: "1 1 200px" }}>
+            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Host base (opcional)</label>
+            <input
+              value={loadHost}
+              onChange={(e) => setLoadHost(e.target.value)}
+              placeholder="https://api.ejemplo.com"
+              style={inputStyle(c, { width: "100%" })}
+            />
+          </div>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
             <input
               type="checkbox"

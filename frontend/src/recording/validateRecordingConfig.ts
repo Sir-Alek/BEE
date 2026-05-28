@@ -1,4 +1,5 @@
 import { emptyJiraCreds, emptyValueEdgeCreds } from "../connectorDefaults";
+import { MANUAL_DEVICE_OPTION } from "../mobileEnvUi";
 import type { EliaConnectorProfile } from "../types";
 import type {
   ConvertJobMode,
@@ -39,13 +40,21 @@ export function validateRecordingStart(
     if (config.platform !== "mobile") {
       return { ok: false, message: "Configuración móvil requerida." };
     }
-    if (!config.deviceId.trim()) {
+    const serial = config.deviceId.trim();
+    if (!serial || serial === MANUAL_DEVICE_OPTION) {
       return {
         ok: false,
         message:
           config.deviceMode === "emulator"
             ? "Inicia un emulador o selecciona uno visible en adb devices."
             : "Conecta un dispositivo Android o selecciónalo en la lista adb.",
+        mobileInline: true,
+      };
+    }
+    if (mode === "mobile_recorder" && config.appSource === "apk" && !config.apkPath.trim()) {
+      return {
+        ok: false,
+        message: "Indica la ruta del APK o cambia a «App instalada».",
         mobileInline: true,
       };
     }
@@ -156,10 +165,10 @@ export function buildConvertJobBody(params: {
     ...(mode === "mobile_recorder" && config.platform === "mobile"
       ? {
           platform: "mobile",
-          apk_path: config.apkPath.trim(),
+          apk_path: config.appSource === "apk" ? config.apkPath.trim() : "",
           device_id: config.deviceId.trim(),
-          app_package: pkgForJob.trim(),
-          app_activity: actForJob.trim(),
+          app_package: config.appSource === "installed" ? pkgForJob.trim() : "",
+          app_activity: config.appSource === "installed" ? actForJob.trim() : "",
         }
       : {}),
     ...(mode === "legacy_recorder" && config.platform === "legacy"

@@ -67,6 +67,11 @@ export type EliaPalette = {
   actionDesc: string;
   shadow: string;
   buttonDisabledBg: string;
+  toolbarBg: string;
+  severityErrorBorder: string;
+  severityErrorText: string;
+  severityWarnBorder: string;
+  severityWarnText: string;
 };
 
 const LIGHT: EliaPalette = {
@@ -121,6 +126,11 @@ const LIGHT: EliaPalette = {
   actionDesc: "#4b5563",
   shadow: "0 1px 2px rgba(0,0,0,0.03)",
   buttonDisabledBg: "#94a3b8",
+  toolbarBg: "#f3f4f6",
+  severityErrorBorder: "#fca5a5",
+  severityErrorText: "#b91c1c",
+  severityWarnBorder: "#fde68a",
+  severityWarnText: "#92400e",
 };
 
 const DARK: EliaPalette = {
@@ -175,6 +185,11 @@ const DARK: EliaPalette = {
   actionDesc: "#cbd5e1",
   shadow: "0 1px 2px rgba(0,0,0,0.25)",
   buttonDisabledBg: "#475569",
+  toolbarBg: "#0f172a",
+  severityErrorBorder: "#991b1b",
+  severityErrorText: "#fecaca",
+  severityWarnBorder: "#b45309",
+  severityWarnText: "#fde68a",
 };
 
 type Ctx = {

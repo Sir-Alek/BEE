@@ -4,6 +4,21 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.51] - 2026-05-19
+
+### Añadido
+
+- Capa UI compartida (`components/ui`): tooltips informativos, pestañas segmentadas, toolbar secundario y tokens de severidad en tema.
+- Badge de estado IA en la barra superior (popover con detalle y acceso a Configuración → IA).
+- Pestañas **App instalada** / **Instalar APK** en grabación móvil; opción «Ingresar serial manualmente» en selector adb.
+
+### Cambiado
+
+- Móvil: banners de preflight fusionados en acordeón **Diagnóstico de conexión** (borde amarillo/rojo según severidad); leyendas largas movidas a tooltips.
+- Web/Legacy/Doc: eliminados párrafos repetitivos de «Inteligencia local» del flujo principal.
+- Inteligencia de Requerimientos: integraciones (Jira, ValueEdge, lote) en toolbar secundario outlined; CTA «Procesar y Convertir a BDD» destacado.
+- Locust: etiquetas visibles (Usuarios, Tasa de subida, Duración) sobre los campos de carga.
+
 ## [0.9.50] - 2026-05-19
 
 ### Añadido

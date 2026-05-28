@@ -1,14 +1,17 @@
-import React from "react";
+import React, { useMemo } from "react";
 import type {
   MobileAppiumStatusResponse,
   MobileDeviceInfo,
   MobilePreflightResponse,
 } from "../api";
+import { FieldLabel, SegmentedTabs } from "../components/ui";
 import {
   formatPreflightItemMessage,
   friendlyAvdsError,
+  MANUAL_DEVICE_OPTION,
   mobilePreflightSummary,
   normalizeMobileWarnings,
+  preflightSeverity,
 } from "../mobileEnvUi";
 
 export type MobileConfigFormProps = {
@@ -25,6 +28,8 @@ export type MobileConfigFormProps = {
   onDeviceModeChange: (mode: "physical" | "emulator") => void;
   deviceId: string;
   onDeviceIdChange: (value: string) => void;
+  deviceManualMode: boolean;
+  onDeviceManualModeChange: (value: boolean) => void;
   mobileDevices: MobileDeviceInfo[];
   mobileDevicesLoading: boolean;
   mobileDevicesError: string | null;
@@ -39,6 +44,8 @@ export type MobileConfigFormProps = {
   onStartEmulator: () => void;
   emulatorMessage: string | null;
   mobileFieldError: string | null;
+  appSource: "installed" | "apk";
+  onAppSourceChange: (value: "installed" | "apk") => void;
   appPackage: string;
   onAppPackageChange: (value: string) => void;
   appActivity: string;
@@ -49,6 +56,16 @@ export type MobileConfigFormProps = {
   onApkPathChange: (value: string) => void;
   onClearMobileFieldError: () => void;
 };
+
+const fieldInputStyle = (c: Record<string, string>): React.CSSProperties => ({
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: `1px solid ${c.inputBorder}`,
+  background: c.inputBg,
+  color: c.text,
+  outline: "none",
+  fontSize: 14,
+});
 
 export function MobileConfigForm(props: MobileConfigFormProps) {
   const {
@@ -65,6 +82,8 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     onDeviceModeChange,
     deviceId,
     onDeviceIdChange,
+    deviceManualMode,
+    onDeviceManualModeChange,
     mobileDevices,
     mobileDevicesLoading,
     mobileDevicesError,
@@ -79,6 +98,8 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     onStartEmulator,
     emulatorMessage,
     mobileFieldError,
+    appSource,
+    onAppSourceChange,
     appPackage,
     onAppPackageChange,
     appActivity,
@@ -90,56 +111,44 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     onClearMobileFieldError,
   } = props;
 
+  const severity = preflightSeverity(mobilePreflight);
+  const severityBorder =
+    severity === "error" ? c.severityErrorBorder : severity === "warn" ? c.severityWarnBorder : c.inputBorder;
+  const severityText =
+    severity === "error" ? c.severityErrorText : severity === "warn" ? c.severityWarnText : c.text;
+
+  const physicalDevices = useMemo(
+    () => mobileDevices.filter((d) => d.kind === "physical"),
+    [mobileDevices],
+  );
+
+  const deviceSelectValue = deviceManualMode
+    ? MANUAL_DEVICE_OPTION
+    : physicalDevices.some((d) => d.id === deviceId)
+      ? deviceId
+      : "";
+
+  const handleDeviceSelectChange = (value: string) => {
+    if (value === MANUAL_DEVICE_OPTION) {
+      onDeviceManualModeChange(true);
+      return;
+    }
+    onDeviceManualModeChange(false);
+    onDeviceIdChange(value);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
       {mobilePreflightLoading && (
         <div style={{ fontSize: 12, color: c.muted }}>Comprobando entorno Android…</div>
       )}
-      {!mobilePreflightLoading && mobilePreflight && !mobilePreflight.ok && (
-        <div
-          data-testid="elia-mobile-preflight-errors"
-          role="alert"
-          style={{
-            fontSize: 13,
-            color: c.text,
-            background: c.licWarnBg,
-            border: `1px solid ${c.licWarnBorder}`,
-            borderRadius: 10,
-            padding: "10px 12px",
-            lineHeight: 1.45,
-          }}
-        >
-          {mobilePreflight.errors.map((line, i) => (
-            <div key={i}>{line}</div>
-          ))}
-        </div>
-      )}
-      {!mobilePreflightLoading &&
-        mobilePreflight?.ok &&
-        normalizeMobileWarnings(mobilePreflight.warnings).length > 0 && (
-          <div
-            data-testid="elia-mobile-preflight-warnings"
-            style={{
-              fontSize: 12,
-              color: c.text,
-              background: c.warnBg,
-              border: `1px solid ${c.warnBorder}`,
-              borderRadius: 10,
-              padding: "10px 12px",
-              lineHeight: 1.45,
-            }}
-          >
-            {normalizeMobileWarnings(mobilePreflight.warnings).map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
-          </div>
-        )}
+
       {!mobilePreflightLoading && mobilePreflight && mobilePreflight.items.length > 0 && (
         <div
           data-testid="elia-mobile-preflight-checklist"
           style={{
             borderRadius: 10,
-            border: `1px solid ${c.inputBorder}`,
+            border: `1px solid ${severityBorder}`,
             background: c.inputBg,
             overflow: "hidden",
           }}
@@ -157,16 +166,14 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               padding: "10px 12px",
               border: "none",
               background: "transparent",
-              color: c.text,
+              color: severityText,
               cursor: "pointer",
               textAlign: "left",
               fontSize: 13,
               fontWeight: 600,
             }}
           >
-            <span style={{ fontSize: 11, color: c.muted, width: 14 }}>
-              {mobileEnvOpen ? "▾" : "▸"}
-            </span>
+            <span style={{ fontSize: 11, color: c.muted, width: 14 }}>{mobileEnvOpen ? "▾" : "▸"}</span>
             <span>Diagnóstico de conexión</span>
             <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: c.muted }}>
               {(() => {
@@ -182,9 +189,27 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
                 color: c.muted,
                 lineHeight: 1.5,
                 padding: "0 12px 10px 34px",
-                borderTop: `1px solid ${c.inputBorder}`,
+                borderTop: `1px solid ${severityBorder}`,
               }}
             >
+              {!mobilePreflight.ok && mobilePreflight.errors.length > 0 ? (
+                <div data-testid="elia-mobile-preflight-errors" role="alert" style={{ marginBottom: 8 }}>
+                  {mobilePreflight.errors.map((line, i) => (
+                    <div key={i} style={{ color: c.severityErrorText }}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {normalizeMobileWarnings(mobilePreflight.warnings).length > 0 ? (
+                <div data-testid="elia-mobile-preflight-warnings" style={{ marginBottom: 8 }}>
+                  {normalizeMobileWarnings(mobilePreflight.warnings).map((line, i) => (
+                    <div key={i} style={{ color: c.severityWarnText }}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {mobilePreflight.items.map((item) => (
                 <div key={item.id}>
                   {item.ok ? "✓" : "✗"} {item.label}: {formatPreflightItemMessage(item)}
@@ -246,74 +271,53 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
         </div>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 600, color: c.text }}>Origen del dispositivo (Android)</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          data-testid="elia-mobile-mode-physical"
-          onClick={() => onDeviceModeChange("physical")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: `1px solid ${deviceMode === "physical" ? c.primary : c.inputBorder}`,
-            background: deviceMode === "physical" ? c.primary : c.inputBg,
-            color: deviceMode === "physical" ? c.primaryFg : c.text,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          Dispositivo físico
-        </button>
-        <button
-          type="button"
-          data-testid="elia-mobile-mode-emulator"
-          onClick={() => onDeviceModeChange("emulator")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: `1px solid ${deviceMode === "emulator" ? c.primary : c.inputBorder}`,
-            background: deviceMode === "emulator" ? c.primary : c.inputBg,
-            color: deviceMode === "emulator" ? c.primaryFg : c.text,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          Emulador Android
-        </button>
-      </div>
+      <FieldLabel
+        c={c}
+        tooltip="Dispositivo físico con USB/Wi‑Fi adb o emulador Android Studio (AVD). iOS no soportado."
+      >
+        Origen del dispositivo (Android)
+      </FieldLabel>
+      <SegmentedTabs
+        c={c}
+        value={deviceMode}
+        onChange={onDeviceModeChange}
+        options={[
+          { id: "physical", label: "Dispositivo físico", testId: "elia-mobile-mode-physical" },
+          { id: "emulator", label: "Emulador Android", testId: "elia-mobile-mode-emulator" },
+        ]}
+      />
 
       {deviceMode === "physical" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <FieldLabel
+            c={c}
+            tooltip="Conecta el móvil por USB o Wi‑Fi adb y activa la depuración USB en el dispositivo."
+          >
+            Dispositivo adb
+          </FieldLabel>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select
               data-testid="elia-mobile-device-select"
-              value={deviceId}
-              onChange={(e) => onDeviceIdChange(e.target.value)}
-              style={{
-                flex: "1 1 220px",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                fontSize: 14,
-              }}
+              value={deviceSelectValue}
+              onChange={(e) => handleDeviceSelectChange(e.target.value)}
+              style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
             >
               <option value="">— Selecciona dispositivo adb —</option>
-              {mobileDevices
-                .filter((d) => d.kind === "physical")
-                .map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.id}
-                    {d.model ? ` · ${d.model}` : ""} ({d.state})
-                  </option>
-                ))}
+              {physicalDevices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.id}
+                  {d.model ? ` · ${d.model}` : ""} ({d.state})
+                </option>
+              ))}
+              <option value={MANUAL_DEVICE_OPTION}>✍️ Ingresar serial manualmente…</option>
             </select>
             <button
               type="button"
               data-testid="elia-mobile-refresh-devices"
               disabled={mobileDevicesLoading}
               onClick={onRefreshDevices}
+              title="Actualizar lista adb"
+              aria-label="Actualizar lista adb"
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -322,31 +326,24 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
                 color: c.text,
                 cursor: mobileDevicesLoading ? "wait" : "pointer",
                 fontSize: 13,
+                minWidth: 44,
               }}
             >
-              {mobileDevicesLoading ? "…" : "Actualizar"}
+              {mobileDevicesLoading ? "…" : "↻"}
             </button>
           </div>
           {mobileDevicesError && (
             <div style={{ fontSize: 11, color: c.errorTitle }}>{mobileDevicesError}</div>
           )}
-          <input
-            value={deviceId}
-            onChange={(e) => onDeviceIdChange(e.target.value)}
-            placeholder="O escribe el serial manualmente (adb devices)"
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: `1px solid ${c.inputBorder}`,
-              background: c.inputBg,
-              color: c.text,
-              outline: "none",
-              fontSize: 14,
-            }}
-          />
-          <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
-            Conecta el móvil por USB o Wi‑Fi adb. Activa depuración USB en el dispositivo.
-          </div>
+          {deviceManualMode ? (
+            <input
+              data-testid="elia-mobile-device-manual"
+              value={deviceId}
+              onChange={(e) => onDeviceIdChange(e.target.value)}
+              placeholder="Serial adb (adb devices)"
+              style={fieldInputStyle(c)}
+            />
+          ) : null}
         </div>
       )}
 
@@ -358,15 +355,7 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               value={selectedAvd}
               onChange={(e) => onSelectedAvdChange(e.target.value)}
               disabled={mobileAvdsLoading || mobileAvds.length === 0}
-              style={{
-                flex: "1 1 220px",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                fontSize: 14,
-              }}
+              style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
             >
               <option value="">
                 {mobileAvdsLoading ? "Cargando AVDs…" : "— Selecciona AVD —"}
@@ -423,15 +412,7 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               data-testid="elia-mobile-emulator-device-select"
               value={deviceId}
               onChange={(e) => onDeviceIdChange(e.target.value)}
-              style={{
-                flex: "1 1 220px",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                fontSize: 14,
-              }}
+              style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
             >
               <option value="">— Emulador en adb —</option>
               {mobileDevices
@@ -446,6 +427,8 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               type="button"
               disabled={mobileDevicesLoading}
               onClick={onRefreshDevices}
+              title="Actualizar adb"
+              aria-label="Actualizar adb"
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -456,18 +439,34 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
                 fontSize: 13,
               }}
             >
-              adb
+              ↻
             </button>
-          </div>
-          <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
-            Requiere Android SDK + imagen AVD creada en Android Studio. iOS no soportado.
           </div>
         </div>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
-        App ya instalada en el móvil
-      </div>
+      <FieldLabel
+        c={c}
+        tooltip={
+          <>
+            ELIA puede iniciar Appium al grabar. Requiere Android SDK y adb en PATH. Variables opcionales: ELIA_APPIUM_PATH,
+            ELIA_ANDROID_HOME.
+          </>
+        }
+        style={{ marginTop: 4 }}
+      >
+        Aplicación a grabar
+      </FieldLabel>
+      <SegmentedTabs
+        c={c}
+        value={appSource}
+        onChange={onAppSourceChange}
+        options={[
+          { id: "installed", label: "App instalada", testId: "elia-mobile-app-installed" },
+          { id: "apk", label: "Instalar APK", testId: "elia-mobile-app-apk" },
+        ]}
+      />
+
       {mobileFieldError && (
         <div
           data-testid="elia-mobile-form-error"
@@ -485,87 +484,71 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
           {mobileFieldError}
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          data-testid="elia-mobile-app-package"
-          value={appPackage}
-          onChange={(e) => {
-            onAppPackageChange(e.target.value);
-            onClearMobileFieldError();
-          }}
-          placeholder="Paquete Android (ej: com.empresa.miapp) — opcional si detectas la app abierta"
-          style={{
-            flex: "1 1 220px",
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            outline: "none",
-            fontSize: 14,
-          }}
-        />
-        <button
-          type="button"
-          data-testid="elia-mobile-detect-app"
-          disabled={detectingForegroundApp || !deviceId.trim()}
-          onClick={onDetectForegroundApp}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            cursor: detectingForegroundApp || !deviceId.trim() ? "wait" : "pointer",
-            fontSize: 13,
-          }}
-        >
-          {detectingForegroundApp ? "Detectando…" : "Detectar app abierta"}
-        </button>
-      </div>
-      <input
-        value={appActivity}
-        onChange={(e) => onAppActivityChange(e.target.value)}
-        placeholder="Actividad principal — opcional (ej: .MainActivity)"
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: `1px solid ${c.inputBorder}`,
-          background: c.inputBg,
-          color: c.text,
-          outline: "none",
-          fontSize: 14,
-        }}
-      />
-      <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
-        Si dejas el paquete vacío, ELIA intentará detectar la app en primer plano al pulsar Grabar.
-        También puedes usar «Detectar app abierta» con la app visible en el móvil (no la pantalla de inicio).
-        Si dejas la actividad vacía, ELIA intenta detectarla con{" "}
-        <code style={{ fontSize: 11 }}>adb shell cmd package resolve-activity</code>.
-      </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: c.text, marginTop: 4 }}>
-        O instalar desde APK en este PC
-      </div>
-      <input
-        value={apkPath}
-        onChange={(e) => onApkPathChange(e.target.value)}
-        placeholder="Ruta del APK en Windows (opcional, ej: C:\apps\miapp.apk)"
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: `1px solid ${c.inputBorder}`,
-          background: c.inputBg,
-          color: c.text,
-          outline: "none",
-          fontSize: 14,
-        }}
-      />
-      <div style={{ fontSize: 12, color: c.muted }}>
-        ELIA puede iniciar Appium automáticamente al grabar si está instalado. Requiere Android SDK y{" "}
-        <code style={{ fontSize: 11 }}>adb</code> en el PATH. Variables opcionales:{" "}
-        <code style={{ fontSize: 11 }}>ELIA_APPIUM_PATH</code>,{" "}
-        <code style={{ fontSize: 11 }}>ELIA_ANDROID_HOME</code>.
-      </div>
+
+      {appSource === "installed" ? (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              data-testid="elia-mobile-app-package"
+              value={appPackage}
+              onChange={(e) => {
+                onAppPackageChange(e.target.value);
+                onClearMobileFieldError();
+              }}
+              placeholder="Paquete (ej: com.empresa.miapp)"
+              style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
+            />
+            <button
+              type="button"
+              data-testid="elia-mobile-detect-app"
+              disabled={detectingForegroundApp || !deviceId.trim() || deviceId === MANUAL_DEVICE_OPTION}
+              onClick={onDetectForegroundApp}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: `1px solid ${c.inputBorder}`,
+                background: c.inputBg,
+                color: c.text,
+                cursor: detectingForegroundApp || !deviceId.trim() ? "wait" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              {detectingForegroundApp ? "Detectando…" : "Detectar app abierta"}
+            </button>
+          </div>
+          <FieldLabel
+            c={c}
+            tooltip={
+              <>
+                Si dejas el paquete vacío, ELIA intentará detectar la app en primer plano al pulsar Grabar. También puedes
+                usar «Detectar app abierta» con la app visible (no el launcher). Si la actividad está vacía, ELIA usa adb
+                shell cmd package resolve-activity.
+              </>
+            }
+          >
+            Actividad principal (opcional)
+          </FieldLabel>
+          <input
+            value={appActivity}
+            onChange={(e) => onAppActivityChange(e.target.value)}
+            placeholder="ej: .MainActivity"
+            style={fieldInputStyle(c)}
+          />
+        </>
+      ) : (
+        <>
+          <FieldLabel c={c} tooltip="Ruta absoluta del APK en este PC. ELIA lo instalará en el dispositivo al grabar.">
+            Ruta del APK
+          </FieldLabel>
+          <input
+            data-testid="elia-mobile-apk-path"
+            value={apkPath}
+            onChange={(e) => onApkPathChange(e.target.value)}
+            placeholder="C:\apps\miapp.apk"
+            style={fieldInputStyle(c)}
+          />
+        </>
+      )}
     </div>
   );
 }

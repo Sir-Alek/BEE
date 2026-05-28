@@ -1,5 +1,6 @@
 import React from "react";
 import type { RecorderPreflightResponse } from "../api";
+import { FieldLabel } from "../components/ui";
 
 export function WebConfigForm(props: {
   c: Record<string, string>;
@@ -12,16 +13,23 @@ export function WebConfigForm(props: {
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
-        Requisito: <b>Google Chrome</b> instalado en este equipo (Microsoft Edge no es válido para
-        grabar). Opcional: variable <code>ELIA_CHROME_PATH</code> si Chrome está en una ruta no estándar.
-      </div>
+      <FieldLabel
+        c={c}
+        tooltip={
+          <>
+            Requisito: Google Chrome instalado (Edge no válido). Opcional: variable ELIA_CHROME_PATH si Chrome está en
+            ruta no estándar.
+          </>
+        }
+      >
+        URL de grabación
+      </FieldLabel>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
           data-testid="elia-web-url"
           value={urlValue}
           onChange={(e) => onUrlChange(e.target.value)}
-          placeholder="URL para grabar (ej: https://miapp.com)"
+          placeholder="https://miapp.com"
           style={{
             flex: "1 1 360px",
             minWidth: 280,
@@ -57,24 +65,6 @@ export function WebConfigForm(props: {
             </div>
           ))}
         </div>
-      )}
-      {!recorderPreflightLoading && recorderPreflight?.ok && recorderPreflight.warnings.length > 0 && (
-        <div
-          style={{
-            marginTop: 10,
-            padding: "10px 12px",
-            borderRadius: 10,
-            fontSize: 13,
-            background: c.hintBg,
-            border: `1px solid ${c.hintBorder}`,
-            color: c.hintText,
-          }}
-        >
-          {recorderPreflight.warnings.join(" ")}
-        </div>
-      )}
-      {!recorderPreflightLoading && recorderPreflight?.ok && recorderPreflight.source === "install" && (
-        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Chrome detectado.</div>
       )}
     </div>
   );

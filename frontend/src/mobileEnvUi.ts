@@ -1,5 +1,9 @@
 import type { MobilePreflightItem } from "./api";
 
+export const MANUAL_DEVICE_OPTION = "__manual__";
+
+export type PreflightSeverity = "ok" | "warn" | "error";
+
 export const EMULATOR_MISSING_WARNING =
   "No se detectó Android Emulator: solo podrás usar dispositivo físico. Instala Android Emulator o define ANDROID_HOME.";
 
@@ -59,6 +63,15 @@ export function normalizeMobileWarnings(warnings: string[]): string[] {
     }
   }
   return out;
+}
+
+export function preflightSeverity(
+  preflight: { ok: boolean; errors: string[]; warnings: string[] } | null,
+): PreflightSeverity {
+  if (!preflight) return "ok";
+  if (!preflight.ok || preflight.errors.length > 0) return "error";
+  if (normalizeMobileWarnings(preflight.warnings).length > 0) return "warn";
+  return "ok";
 }
 
 export function shouldAutoOpenMobileEnv(

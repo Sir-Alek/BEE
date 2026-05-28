@@ -11,6 +11,7 @@ export type MobileRecordingConfig = {
   platform: "mobile";
   deviceId: string;
   deviceMode: "physical" | "emulator";
+  appSource: "installed" | "apk";
   apkPath: string;
   appPackage: string;
   appActivity: string;

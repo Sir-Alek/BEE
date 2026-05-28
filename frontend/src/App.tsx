@@ -133,6 +133,7 @@ export default function App() {
     emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
     detectingForegroundApp, detectForegroundApp, appiumStatus, appiumStarting, handleStartAppium,
     refreshAppiumStatus, refreshMobilePreflight, appPackage, setAppPackage, appActivity, setAppActivity,
+    appSource, setAppSource, deviceManualMode, setDeviceManualMode,
   } = mobileState;
 
   const visibleSettingsTabs = settingsTabsForLicense(canRunJobs);
@@ -140,13 +141,13 @@ export default function App() {
 
   const recordingConfig = useMemo((): RecordingConfig => {
     if (platform === "mobile") {
-      return { platform: "mobile", deviceId, deviceMode, apkPath, appPackage, appActivity };
+      return { platform: "mobile", deviceId, deviceMode, appSource, apkPath, appPackage, appActivity };
     }
     if (platform === "legacy") {
       return { platform: "legacy", windowName, exePath };
     }
     return { platform: "web", url: urlValue };
-  }, [platform, urlValue, deviceId, deviceMode, apkPath, appPackage, appActivity, windowName, exePath]);
+  }, [platform, urlValue, deviceId, deviceMode, appSource, apkPath, appPackage, appActivity, windowName, exePath]);
 
   const refreshAiCapabilities = useCallback(async () => {
     try {
@@ -303,14 +304,14 @@ export default function App() {
     let mobileAct = recordingConfig.platform === "mobile" ? recordingConfig.appActivity.trim() : "";
 
     if (mode === "mobile_recorder" && recordingConfig.platform === "mobile") {
-      if (!recordingConfig.apkPath.trim() && !mobilePkg) {
+      if (recordingConfig.appSource === "installed" && !mobilePkg) {
         const detected = await detectForegroundApp();
         if (detected?.package) {
           mobilePkg = detected.package;
           mobileAct = detected.activity || mobileAct;
         }
       }
-      if (!recordingConfig.apkPath.trim() && !mobilePkg) return;
+      if (recordingConfig.appSource === "installed" && !mobilePkg) return;
     }
 
     const newTab = openJobUrlInNewTabPrepared();
@@ -540,6 +541,13 @@ export default function App() {
     syncSettingsProfileId();
   };
 
+  const openAiSettings = () => {
+    setSettingsOpen(true);
+    setSettingsTab("ai");
+    setSettingsTestMsg(null);
+    setSettingsSaveMsg(null);
+  };
+
   const licenseCtx = useMemo(
     () => ({
       license, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
@@ -577,6 +585,7 @@ export default function App() {
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
       appPackage, setAppPackage, appActivity, setAppActivity, apkPath, setApkPath,
+      appSource, setAppSource, deviceManualMode, setDeviceManualMode,
       detectingForegroundApp, detectForegroundApp,
     }),
     [
@@ -586,7 +595,7 @@ export default function App() {
       mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, refreshMobileAvds,
       emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, appPackage,
-      appActivity, apkPath, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
+      appActivity, apkPath, appSource, deviceManualMode, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
     ],
   );
 
@@ -645,7 +654,9 @@ export default function App() {
                   workspaceMode={workspaceMode}
                   connectorProfiles={connectorProfiles}
                   reqConnectorProfileId={reqConnectorProfileId}
+                  aiCaps={aiCaps}
                   onOpenSettings={openSettings}
+                  onOpenAiSettings={openAiSettings}
                 />
 
                 <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />

@@ -51,6 +51,10 @@ export type RecordingContextValue = {
   setAppActivity: (v: string) => void;
   apkPath: string;
   setApkPath: (v: string) => void;
+  appSource: "installed" | "apk";
+  setAppSource: (v: "installed" | "apk") => void;
+  deviceManualMode: boolean;
+  setDeviceManualMode: (v: boolean) => void;
   detectingForegroundApp: boolean;
   detectForegroundApp: () => Promise<{ package: string; activity: string } | null>;
 };

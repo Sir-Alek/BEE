@@ -7,6 +7,7 @@ import {
   licenseNeedsExpiryBanner,
   type LicenseState,
 } from "../app/licenseUtils";
+import { OutlinedButton, SecondaryToolbar } from "../components/ui";
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
@@ -19,7 +20,7 @@ import { useRecordingContext } from "../context/RecordingContext";
 
 export function HomeSurface() {
   const {
-    c, dark, initialChecked, homeTab, setHomeTab, homeHint, aiCaps, license,
+    c, dark, initialChecked, homeTab, setHomeTab, homeHint, license,
     setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
     showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
@@ -38,6 +39,7 @@ export function HomeSurface() {
     mobileDevicesError, refreshMobileDevices, mobileAvds, mobileAvdsLoading, mobileAvdsError,
     selectedAvd, setSelectedAvd, refreshMobileAvds, emulatorStarting, handleStartEmulator,
     emulatorMessage, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
+    appSource, setAppSource, deviceManualMode, setDeviceManualMode,
     detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
     windowName, setWindowName, exePath, setExePath,
   } = useRecordingContext();
@@ -144,39 +146,6 @@ export function HomeSurface() {
                 }}
               >
                 {homeHint}
-              </div>
-            )}
-
-            {aiCaps?.resolution.degraded && aiCaps.preferences.mode === "auto" && (
-              <div
-                role="status"
-                style={{
-                  background: c.hintBg,
-                  border: `1px solid ${c.hintBorder}`,
-                  color: c.hintText,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  marginBottom: 14,
-                  fontSize: 14,
-                }}
-              >
-                {aiCaps.resolution.message}
-              </div>
-            )}
-
-            {aiCaps && !aiCaps.resolution.degraded && aiCaps.resolution.use_ai && (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: c.muted,
-                  marginBottom: 14,
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${c.border}`,
-                  background: c.neutralBg,
-                }}
-              >
-                {aiCaps.resolution.message} · {aiCaps.brand_line}
               </div>
             )}
 
@@ -390,6 +359,10 @@ export function HomeSurface() {
                     onDetectForegroundApp={() => void detectForegroundApp()}
                     apkPath={apkPath}
                     onApkPathChange={setApkPath}
+                    appSource={appSource}
+                    onAppSourceChange={setAppSource}
+                    deviceManualMode={deviceManualMode}
+                    onDeviceManualModeChange={setDeviceManualMode}
                     onClearMobileFieldError={() => setMobileFieldError(null)}
                   />
                 )}
@@ -401,15 +374,6 @@ export function HomeSurface() {
                     onWindowNameChange={setWindowName}
                     onExePathChange={setExePath}
                   />
-                )}
-
-                {aiCaps && (
-                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                    <b>Inteligencia local:</b> {aiCaps.resolution.message}
-                    {aiCaps.resolution.use_ai
-                      ? " Las conversiones a Behave usan revisión asistida por IA."
-                      : " Las conversiones usarán modo heurístico (rápido)."}
-                  </div>
                 )}
 
                 {(platform === "web" || platform === "mobile" || platform === "legacy") && (
@@ -807,12 +771,6 @@ export function HomeSurface() {
                   </div>
                 )}
 
-                {aiCaps && (
-                  <div style={{ fontSize: 13, color: c.muted, marginBottom: 12, lineHeight: 1.45 }}>
-                    <b>Inteligencia local:</b> {aiCaps.resolution.message}
-                  </div>
-                )}
-
                 {/* Botón de acción principal */}
                 <div style={{ marginTop: 4 }}>
                   <button
@@ -830,63 +788,50 @@ export function HomeSurface() {
                   </button>
                 </div>
 
-                {/* Separador */}
-                <div style={{ borderTop: `1px solid ${c.border}`, margin: "16px 0 12px" }} />
-
-                {/* Integraciones externas */}
-                <div style={{ color: c.muted, fontSize: 13, marginBottom: 10 }}>
-                  Conecta con sistemas externos o carga documentos locales para convertir a BDD.
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Perfil activo</label>
+                <SecondaryToolbar c={c} title="Integraciones y utilidades">
+                  <label style={{ fontSize: 13, fontWeight: 600, color: c.text, marginRight: 4 }}>Perfil</label>
                   <select
                     value={reqConnectorProfileId}
                     onChange={(e) => setReqConnectorProfileId(e.target.value)}
                     style={{
-                      flex: "1 1 200px", minWidth: 180, padding: "8px 12px",
-                      borderRadius: 10, border: `1px solid ${c.inputBorder}`,
-                      background: c.inputBg, color: c.text, fontSize: 14,
+                      flex: "1 1 180px", minWidth: 160, padding: "7px 10px",
+                      borderRadius: 8, border: `1px solid ${c.inputBorder}`,
+                      background: c.inputBg, color: c.text, fontSize: 13,
                     }}
                   >
                     {connectorProfiles.length === 0 ? (
-                      <option value="">Sin perfiles — usa Configuración (⚙)</option>
+                      <option value="">Sin perfiles — Configuración (⚙)</option>
                     ) : (
                       connectorProfiles.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))
                     )}
                   </select>
-                  <button
+                  <OutlinedButton
+                    c={c}
                     disabled={license ? !license.can_run_jobs : false}
                     onClick={() => void startJob("elia_jira_smoke")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Conectar a Jira</button>
-                  <button
+                    testId="elia-btn-jira-smoke"
+                  >
+                    Conectar a Jira
+                  </OutlinedButton>
+                  <OutlinedButton
+                    c={c}
                     disabled={license ? !license.can_run_jobs : false}
                     onClick={() => void startJob("elia_value_edge_smoke")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Extraer de ValueEdge</button>
-                  <button
+                    testId="elia-btn-ve-smoke"
+                  >
+                    Extraer de ValueEdge
+                  </OutlinedButton>
+                  <OutlinedButton
+                    c={c}
                     disabled={license ? !license.can_run_jobs : false}
                     onClick={() => void startJob("elia_gherkin_batch")}
-                    style={{
-                      padding: "8px 12px", borderRadius: 10, background: c.btnGhostBg,
-                      color: c.text, border: `1px solid ${c.btnGhostBorder}`, fontSize: 13,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
-                    }}
-                  >Lote .json → .feature</button>
-                </div>
+                    testId="elia-btn-gherkin-batch"
+                  >
+                    Lote .json → .feature
+                  </OutlinedButton>
+                </SecondaryToolbar>
               </div>
             )}
             {homeTab === "api" && (
