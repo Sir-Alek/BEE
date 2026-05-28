@@ -58,8 +58,9 @@ export function AppHeader(props: {
         background: c.chromeBg,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", flex: "0 0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto", minWidth: 0 }}>
         <img src="/logo-icon.png" alt="" aria-hidden style={ELIA_LOGO_ICON_STYLE} />
+        <img src="/logo-letters.png" alt="ELIA" style={ELIA_LOGO_LETTERS_STYLE} />
       </div>
       <div
         style={{
@@ -74,7 +75,6 @@ export function AppHeader(props: {
           minWidth: 0,
         }}
       >
-        <img src="/logo-letters.png" alt="ELIA" style={ELIA_LOGO_LETTERS_STYLE} />
         <div
           style={{
             fontSize: 12,

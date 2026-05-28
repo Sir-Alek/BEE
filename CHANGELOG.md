@@ -4,6 +4,19 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.55] - 2026-05-19
+
+### Añadido
+
+- **Run workspace:** árbol de directorios colapsable (`FileTree`) en lugar de lista plana con rutas completas.
+- Utilidad `buildFileTree` para agrupar archivos del proyecto por carpetas.
+
+### Cambiado
+
+- Header: restaurada la distribución original de logos ELIA (icono y wordmark juntos a la izquierda); badge IA permanece bajo ⚙.
+- Legacy: labels con tooltips en ventana y ejecutable; eliminado párrafo explicativo redundante.
+- Run workspace: leyenda del campo Behave sustituida por tooltip en el label «Filtro de ejecución Behave».
+
 ## [0.9.51] - 2026-05-19
 
 ### Añadido

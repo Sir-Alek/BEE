@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   getPlatformProjects,
   listProjectFiles,
@@ -6,6 +6,8 @@ import {
   startUnifiedRun,
   writeProjectFile,
 } from "../api";
+import { FileTree } from "../components/FileTree";
+import { FieldLabel } from "../components/ui";
 import { useEliaTheme } from "../eliaTheme";
 import { CodeEditorPanel } from "./CodeEditorPanel";
 import { RunConsolePanel } from "./RunConsolePanel";
@@ -159,7 +161,7 @@ export function RunWorkspacePanel(props: Props) {
         onClick={() => setFullscreen((v) => !v)}
         style={btn(c, undefined, undefined, true)}
       >
-        {fullscreen ? "⤓" : "⤢"}
+        {fullscreen ? "Ôñô" : "Ôñó"}
       </button>
     </>
   );
@@ -184,6 +186,21 @@ export function RunWorkspacePanel(props: Props) {
   const workspaceBody = (
     <>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>Ejecutar y editar proyecto</div>
+      <FieldLabel
+        c={c}
+        tooltip={
+          <>
+            Qué ejecutará Behave: «features» corre todos los .feature; «features/mi.feature» solo uno. Este campo filtra
+            la ejecución; el editor de abajo sirve para editar archivos.
+            {platform === "web"
+              ? " Por defecto Chrome corre headless; marca «Mostrar navegador» para ver la UI."
+              : null}
+          </>
+        }
+        style={{ marginBottom: 6 }}
+      >
+        Filtro de ejecución Behave
+      </FieldLabel>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
         <input
           value={featureFile}
@@ -217,14 +234,6 @@ export function RunWorkspacePanel(props: Props) {
           </>
         ) : null}
       </div>
-      <div style={{ fontSize: 12, color: c.muted, marginBottom: 10, lineHeight: 1.45 }}>
-        Indica qué ejecutará Behave: <code style={{ fontSize: 11 }}>features</code> corre todos los
-        .feature del proyecto; <code style={{ fontSize: 11 }}>features/mi.feature</code> solo uno. El
-        editor de abajo sirve para editar archivos; este campo solo filtra la ejecución.
-        {platform === "web" ? (
-          <> Por defecto Chrome corre en segundo plano (headless); marca «Mostrar navegador» para ver la UI.</>
-        ) : null}
-      </div>
 
       <div
         style={{
@@ -249,26 +258,7 @@ export function RunWorkspacePanel(props: Props) {
           {files.length === 0 ? (
             <div style={{ padding: 10, color: c.muted }}>Sin archivos editables</div>
           ) : (
-            files.map((f) => (
-              <button
-                key={f.path}
-                type="button"
-                onClick={() => loadFile(f.path)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  border: "none",
-                  borderBottom: `1px solid ${c.border}`,
-                  background: selected === f.path ? c.neutralBg : "transparent",
-                  color: c.text,
-                  cursor: "pointer",
-                }}
-              >
-                {f.path}
-              </button>
-            ))
+            <FileTree c={c} files={files} selectedPath={selected} onSelectFile={loadFile} />
           )}
         </div>
         <div style={{ minHeight: "inherit", display: "flex", flexDirection: "column" }}>
