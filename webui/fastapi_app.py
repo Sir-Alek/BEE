@@ -394,8 +394,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
 
     @app.get("/api/modules/status")
     def modules_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
-        from core.modules_config import list_modules
-        return list_modules()
+        from core.modules_config import get_api_module_limits, list_modules
+
+        out: Dict[str, Any] = dict(list_modules())
+        out["api_limits"] = get_api_module_limits()
+        return out
 
     @app.get("/api/recorder/preflight")
     def recorder_preflight(

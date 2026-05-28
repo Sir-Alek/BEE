@@ -663,7 +663,7 @@ export async function getApiTrafficCaptures(
 export async function importApiTrafficCapture(
   project: string,
   captureId: string,
-): Promise<{ ok: boolean; scenario_ids: string[]; count: number }> {
+): Promise<{ ok: boolean; scenario_ids: string[]; count: number; imported: number; skipped: number }> {
   const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/import-traffic`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1069,13 +1069,88 @@ export async function exportApiLoadEvidence(body: {
   run_time?: string;
   host?: string;
   scenario_count?: number;
-}): Promise<{ ok: boolean; filename: string; path: string }> {
+  format?: "pdf" | "html" | "basic";
+  enriched?: boolean;
+}): Promise<{ ok: boolean; filename: string; path: string; format?: string }> {
   const res = await fetch("/api/api/export/load-evidence", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enriched: true, format: "pdf", ...body }),
+  });
+  if (!res.ok) throw new Error(`Failed to export load evidence: ${res.status}`);
+  return res.json();
+}
+
+export async function exportApiSuiteEvidence(body: {
+  project: string;
+  environment?: string;
+  suite: Record<string, unknown>;
+  name?: string;
+  format: "pdf" | "json";
+}): Promise<{ ok: boolean; filename: string; path: string }> {
+  const res = await fetch("/api/api/export/suite-evidence", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to export load evidence: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to export suite evidence: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiLoadHistory(
+  project: string,
+): Promise<{ runs: Array<Record<string, unknown>> }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/load-history`);
+  if (!res.ok) throw new Error(`Failed to list load history: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiLoadSnapshot(body: {
+  project: string;
+  run_id: string;
+  users?: number;
+  run_time?: string;
+  host?: string;
+  scenario_count?: number;
+}): Promise<{ ok: boolean; history_id: string }> {
+  const res = await fetch("/api/api/load-history/snapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to save load snapshot: ${res.status}`);
+  return res.json();
+}
+
+export async function compareApiLoadRuns(body: {
+  project: string;
+  run_a: string;
+  run_b: string;
+}): Promise<{ run_a: Record<string, unknown>; run_b: Record<string, unknown>; delta: Record<string, { a: number; b: number; diff: number }> }> {
+  const res = await fetch("/api/api/load-history/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to compare load runs: ${res.status}`);
+  return res.json();
+}
+
+export async function syncApiEnvironmentFromWeb(
+  project: string,
+  envName: string,
+): Promise<{ ok: boolean; base_url: string; origin: string }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(envName)}/sync-from-web`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(`Failed to sync environment from web: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiWebOrigin(project: string): Promise<{ origin: string | null; available: boolean }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/web-origin`);
+  if (!res.ok) throw new Error(`Failed to get web origin: ${res.status}`);
   return res.json();
 }
 

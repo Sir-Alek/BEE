@@ -177,6 +177,12 @@ export type ModulesStatus = {
   legacy_recording: boolean;
   doc_to_bdd: boolean;
   api_testing: boolean;
+  api_limits?: {
+    max_load_users: number;
+    max_load_spawn_rate: number;
+    max_suite_scenarios: number;
+    evidence_opt_in: boolean;
+  };
 };
 
 export type LoadedDoc = {

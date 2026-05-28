@@ -103,13 +103,45 @@ def resolve_traffic_capture_path(project: str, capture_id: str) -> Path:
     return path
 
 
-def import_traffic_to_scenarios(project: str, traffic_path: str) -> List[str]:
-    """Importa cada petición de una captura como escenario en scenarios/."""
+def request_fingerprint(request: ApiRequest) -> str:
+    """Huella estable method+URL para deduplicar importaciones de captura."""
+    url = (request.url or "").split("?")[0].strip().lower()
+    return f"{(request.method or 'GET').upper()}:{url}"
+
+
+def _existing_fingerprints(project: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for item in list_scenarios(project):
+        try:
+            req = load_scenario(project, item["id"])
+        except (FileNotFoundError, ValueError):
+            continue
+        out[request_fingerprint(req)] = item["id"]
+    return out
+
+
+def import_traffic_to_scenarios(
+    project: str,
+    traffic_path: str,
+    *,
+    dedupe: bool = True,
+) -> Dict[str, Any]:
+    """Importa peticiones de captura como escenarios; deduplica por method+URL."""
     capture = load_traffic_file(traffic_path)
     ids: List[str] = []
+    skipped = 0
+    known = _existing_fingerprints(project) if dedupe else {}
     for entry in capture.entries:
-        ids.append(save_scenario(project, entry))
-    return ids
+        fp = request_fingerprint(entry)
+        if dedupe and fp in known:
+            skipped += 1
+            ids.append(known[fp])
+            continue
+        sid = save_scenario(project, entry)
+        ids.append(sid)
+        if dedupe:
+            known[fp] = sid
+    return {"scenario_ids": ids, "imported": len(ids) - skipped, "skipped": skipped, "total": len(capture.entries)}
 
 
 def scenarios_dir(project: str) -> Path:

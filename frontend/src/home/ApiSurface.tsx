@@ -11,6 +11,7 @@ import {
   getApiScenarioDetail,
   getApiScenarios,
   getApiTrafficCaptures,
+  getApiWebOrigin,
   getProjectReportUrl,
   getTestRun,
   importApiTrafficCapture,
@@ -18,13 +19,16 @@ import {
   importPostmanCollection,
   runLoadTest,
   saveApiEnvironment,
+  saveApiLoadSnapshot,
   saveApiProjectConfig,
   saveApiScenario,
+  syncApiEnvironmentFromWeb,
 } from "../api";
 import {
   AssertionEditor,
   DataCsvPanel,
   ExtractorEditor,
+  LoadHistoryComparePanel,
   LoadMetricsPanel,
   SuiteRunnerPanel,
   type AssertionRow,
@@ -34,7 +38,7 @@ import { RunConsolePanel } from "./RunConsolePanel";
 
 type Props = {
   c: Record<string, string>;
-  modules: { api_testing?: boolean } | null;
+  modules: { api_testing?: boolean; api_limits?: { max_load_users?: number; max_suite_scenarios?: number } } | null;
   canRunJobs: boolean;
   onShowError: (msg: string) => void;
   setHomeHint: (msg: string | null) => void;
@@ -82,6 +86,8 @@ export function ApiSurface(props: Props) {
   const importRef = useRef<HTMLInputElement>(null);
   const [importKind, setImportKind] = useState<"postman" | "openapi">("postman");
   const [apiTab, setApiTab] = useState<ApiSubTab>("postman");
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [webOriginAvailable, setWebOriginAvailable] = useState(false);
 
   const refreshProjects = () => {
     void getApiProjects()
@@ -148,6 +154,9 @@ export function ApiSurface(props: Props) {
 
   useEffect(() => {
     if (project && environment) loadEnvironmentVars(environment);
+    void getApiWebOrigin(project)
+      .then((r) => setWebOriginAvailable(r.available))
+      .catch(() => setWebOriginAvailable(false));
   }, [project, environment]);
 
   useEffect(() => {
@@ -171,6 +180,21 @@ export function ApiSurface(props: Props) {
       cancelled = true;
     };
   }, [runId]);
+
+  useEffect(() => {
+    if (!runId || !loadRunFinished) return;
+    const ids = scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id);
+    void saveApiLoadSnapshot({
+      project,
+      run_id: runId,
+      users: Number(loadUsers) || 5,
+      run_time: loadRunTime.trim() || "1m",
+      host: loadHost.trim(),
+      scenario_count: ids.length,
+    })
+      .then(() => setHistoryRefresh((n) => n + 1))
+      .catch(() => undefined);
+  }, [loadRunFinished, runId]);
 
   if (!modules?.api_testing) {
     return (
@@ -261,7 +285,19 @@ export function ApiSurface(props: Props) {
     void importApiTrafficCapture(project, captureId)
       .then((r) => {
         refreshScenarios();
-        setHomeHint(`${r.count} escenario(s) importado(s) desde captura.`);
+        const skipped = r.skipped ? ` (${r.skipped} duplicados omitidos)` : "";
+        setHomeHint(`${r.imported ?? r.count} escenario(s) importado(s)${skipped}.`);
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setBusy(false));
+  };
+
+  const handleSyncFromWeb = () => {
+    setBusy(true);
+    void syncApiEnvironmentFromWeb(project, environment)
+      .then((r) => {
+        loadEnvironmentVars(environment);
+        setHomeHint(`base_url sincronizado desde web: ${r.base_url}`);
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
@@ -346,7 +382,7 @@ export function ApiSurface(props: Props) {
       .finally(() => setBusy(false));
   };
 
-  const handleExportLoadReport = () => {
+  const handleExportLoadReport = (format: "pdf" | "html" = "pdf") => {
     if (!runId) return;
     const ids = scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id);
     setBusy(true);
@@ -354,14 +390,16 @@ export function ApiSurface(props: Props) {
       project,
       run_id: runId,
       users: Number(loadUsers) || 5,
-      run_time: "1m",
+      run_time: loadRunTime.trim() || "1m",
       host: loadHost.trim(),
       scenario_count: ids.length,
+      format,
+      enriched: true,
     })
       .then((r) => {
         setLoadReportFilename(r.filename);
         window.open(getProjectReportUrl("api", project, r.filename), "_blank");
-        setHomeHint(`Reporte de carga generado: ${r.filename}`);
+        setHomeHint(`Reporte de carga (${format.toUpperCase()}) generado: ${r.filename}`);
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
@@ -498,6 +536,11 @@ export function ApiSurface(props: Props) {
           <button type="button" disabled={busy} onClick={handleSaveGlobalConfig} style={btn(c)}>
             Guardar config proyecto
           </button>
+          {webOriginAvailable ? (
+            <button type="button" disabled={busy} onClick={handleSyncFromWeb} style={btn(c, undefined, undefined, true)}>
+              Sincronizar base_url desde grabación web
+            </button>
+          ) : null}
         </div>
       </Section>
 
@@ -756,7 +799,10 @@ export function ApiSurface(props: Props) {
 
       <Section c={c} title="Prueba de carga (Locust)">
         <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
-          Métricas en RAM/consola. CSV Locust opt-in automático para dashboard. PDF solo bajo demanda.
+          Métricas en RAM/consola. CSV Locust opt-in automático para dashboard. PDF/HTML solo bajo demanda.
+          {modules?.api_limits?.max_load_users ? (
+            <> Límite licencia: {modules.api_limits.max_load_users} usuarios.</>
+          ) : null}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
           <input
@@ -797,8 +843,11 @@ export function ApiSurface(props: Props) {
         </div>
         {loadRunFinished && generateLoadReport ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-            <button type="button" disabled={busy} onClick={handleExportLoadReport} style={btn(c, c.primary, c.primaryFg)}>
-              Generar reporte de carga (PDF)
+            <button type="button" disabled={busy} onClick={() => handleExportLoadReport("pdf")} style={btn(c, c.primary, c.primaryFg)}>
+              Generar reporte enriquecido (PDF)
+            </button>
+            <button type="button" disabled={busy} onClick={() => handleExportLoadReport("html")} style={btn(c, undefined, undefined, true)}>
+              Generar reporte enriquecido (HTML)
             </button>
             {loadReportFilename ? (
               <span style={{ fontSize: 12, color: c.muted }}>Guardado: {loadReportFilename}</span>
@@ -806,6 +855,7 @@ export function ApiSurface(props: Props) {
           </div>
         ) : null}
         <LoadMetricsPanel c={c} runId={runId} />
+        <LoadHistoryComparePanel c={c} project={project} refreshToken={historyRefresh} onError={onShowError} />
         {runId ? (
           <div style={{ marginTop: 12 }}>
             <RunConsolePanel

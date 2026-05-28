@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 _MODULE_NAMES: Dict[str, bool] = {
     "mobile_recording": False,
@@ -99,6 +99,16 @@ def list_modules() -> Dict[str, bool]:
         else:
             result[name] = bool(resolved.get(name, False))
     return result
+
+
+def get_api_module_limits() -> Dict[str, Any]:
+    """Límites documentados del módulo api_testing (carga y suites)."""
+    return {
+        "max_load_users": 500,
+        "max_load_spawn_rate": 100.0,
+        "max_suite_scenarios": 200,
+        "evidence_opt_in": True,
+    }
 
 
 def enable_module(module_name: str, key: str) -> bool:

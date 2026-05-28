@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import {
+  compareApiLoadRuns,
+  exportApiSuiteEvidence,
   getApiDataFiles,
+  getApiLoadHistory,
   getLoadTestMetrics,
+  getProjectReportUrl,
   getTestRun,
   runApiSuite,
   saveApiDataFile,
@@ -213,6 +217,45 @@ export function SuiteRunnerPanel(props: {
               </ul>
             </div>
           ))}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void exportApiSuiteEvidence({
+                  project,
+                  environment,
+                  suite: suiteResult as unknown as Record<string, unknown>,
+                  format: "pdf",
+                })
+                  .then((r) => {
+                    window.open(getProjectReportUrl("api", project, r.filename), "_blank");
+                    onHint(`Evidencia suite PDF: ${r.filename}`);
+                  })
+                  .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+              }}
+              style={btn(c)}
+            >
+              Exportar suite (PDF)
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void exportApiSuiteEvidence({
+                  project,
+                  environment,
+                  suite: suiteResult as unknown as Record<string, unknown>,
+                  format: "json",
+                })
+                  .then((r) => onHint(`Evidencia suite JSON: ${r.filename}`))
+                  .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+              }}
+              style={btn(c, true)}
+            >
+              Exportar suite (JSON)
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
@@ -345,6 +388,99 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+export function LoadHistoryComparePanel(props: {
+  c: Theme;
+  project: string;
+  refreshToken?: number;
+  onError: (msg: string) => void;
+}) {
+  const { c, project, refreshToken, onError } = props;
+  const [runs, setRuns] = useState<Array<{ id: string; label: string }>>([]);
+  const [runA, setRunA] = useState("");
+  const [runB, setRunB] = useState("");
+  const [compare, setCompare] = useState<Awaited<ReturnType<typeof compareApiLoadRuns>> | null>(null);
+
+  useEffect(() => {
+    if (!project) return;
+    void getApiLoadHistory(project)
+      .then((r) => {
+        const items = (r.runs || []).map((item) => {
+          const id = String(item.id || "");
+          const saved = String(item.saved_at || "").slice(0, 19);
+          const users = String(item.users ?? "?");
+          return { id, label: `${saved} — ${users} usuarios` };
+        });
+        setRuns(items);
+        if (items.length >= 2) {
+          setRunA((prev) => prev || items[1].id);
+          setRunB((prev) => prev || items[0].id);
+        }
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+  }, [project, refreshToken, onError]);
+
+  const handleCompare = () => {
+    if (!runA || !runB) {
+      onError("Selecciona dos ejecuciones del historial.");
+      return;
+    }
+    void compareApiLoadRuns({ project, run_a: runA, run_b: runB })
+      .then(setCompare)
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+  };
+
+  if (!runs.length) return null;
+
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: `1px solid ${c.border}`, background: c.neutralBg, fontSize: 13 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Comparativa de cargas (historial local)</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+        <select value={runA} onChange={(e) => setRunA(e.target.value)} style={inputStyle(c, { minWidth: 180 })}>
+          <option value="">Ejecución A</option>
+          {runs.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <select value={runB} onChange={(e) => setRunB(e.target.value)} style={inputStyle(c, { minWidth: 180 })}>
+          <option value="">Ejecución B</option>
+          {runs.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={handleCompare} style={btn(c)}>
+          Comparar
+        </button>
+      </div>
+      {compare ? (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 4 }}>Métrica</th>
+              <th style={{ textAlign: "right", padding: 4 }}>A</th>
+              <th style={{ textAlign: "right", padding: 4 }}>B</th>
+              <th style={{ textAlign: "right", padding: 4 }}>Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(compare.delta).map(([key, row]) => (
+              <tr key={key}>
+                <td style={{ padding: 4 }}>{key}</td>
+                <td style={{ padding: 4, textAlign: "right" }}>{row.a}</td>
+                <td style={{ padding: 4, textAlign: "right" }}>{row.b}</td>
+                <td style={{ padding: 4, textAlign: "right", color: row.diff > 0 ? "#c0392b" : c.text }}>{row.diff}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }

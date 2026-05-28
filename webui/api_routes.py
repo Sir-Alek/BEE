@@ -130,13 +130,44 @@ class ApiExportLoadEvidence(BaseModel):
     run_time: str = "1m"
     host: str = ""
     scenario_count: int = 0
+    format: str = "pdf"  # pdf | html | basic
+    enriched: bool = True
+
+
+class ApiExportSuiteEvidence(BaseModel):
+    project: str
+    environment: Optional[str] = None
+    suite: Dict[str, Any]
+    name: str = "Suite API"
+    format: str = "pdf"  # pdf | json
+
+
+class ApiLoadHistorySnapshot(BaseModel):
+    project: str
+    run_id: str
+    users: int = 0
+    run_time: str = "1m"
+    host: str = ""
+    scenario_count: int = 0
+
+
+class ApiLoadHistoryCompare(BaseModel):
+    project: str
+    run_a: str
+    run_b: str
 
 
 def _require_api_module() -> None:
-    from core.modules_config import is_module_enabled
+    from core.modules_config import get_api_module_limits, is_module_enabled
 
     if not is_module_enabled("api_testing"):
         raise HTTPException(status_code=403, detail="Módulo api_testing no habilitado")
+
+
+def _api_limits() -> Dict[str, Any]:
+    from core.modules_config import get_api_module_limits
+
+    return get_api_module_limits()
 
 
 def _load_scenarios_for_project(project: str, scenario_ids: Optional[List[str]] = None) -> List[ApiRequest]:
@@ -275,10 +306,10 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             traffic_path = str(resolve_traffic_capture_path(project_name, body.capture_id))
         except (ValueError, FileNotFoundError) as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        scenario_ids = import_traffic_to_scenarios(project_name, traffic_path)
-        if not scenario_ids:
+        result = import_traffic_to_scenarios(project_name, traffic_path)
+        if not result.get("scenario_ids"):
             raise HTTPException(status_code=400, detail="La captura no contiene peticiones importables")
-        return {"ok": True, "scenario_ids": scenario_ids, "count": len(scenario_ids)}
+        return {"ok": True, **result, "count": len(result["scenario_ids"])}
 
     @app.post("/api/api/scenarios")
     def api_save_scenario(
@@ -320,6 +351,13 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        limits = _api_limits()
+        scenario_ids = body.scenario_ids or []
+        if len(scenario_ids) > int(limits.get("max_suite_scenarios", 200)):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Máximo {limits['max_suite_scenarios']} escenarios por suite",
+            )
         flow = None
         if body.flow_id:
             try:
@@ -565,29 +603,168 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         filename = os.path.basename(path)
         return {"ok": True, "format": fmt, "path": path, "filename": filename}
 
+    @app.post("/api/api/export/suite-evidence")
+    def api_export_suite_evidence(
+        body: ApiExportSuiteEvidence,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        """Exportación opt-in de suite funcional."""
+        from core.api_automation.api_evidence_report import (
+            write_suite_evidence_json,
+            write_suite_evidence_pdf,
+        )
+
+        _require_api_module()
+        payload = {
+            "name": body.name,
+            "environment": body.environment or "dev",
+            "suite": body.suite,
+            "exported_at": datetime.now().isoformat(),
+        }
+        fmt = (body.format or "pdf").lower()
+        if fmt == "json":
+            path = write_suite_evidence_json(body.project, payload)
+        elif fmt == "pdf":
+            path = write_suite_evidence_pdf(body.project, payload)
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado: pdf | json")
+        filename = os.path.basename(path)
+        return {"ok": True, "format": fmt, "path": path, "filename": filename}
+
     @app.post("/api/api/export/load-evidence")
     def api_export_load_evidence(
         body: ApiExportLoadEvidence,
         _: None = Depends(require_localhost),
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
-        """Exportación opt-in de reporte PDF tras prueba de carga Locust."""
-        from core.api_automation.api_evidence_report import write_load_test_evidence_pdf
+        """Exportación opt-in de reporte tras prueba de carga Locust."""
+        from core.api_automation.api_evidence_report import (
+            write_enriched_load_test_evidence_html,
+            write_enriched_load_test_evidence_pdf,
+            write_load_test_evidence_pdf,
+        )
 
         _require_api_module()
         run = test_runner_service.get(body.run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
-        path = write_load_test_evidence_pdf(
-            body.project,
-            lines=list(run.lines),
-            users=body.users,
-            run_time=body.run_time,
-            host=body.host,
-            scenario_count=body.scenario_count,
-        )
+        csv_prefix = str((run.meta or {}).get("csv_prefix") or "elia_load")
+        metrics = resolve_metrics(run.project_path or run.cwd, list(run.lines), csv_prefix=csv_prefix)
+        fmt = (body.format or "pdf").lower()
+        if fmt == "html" and body.enriched:
+            path = write_enriched_load_test_evidence_html(
+                body.project,
+                lines=list(run.lines),
+                metrics=metrics,
+                users=body.users,
+                run_time=body.run_time,
+                host=body.host,
+                scenario_count=body.scenario_count,
+                run_id=body.run_id,
+            )
+        elif fmt == "pdf" and body.enriched:
+            path = write_enriched_load_test_evidence_pdf(
+                body.project,
+                lines=list(run.lines),
+                metrics=metrics,
+                users=body.users,
+                run_time=body.run_time,
+                host=body.host,
+                scenario_count=body.scenario_count,
+                run_id=body.run_id,
+            )
+        else:
+            path = write_load_test_evidence_pdf(
+                body.project,
+                lines=list(run.lines),
+                users=body.users,
+                run_time=body.run_time,
+                host=body.host,
+                scenario_count=body.scenario_count,
+            )
         filename = os.path.basename(path)
-        return {"ok": True, "path": path, "filename": filename}
+        return {"ok": True, "format": fmt, "path": path, "filename": filename}
+
+    @app.get("/api/api/projects/{project_name}/load-history")
+    def api_list_load_history(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.load_run_history import list_load_runs
+
+        _require_api_module()
+        return {"runs": list_load_runs(project_name)}
+
+    @app.post("/api/api/load-history/snapshot")
+    def api_save_load_snapshot(
+        body: ApiLoadHistorySnapshot,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.load_run_history import append_load_run
+
+        _require_api_module()
+        run = test_runner_service.get(body.run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Ejecución no encontrada")
+        csv_prefix = str((run.meta or {}).get("csv_prefix") or "elia_load")
+        metrics = resolve_metrics(run.project_path or run.cwd, list(run.lines), csv_prefix=csv_prefix)
+        history_id = append_load_run(
+            body.project,
+            {
+                "runner_run_id": body.run_id,
+                "users": body.users,
+                "run_time": body.run_time,
+                "host": body.host,
+                "scenario_count": body.scenario_count,
+                "metrics": metrics,
+            },
+        )
+        return {"ok": True, "history_id": history_id}
+
+    @app.post("/api/api/load-history/compare")
+    def api_compare_load_history(
+        body: ApiLoadHistoryCompare,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.load_run_history import compare_load_runs
+
+        _require_api_module()
+        try:
+            return compare_load_runs(body.project, body.run_a, body.run_b)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+
+    @app.post("/api/api/projects/{project_name}/environments/{env_name}/sync-from-web")
+    def api_sync_env_from_web(
+        project_name: str,
+        env_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.shared_env_bridge import sync_api_environment_from_web
+
+        _require_api_module()
+        try:
+            result = sync_api_environment_from_web(project_name, env_name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"ok": True, **result}
+
+    @app.get("/api/api/projects/{project_name}/web-origin")
+    def api_get_web_origin(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.shared_env_bridge import infer_web_origin
+
+        _require_api_module()
+        origin = infer_web_origin(project_name)
+        return {"origin": origin, "available": bool(origin)}
 
     @app.get("/api/api/traffic-path")
     def api_traffic_path_for_script(

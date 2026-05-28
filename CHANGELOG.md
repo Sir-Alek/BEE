@@ -4,6 +4,18 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.42] - 2026-05-28
+
+### Añadido
+
+- **Fase 6 — Reportes enriquecidos opt-in:** PDF/HTML post-carga con percentiles p50/p95/p99, endpoints CSV y métricas agregadas; historial ligero en `outputs/reports/load_history.json`; comparativa entre ejecuciones en UI; evidencia PDF/JSON de suite funcional bajo demanda.
+- **Fase 7 — Integración ELIA nativa:** deduplicación al importar capturas web (method+URL); sincronización de `base_url` desde grabación web al entorno API; límites de carga documentados en `/api/modules/status` (`api_limits`).
+
+### Cambiado
+
+- Importación de tráfico devuelve contadores `imported` / `skipped`.
+- Exportación de carga admite `format: pdf | html` y `enriched: true` (por defecto).
+
 ## [0.9.41] - 2026-05-28
 
 ### Cambiado
