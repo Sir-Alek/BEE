@@ -851,13 +851,231 @@ export async function runLoadTest(body: {
   spawn_rate: number;
   run_time: string;
   host?: string;
-}): Promise<{ run_id: string; locustfile: string }> {
+  scenario_ids?: string[];
+  scenario_weights?: Record<string, number>;
+  collect_metrics?: boolean;
+}): Promise<{ run_id: string; locustfile: string; scenario_count?: number }> {
   const res = await fetch("/api/api/load-test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to start load test: ${res.status}`);
+  return res.json();
+}
+
+export async function runApiSuite(body: {
+  project: string;
+  environment?: string;
+  scenario_ids?: string[];
+  continue_on_failure?: boolean;
+  data_file?: string;
+}): Promise<{
+  ok: boolean;
+  passed_steps: number;
+  failed_steps: number;
+  iterations: number;
+  runs: Array<{ ok: boolean; steps: Array<{ name: string; ok: boolean }> }>;
+}> {
+  const res = await fetch("/api/api/run-suite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to run API suite: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiDataFiles(project: string): Promise<{ files: { name: string; path: string }[] }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/data-files`);
+  if (!res.ok) throw new Error(`Failed to list data files: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiDataFile(body: {
+  project: string;
+  filename: string;
+  content: string;
+}): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch("/api/api/data-files", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to save data file: ${res.status}`);
+  return res.json();
+}
+
+export async function getLoadTestMetrics(runId: string): Promise<{
+  run_id: string;
+  state: string;
+  metrics: {
+    live: {
+      total_requests: number;
+      total_failures: number;
+      error_rate_pct: number;
+      current_rps: number;
+      avg_ms: number;
+      p50_ms: number;
+      p95_ms: number;
+      p99_ms: number;
+    };
+    csv: Record<string, unknown>;
+  };
+}> {
+  const res = await fetch(`/api/api/load-test/${encodeURIComponent(runId)}/metrics`);
+  if (!res.ok) throw new Error(`Failed to get load metrics: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiProjectConfig(project: string): Promise<{
+  default_environment: string;
+  global_headers: Record<string, string>;
+}> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/config`);
+  if (!res.ok) throw new Error(`Failed to load API project config: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiProjectConfig(
+  project: string,
+  body: { default_environment: string; global_headers: Record<string, string> },
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to save API project config: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiEnvironments(project: string): Promise<{ environments: string[] }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/environments`);
+  if (!res.ok) throw new Error(`Failed to list environments: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiEnvironment(
+  project: string,
+  envName: string,
+): Promise<{ name: string; variables: Record<string, string> }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(envName)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to load environment: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiEnvironment(
+  project: string,
+  envName: string,
+  body: { name: string; variables: Record<string, string> },
+): Promise<{ ok: boolean }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(envName)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to save environment: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiScenarioDetail(
+  project: string,
+  scenarioId: string,
+): Promise<{ scenario: Record<string, unknown> }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/scenarios/${encodeURIComponent(scenarioId)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to load scenario: ${res.status}`);
+  return res.json();
+}
+
+export async function executeApiRequest(body: {
+  project: string;
+  environment?: string;
+  request: Record<string, unknown>;
+}): Promise<{
+  ok: boolean;
+  status_code: number;
+  headers: Record<string, string>;
+  body: string;
+  elapsed_ms: number;
+  assertions: Array<{ kind: string; passed: boolean; message: string }>;
+  environment?: string;
+}> {
+  const res = await fetch("/api/api/execute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to execute API request: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function importPostmanCollection(body: {
+  project: string;
+  collection: Record<string, unknown>;
+}): Promise<{ ok: boolean; count: number; scenario_ids: string[] }> {
+  const res = await fetch("/api/api/import/postman", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to import Postman collection: ${res.status}`);
+  return res.json();
+}
+
+export async function importOpenApiSpec(body: {
+  project: string;
+  spec: Record<string, unknown>;
+}): Promise<{ ok: boolean; count: number; scenario_ids: string[] }> {
+  const res = await fetch("/api/api/import/openapi", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to import OpenAPI spec: ${res.status}`);
+  return res.json();
+}
+
+export async function exportApiRequestEvidence(body: {
+  project: string;
+  environment?: string;
+  request: Record<string, unknown>;
+  result: Record<string, unknown>;
+  format: "pdf" | "json";
+}): Promise<{ ok: boolean; filename: string; path: string }> {
+  const res = await fetch("/api/api/export/request-evidence", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to export request evidence: ${res.status}`);
+  return res.json();
+}
+
+export async function exportApiLoadEvidence(body: {
+  project: string;
+  run_id: string;
+  users?: number;
+  run_time?: string;
+  host?: string;
+  scenario_count?: number;
+}): Promise<{ ok: boolean; filename: string; path: string }> {
+  const res = await fetch("/api/api/export/load-evidence", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to export load evidence: ${res.status}`);
   return res.json();
 }
 

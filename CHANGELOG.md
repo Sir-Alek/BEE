@@ -4,104 +4,134 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.9.31] - 2026-05-27
+## [0.9.41] - 2026-05-28
+
+### Cambiado
+
+- Pestaña **Pruebas API** reorganizada con dos subpestañas estilo Automatización UI (Web/Móvil/Legacy): **Postman** (constructor, entornos, importación, capturas) y **JMeter-lite / Locust** (CSV, suite funcional, carga y métricas).
+- Barra de proyecto y entorno compartida entre ambas subpestañas; al cargar un escenario se abre automáticamente la vista Postman.
+- Peso Locust y selección masiva de escenarios movidos exclusivamente a la subpestaña de carga.
+
+## [0.9.40] - 2026-05-28
+
+### Añadido
+
+- **Fase 1 — Suite runner:** `POST /api/api/run-suite` ejecuta escenarios en orden con resumen pass/fail en RAM; UI «Ejecutar suite» con opción continuar si falla.
+- **Fase 2 — Correlación dinámica:** extractores JSONPath, regex y header; variables de sesión compartidas entre pasos de la suite.
+- **Fase 3 — Data-driven:** CSV en `resources/data/`; suites iteran filas parametrizadas (`{{columna}}`).
+- **Fase 4 — Aserciones avanzadas:** JSONPath real, duración máxima (`max_duration_ms`), regex y body_contains en motor y UI.
+- **Fase 5 — Dashboard de carga:** métricas Locust en vivo (`GET /api/api/load-test/{run_id}/metrics`), CSV headless opt-in, pesos por escenario y parámetros spawn/duración en UI.
+- Flujos persistidos en `flows/*.json` y endpoints de gestión de CSV/flujos.
+
+### Cambiado
+
+- Locust genera tareas con `@task(peso)` según peso del escenario.
+- `build_locust_command` admite `--csv` para métricas sin PDF automático.
+
+## [0.9.32] - 2026-05-28
+
+### Añadido
+
+- Evidencias API opt-in para peticiones individuales: botones «Exportar evidencia (PDF)» y «Exportar evidencia (JSON)» tras ejecutar una petición; nunca se escriben archivos al pulsar Enviar.
+- Evidencias opt-in para carga Locust: checkbox «Permitir reporte PDF al finalizar» (desmarcado por defecto) y botón «Generar reporte de carga (PDF)» visible solo al terminar la ejecución.
+- Endpoints `POST /api/api/export/request-evidence` y `POST /api/api/export/load-evidence` para generar PDF/JSON bajo demanda.
+- Módulo `core/api_automation/api_evidence_report.py` con plantillas PDF ligeras para petición HTTP y resumen Locust.
+- Panel de respuesta ampliado: headers de respuesta desplegables además de status, tiempo, aserciones y body.
+
+### Cambiado
+
+- Cada fila de header (globales y de petición) incluye botón ✕ para eliminarla; al borrar la última queda una fila vacía editable.
+- Las pruebas de carga mantienen métricas en memoria/consola (`GENERATE_EVIDENCE=false`); el disco solo se usa si el usuario exporta evidencia explícitamente.
 
 ### Corregido
 
-- **Runner al cambiar de plataforma (web/móvil/legacy):** ya no conserva el proyecto ni los archivos del módulo anterior; se resetea el selector, se remonta el panel y se limpia el árbol de archivos.
-- **Error «Failed to list files: 404»** en móvil/legacy cuando el proyecto seleccionado en web no existía en esa plataforma; ahora se auto-selecciona el primer proyecto válido o lista vacía sin modal de error.
+- Corrección de recursión infinita entre `ensure_api_project` y `ensure_project_defaults` al crear proyectos API nuevos.
 
-## [0.9.3] - 2026-05-27
-
-### Añadido
-
-- **Autocompletado contextual (nivel B)** en el editor del runner: sugerencias al escribir o con Ctrl+Space según el archivo abierto.
-  - `.feature`: keywords Gherkin, textos de steps del proyecto, escenarios existentes.
-  - `*_steps.py`: decoradores Behave, steps ya definidos, `context.page.` + métodos del page object vinculado.
-  - `resources/data/*.json`: claves del JSON del proyecto.
-  - `utils/button_functions.py`: funciones públicas del módulo.
-- Índice de sugerencias cargado desde el proyecto vía API; se actualiza al guardar y refleja el buffer sin guardar.
-
-### Cambiado
-
-- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.3**.
-- **Árbol del runner:** solo muestra steps, pages, `.feature`, JSON en `resources/data/` y `button_functions.py` (el resto sigue en disco para Behave).
-- **Selector de proyecto Behave:** `<select>` nativo en web/móvil/legacy (`BehaveProjectSelect`) en lugar de input + datalist del navegador.
-
-## [0.9.2] - 2026-05-27
+## [0.9.31] - 2026-05-28
 
 ### Añadido
 
-- **Editor de código tipo IDE:** CodeMirror con resaltado Python/Gherkin, números de línea, tema claro/oscuro, atajo Ctrl+S, pantalla completa (⤢) y área de edición ampliada (~52vh).
-- **Reporte PDF tras ejecución:** vista previa embebida, descarga, selector si hay varios PDFs, botón «Abrir carpeta pdfReports» y detección automática vía `ELIA_PDF_REPORT` + escaneo de `outputs/pdfReports/`.
-- **Rutas de reportes:** `GET .../reports`, `GET .../reports/file`, `POST .../open-folder`; artefactos incluidos en `GET /api/runs/{id}` y en el evento SSE `done`.
-- **Tests:** `test_run_artifacts.py`.
+- Módulo API rediseñado estilo Postman/JMeter-lite: ejecución HTTP directa con `POST /api/api/execute`, sin depender de Behave para probar endpoints.
+- Gestor de entornos por proyecto (`environments/*.json`) con interpolación de variables `{{nombre}}` en URL, headers y body.
+- Headers globales de proyecto (`project.json`) con fusión automática (los headers de la petición tienen prioridad).
+- Importación de colecciones Postman v2.1 y especificaciones OpenAPI 3 como escenarios JSON reutilizables.
+- Selección de escenarios para pruebas de carga Locust desde la pestaña API.
 
 ### Cambiado
 
-- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.2**.
-- **Consola de ejecución redimensionable** (arrastrar borde superior).
-- **Reportes PDF siempre activos** en ejecuciones Behave desde el runner unificado (sin checkbox; `GENERATE_EVIDENCE=true` forzado en backend).
+- Proyectos API nuevos ya no generan scaffold Behave (`features/`, `behave.ini`); el flujo principal es constructor manual, capturas e importación.
+- La pestaña API sustituye los botones «Generar .feature Behave» por Enviar, entornos y panel de respuesta integrado.
+- El endpoint `/api/api/convert` queda marcado como obsoleto; se mantiene solo por compatibilidad con proyectos legacy.
+
+## [0.9.21] - 2026-05-27
 
 ### Corregido
 
-- Los PDF generados durante una corrida quedan visibles en la UI aunque el usuario no conozca la ruta `Documents\ELIA\behave\{plataforma}\{proyecto}\outputs\pdfReports`.
+- Navegación limpia entre plataformas: Al cambiar entre pruebas Web, Móvil o de Escritorio, la interfaz ahora limpia por completo el proyecto anterior, reinicia los selectores de pantalla y actualiza el árbol de archivos de forma automática para evitar mezclar datos de diferentes entornos.
+- Optimización en la selección de proyectos: Se eliminaron las alertas de error inesperadas que aparecían si seleccionabas un proyecto en el entorno Web que no existía en las pestañas Móvil o Legacy. Ahora el sistema selecciona automáticamente el primer proyecto válido disponible o muestra la lista vacía de forma transparente.
 
-## [0.9.1] - 2026-05-27
+## [0.9.20] - 2026-05-27
 
 ### Añadido
 
-- **Runner unificado con edición de código:** panel «Ejecutar y editar proyecto» en Web, Móvil, Legacy y Pruebas API — lista archivos `.feature`, `.py` y `locustfile.py`, editor integrado (guardar/recargar), ejecución Behave con PDF + logo ELIA y Locust (API).
-- **Rutas de ejecución y archivos:** `POST /api/runs`, `GET /api/projects/{platform}`, `GET/PUT /api/projects/{platform}/{project}/file`, stream SSE `/api/runs/{id}/stream`; núcleo en `core/test_runner/` (`run_launcher`, `project_files`, `behave_support`).
-- **IA Gemma para aserciones API:** `core/api_automation/api_assertion_ai.py` — heurística offline + sugerencias Gemma al convertir tráfico/escenarios a steps `Then` Behave HTTP.
-- **PDF y entorno Behave por plataforma:** plantillas `environment.py` con marcadores `ELIA_ENV_*_V2` (web, mobile, legacy, api), utils API (`api_run_support.py`) y logo desde `resources/logo_elia.png` / `ELIA_LOGO_PATH`.
-- **Captura API móvil:** prompt opcional en grabación Appium; performance logs WebView/Chrome → `behave/api/{proyecto}/scripts/{grabacion}_api_traffic.json`.
-- **Captura API legacy:** prompt opcional con URL del componente web híbrido (WebView2); Puppeteer en paralelo hacia la misma ruta API.
-- **Tests unitarios:** `test_run_launcher.py`, `test_api_assertion_ai.py`.
+- Asistente de autocompletado inteligente: El editor de pruebas integrado ahora incluye sugerencias contextuales automáticas (accesibles al escribir o mediante el atajo Ctrl + Espacio). El asistente reconoce el tipo de archivo abierto para sugerirte palabras clave de Gherkin, pasos ya definidos en el proyecto, funciones de automatización de la plataforma y estructuras de datos en tiempo real, reflejando incluso los cambios del borrador actual antes de guardarlo.
 
 ### Cambiado
 
-- Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.9.1**.
-- Conversión Behave (web/móvil/legacy): `_copy_support_files` usa `ensure_platform_behave_support()` según plataforma en lugar de copiar solo el `environment.py` web.
-- Pestaña **Pruebas API:** Behave y Locust migrados al panel unificado (`RunWorkspacePanel`); constructor manual y capturas web se mantienen arriba.
-- Pestaña **UI** (web/móvil/legacy): sección inferior para elegir proyecto Behave, editar código y ejecutar pruebas sin salir del flujo principal.
-- Proyectos API existentes: al ejecutar o convertir, se actualiza `environment.py` si falta el marcador `ELIA_ENV_*_V2`.
+- Panel de archivos simplificado: El árbol de exploración del editor de código ahora solo muestra los archivos esenciales para tus flujos de automatización (escenarios, pasos de prueba, páginas de objetos y datos de soporte), manteniendo ocultos los archivos internos del sistema para una navegación más limpia. 
+- Selector de proyectos mejorado: Se reemplazó el cuadro de texto tradicional por un menú desplegable nativo mucho más intuitivo y estable para cambiar de proyecto rápidamente en cualquiera de las plataformas.
+
+## [0.9.10] - 2026-05-27
+
+### Añadido
+
+- Editor de código avanzado integrado: Se incorporó un espacio de edición de pruebas con herramientas de tipo profesional que incluye resaltado de colores para scripts de automatización y escenarios Gherkin, numeración de líneas, soporte para temas claro/oscuro, modo pantalla completa y un área de trabajo ampliada para modificar tus pruebas cómodamente sin salir de la aplicación. Incluye soporte para el guardado rápido tradicional mediante Ctrl + S.
+- Visor nativo de reportes de evidencias: Tras ejecutar una prueba, ahora podrás previsualizar tus reportes PDF embebidos directamente dentro de la interfaz, descargarlos de forma individual, alternar entre múltiples documentos o abrir la carpeta contenedora con un solo clic gracias a la detección automática de resultados del sistema..
+
+### Cambiado
+
+- Consola de ejecución ajustable: Diseñamos una consola interactiva más flexible; ahora puedes arrastrar libremente el borde superior del panel de ejecución para ajustar su tamaño según tus necesidades de visualización en tiempo real.
+- Generación automática de reportes: Las evidencias y reportes estructurados en PDF ahora se mantienen siempre activos y se generan de forma obligatoria tras cada ejecución desde el panel unificado, asegurando que tus resultados queden respaldados sin configuraciones adicionales.
+
+### Corregido
+
+- Acceso inmediato a documentos de evidencias: Se solucionó un inconveniente que dificultaba encontrar los reportes generados en el equipo; ahora todos los documentos e imágenes de evidencia quedan visibles y accesibles directamente desde la pantalla de resultados de la interfaz, sin necesidad de rastrear rutas de carpetas internas.
+
+## [0.9.0] - 2026-05-27
+
+### Añadido
+
+- Espacio de trabajo unificado para edición y ejecución: Nuevo panel centralizado «Ejecutar y editar proyecto» disponible en todas las pestañas de automatización (Web, Móvil, Escritorio y API). Desde este espacio puedes explorar tus escenarios organizados, modificar el código de tus scripts con herramientas de guardado rápido y lanzar ejecuciones en vivo con monitoreo de rendimiento interactivo.
+- Asistente de IA para automatización de servicios: Incorporamos la inteligencia de Gemma local para ayudarte a generar validaciones automáticas de datos de forma desconectada. Al transformar tus flujos de datos capturados en escenarios BDD, la IA te sugerirá de manera predictiva los criterios de verificación esperados para tus respuestas de integración.
+- Captura inteligente de tráfico en segundo plano: Durante tus grabaciones en dispositivos móviles o aplicaciones de escritorio híbridas, ahora puedes activar de forma opcional el registro del tráfico de datos oculto de la aplicación. El sistema estructurará y guardará de forma transparente estos flujos para utilizarlos como base en tus validaciones de servicios.
+
+### Cambiado
+
+- Gestión de entornos por plataforma: El motor de conversión ahora configura los archivos de soporte y las plantillas de entorno de forma inteligente según la plataforma seleccionada (Web, Móvil, Escritorio o API), aplicando automáticamente los marcadores visuales y logos del producto correspondientes.
+- Flujo de automatización sin interrupciones: Añadimos una sección interactiva en la parte inferior de las pestañas principales que te permite seleccionar tus proyectos, editar el código fuente y ejecutar las pruebas en vivo sin necesidad de abandonar tu flujo de trabajo principal o cambiar de pestaña.
 
 ## [0.8.10] - 2026-05-26
 
 ### Añadido
 
-- **Opciones de captura (grabación web):** nueva pantalla con checkboxes independientes para video de pantalla y tráfico API (XHR/fetch), antes de la confirmación final «Grabando».
-- **Navegación en flujos:** botones **Regresar** y **Cancelar** en las pantallas de prompts del job; Cancelar detiene el trabajo, avisa al inicio y cierra la pestaña del flujo.
-- **Soporte comercial (preparado):** componente `SupportContactLink` y constante `ELIA_SUPPORT_EMAIL` listos para la versión ≥1.0 (activación comentada en beta).
+- Opciones de captura web personalizadas: Antes de iniciar una grabación en el navegador, ahora dispones de una pantalla de configuración previa con casillas independientes que te permiten elegir si deseas capturar video de la pantalla, registrar el tráfico de datos en segundo plano, o ambas opciones antes de la confirmación final.
+- Mayor control en los asistentes guiados: Se incluyeron botones de Regresar y Cancelar en las ventanas de confirmación de tareas. Al cancelar, el sistema detendrá el proceso de inmediato de forma segura, notificará al backend y cerrará automáticamente la pestaña del flujo para mantener limpio tu espacio de trabajo. 
 
 ### Cambiado
 
 - Instalador Windows (`ELIA_Setup.iss`) sincronizado a **0.8.10**.
-- `requirements.txt`: **Locust** incluido (pruebas de carga API); **requests** añadido (integraciones Jira / Value Edge).
-- Grabación web: la captura API ya no se elige en el inicio; solo en «Opciones de captura» dentro del flujo del job.
-- Conversión a Behave: **Regresar** en selección de acciones vuelve al script; en selección de script vuelve al proyecto.
-- Pantalla principal: el aviso «El flujo se abrió en otra pestaña…» desaparece si se cierra la pestaña del flujo (×), al cancelar/finalizar el job o al detectar la ventana cerrada.
+- Interfaz principal interactiva mejorada: El aviso visual en pantalla que indica que el flujo de trabajo se abrió en otra pestaña ahora desaparece de forma inteligente y automática en el momento en que decides cerrar, cancelar o finalizar la grabación activa.
 
 ### Corregido
 
-- **Grabar Interacciones:** error «URL requerida» con URL ya escrita (cierre obsoleto de `startJob` en React).
-- **Grabación web:** fallo `mk_prompt()` al nombrar el archivo de grabación (argumento posicional vs. keyword-only).
-- **Seleccionar acciones:** ya no genera proyecto Behave si no hay acciones marcadas; muestra advertencia y cancela el job en backend.
-- Pantalla de error del job: restaurado enlace «Enviar feedback beta» (soporte por correo queda preparado para release comercial).
+- Corrección en el inicio de grabaciones web: Se solucionó un inconveniente que mostraba la alerta "URL requerida" de forma errónea a pesar de tener la dirección web escrita correctamente en el formulario de inicio.
+- Validación de acciones seleccionadas: El asistente ahora muestra una advertencia clara y detiene de forma segura el proceso si intentas generar un proyecto de automatización sin haber marcado ninguna acción registrada previamente en la lista de verificación.
 
 ## [0.8.0] - 2026-05-26
 
 ### Añadido
 
-- **Módulo Pruebas API (JMeter-lite):** pestaña «Pruebas API», captura XHR/fetch en grabación web Puppeteer, escenarios Postman-lite, conversión a Behave HTTP, ejecución con consola en vivo (SSE) y generación Locust.
-- **Infraestructura:** `core/api_automation/` (modelos, tráfico, conversor, Locust), `core/test_runner/` (subprocesos + streaming), rutas `/api/api/*` y `/api/runs/*`.
-- **Licencia:** módulo `api_testing` incluido en licencia vigente (beta 0.8.0).
-
-### Cambiado
-
-- Versión **0.8.0** — consolida mejoras beta previas (refactor UI 0.7.x, reportes offline, feedback, carpetas Behave por plataforma).
-- Grabación web: checkbox/prompt «Capturar tráfico API»; exporta `{grabacion}_api_traffic.json`.
+- Nuevo módulo especializado en Pruebas de API y Rendimiento: Se incorporó la pestaña dedicada a la verificación e integración de flujos de servicios. Ahora puedes capturar solicitudes de datos directamente desde tus grabaciones en el navegador, estructurar escenarios de verificación rápidos, convertirlos a scripts de automatización con consolas de monitoreo en tiempo real y generar pruebas de carga a gran escala de manera unificada bajo la misma licencia vigente.
 
 ## [0.7.20] - 2026-05-22
 

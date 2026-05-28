@@ -40,6 +40,7 @@ class UnifiedRunRequest(BaseModel):
     locust_spawn_rate: float = Field(default=1.0, ge=0.1, le=100)
     locust_run_time: str = "1m"
     locust_host: str = ""
+    locust_scenario_ids: Optional[list[str]] = None
 
 
 class ProjectFileWriteRequest(BaseModel):
@@ -236,7 +237,10 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
 
             if plat != "api":
                 raise HTTPException(status_code=400, detail="Locust solo disponible para proyectos API")
-            scenarios = [load_scenario(body.project, s["id"]) for s in list_scenarios(body.project)]
+            if body.locust_scenario_ids:
+                scenarios = [load_scenario(body.project, sid) for sid in body.locust_scenario_ids]
+            else:
+                scenarios = [load_scenario(body.project, s["id"]) for s in list_scenarios(body.project)]
             if not scenarios:
                 raise HTTPException(status_code=400, detail="Sin escenarios para Locust")
             locust_path = write_locustfile(project_path, scenarios, host=body.locust_host)

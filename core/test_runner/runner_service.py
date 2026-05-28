@@ -27,6 +27,7 @@ class RunState:
     project_path: str = ""
     generate_evidence: bool = False
     artifacts: List[Dict[str, Any]] = field(default_factory=list)
+    meta: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -42,6 +43,7 @@ class RunState:
             "project": self.project,
             "project_path": self.project_path,
             "artifacts": list(self.artifacts),
+            "meta": dict(self.meta),
         }
 
 
@@ -63,6 +65,7 @@ class TestRunnerService:
         project: str = "",
         project_path: str = "",
         generate_evidence: bool = False,
+        meta: Optional[Dict[str, Any]] = None,
     ) -> str:
         run_id = str(uuid.uuid4())
         run = RunState(
@@ -74,6 +77,7 @@ class TestRunnerService:
             project=project,
             project_path=project_path or cwd,
             generate_evidence=generate_evidence,
+            meta=dict(meta or {}),
         )
         with self._lock:
             self._runs[run_id] = run

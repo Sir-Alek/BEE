@@ -52,17 +52,17 @@ class TestApiAutomation(unittest.TestCase):
             root = Path(tmp) / "behave" / "api" / project
             root.mkdir(parents=True)
             (root / "scenarios").mkdir()
-            from core import elia_paths
+            from core.api_automation import traffic_store as ts
 
-            original = elia_paths.behave_projects_dir
+            original = ts.behave_projects_dir
             try:
-                elia_paths.behave_projects_dir = lambda platform="api": Path(tmp) / "behave" / platform  # type: ignore
+                ts.behave_projects_dir = lambda platform="api": Path(tmp) / "behave" / platform  # type: ignore
                 req = ApiRequest(id="s1", name="GET items", method="GET", url="https://api.ejemplo.com/items")
                 save_scenario(project, req, scenario_id="items.json")
                 listed = list_scenarios(project)
                 self.assertEqual(len(listed), 1)
             finally:
-                elia_paths.behave_projects_dir = original  # type: ignore
+                ts.behave_projects_dir = original  # type: ignore
 
     def test_api_traffic_path_under_api_scripts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

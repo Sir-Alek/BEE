@@ -28,13 +28,13 @@ def list_api_projects() -> List[str]:
 
 
 def ensure_api_project(project: str) -> Path:
+    from core.api_automation.project_config import ensure_project_defaults
     from core.api_automation.project_scaffold import scaffold_api_project
-    from core.test_runner.behave_support import ensure_platform_behave_support
 
     path = _project_root(project)
     if not path.is_dir():
         scaffold_api_project(path)
-    ensure_platform_behave_support(path, "api")
+    ensure_project_defaults(project)
     return path
 
 

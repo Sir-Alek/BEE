@@ -56,6 +56,7 @@ def build_locust_command(
     spawn_rate: float = 1.0,
     run_time: str = "1m",
     host: str = "",
+    csv_prefix: str = "",
 ) -> List[str]:
     cmd = [
         sys.executable,
@@ -73,6 +74,8 @@ def build_locust_command(
     ]
     if host:
         cmd.extend(["--host", host])
+    if csv_prefix:
+        cmd.extend(["--csv", csv_prefix])
     return cmd
 
 
