@@ -4,6 +4,17 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.60] - 2026-05-19
+
+### Añadido
+
+- **Pruebas API (Postman):** layout master-detail — panel lateral (~28%) con escenarios, importación y capturas web; workspace principal con pestañas **Entorno** | **Petición**.
+- Componentes `ApiPostmanSidebar`, `ApiPostmanWorkspace` y utilidades compartidas en `frontend/src/home/api/`.
+
+### Cambiado
+
+- `ApiSurface.tsx` descompuesto: lógica Postman movida a subcomponentes; subpestaña Locust sin cambios funcionales.
+
 ## [0.9.55] - 2026-05-19
 
 ### Añadido
