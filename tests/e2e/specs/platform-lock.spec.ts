@@ -5,8 +5,8 @@ test.describe("Módulos bloqueados", () => {
     await home.gotoHome();
     await home.selectPlatform("mobile");
     await expect(home.lockModal).toBeVisible();
-    await expect(home.lockModal).toContainText(/Módulo no habilitado/i);
-    await home.lockModal.getByRole("button", { name: "Entendido" }).click();
+    await expect(home.lockModal).toContainText(/Sube de nivel/i);
+    await home.lockModal.getByRole("button", { name: "Cancelar" }).click();
     await expect(home.lockModal).toBeHidden();
   });
 });

@@ -205,16 +205,40 @@ export type BddPublishTarget =
   | "azure_devops";
 
 export type ModulesStatus = {
+  tier?: string;
+  tier_label?: string;
+  is_beta?: boolean;
+  upgrade_email?: string;
+  features?: FeatureFlags;
   mobile_recording: boolean;
   legacy_recording: boolean;
   doc_to_bdd: boolean;
   api_testing: boolean;
+  api_http_single?: boolean;
+  api_postman_suites?: boolean;
+  api_locust?: boolean;
+  publishers_standard?: boolean;
+  publishers_enterprise?: boolean;
+  team_memory_crypto?: boolean;
   api_limits?: {
     max_load_users: number;
     max_load_spawn_rate: number;
     max_suite_scenarios: number;
     evidence_opt_in: boolean;
   };
+};
+
+export type FeatureFlags = {
+  web_recording?: boolean;
+  api_http_single?: boolean;
+  doc_to_bdd?: boolean;
+  api_postman_suites?: boolean;
+  api_locust?: boolean;
+  mobile_recording?: boolean;
+  legacy_recording?: boolean;
+  publishers_standard?: boolean;
+  publishers_enterprise?: boolean;
+  team_memory_crypto?: boolean;
 };
 
 export type LoadedDoc = {

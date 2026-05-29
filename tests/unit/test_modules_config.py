@@ -24,10 +24,13 @@ class TestModulesConfig(unittest.TestCase):
         self._state_file = Path(self._tmp.name) / "license_state.json"
         self._fp = "b" * 32
         self._issue_ts = 1_700_000_000
-        self._key_perm = lic.build_activation_key(
-            self._fp, lic.DURATION_PERM, issue_ts=self._issue_ts
+        self._key_basic = lic.build_activation_key(
+            self._fp, lic.DURATION_PERM, tier="basic", issue_ts=self._issue_ts
         )
-        self._key_ml = lic.build_activation_key(
+        self._key_pro = lic.build_activation_key(
+            self._fp, lic.DURATION_PERM, tier="professional", issue_ts=self._issue_ts
+        )
+        self._key_ml = lic.build_activation_key_v2(
             self._fp,
             lic.DURATION_PERM,
             mobile=True,
@@ -46,21 +49,30 @@ class TestModulesConfig(unittest.TestCase):
         return patch.object(lic, "get_machine_fingerprint", return_value=self._fp)
 
     def test_no_license_all_modules_disabled_including_doc(self) -> None:
-        with self._patch_state(), self._patch_fp():
+        with self._patch_state(), self._patch_fp(), patch.object(lic, "_distribution_channel", return_value="release"):
             status = mods.list_modules()
         self.assertFalse(status["doc_to_bdd"])
         self.assertFalse(status["mobile_recording"])
         self.assertFalse(status["legacy_recording"])
 
-    def test_active_license_enables_doc_to_bdd(self) -> None:
+    def test_basic_tier_modules(self) -> None:
         with self._patch_state(), self._patch_fp():
-            lic.activate_with_key(self._key_perm)
+            lic.activate_with_key(self._key_basic)
             status = mods.list_modules()
-        self.assertTrue(status["doc_to_bdd"])
+        self.assertTrue(status["api_http_single"])
+        self.assertFalse(status["doc_to_bdd"])
         self.assertFalse(status["mobile_recording"])
         self.assertFalse(status["legacy_recording"])
 
-    def test_active_license_modules_from_key_flags(self) -> None:
+    def test_professional_tier_modules(self) -> None:
+        with self._patch_state(), self._patch_fp():
+            lic.activate_with_key(self._key_pro)
+            status = mods.list_modules()
+        self.assertTrue(status["doc_to_bdd"])
+        self.assertTrue(status["mobile_recording"])
+        self.assertFalse(status["legacy_recording"])
+
+    def test_v2_ml_maps_to_enterprise(self) -> None:
         with self._patch_state(), self._patch_fp():
             lic.activate_with_key(self._key_ml)
             status = mods.list_modules()
@@ -69,7 +81,7 @@ class TestModulesConfig(unittest.TestCase):
         self.assertTrue(status["legacy_recording"])
 
     def test_expired_license_disables_all_modules(self) -> None:
-        key_15d = lic.build_activation_key(
+        key_15d = lic.build_activation_key_v2(
             self._fp, lic.DURATION_15D, issue_ts=self._issue_ts
         )
         with self._patch_state(), self._patch_fp():
@@ -80,14 +92,31 @@ class TestModulesConfig(unittest.TestCase):
         self.assertFalse(status["doc_to_bdd"])
         self.assertFalse(status["mobile_recording"])
 
+    def test_beta_channel_auto_entitlements(self) -> None:
+        with self._patch_state(), self._patch_fp(), patch.object(lic, "_distribution_channel", return_value="beta"):
+            with patch("core.beta_time_guard.check_beta_expiration") as mock_check:
+                from core.beta_time_guard import BetaGuardResult
+
+                mock_check.return_value = BetaGuardResult(
+                    ok=True,
+                    reason="beta_active",
+                    message="ok",
+                    effective_now=float(self._issue_ts),
+                    deadline_ts=float(self._issue_ts + 86400),
+                )
+                status = mods.list_modules()
+        self.assertEqual(status.get("tier"), "beta")
+        self.assertTrue(status["legacy_recording"])
+        self.assertTrue(status["doc_to_bdd"])
+
     def test_enable_module_has_no_effect(self) -> None:
-        with self._patch_state(), self._patch_fp():
+        with self._patch_state(), self._patch_fp(), patch.object(lic, "_distribution_channel", return_value="release"):
             self.assertFalse(mods.enable_module("mobile_recording", "a" * 64))
             status = mods.list_modules()
         self.assertFalse(status["mobile_recording"])
 
     def test_revoke_clears_operational_modules(self) -> None:
-        with self._patch_state(), self._patch_fp():
+        with self._patch_state(), self._patch_fp(), patch.object(lic, "_distribution_channel", return_value="release"):
             lic.activate_with_key(self._key_ml)
             lic.revoke_license_local(clear_backups=False)
             status = mods.list_modules()

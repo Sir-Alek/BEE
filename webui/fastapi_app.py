@@ -260,6 +260,15 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         Request the local app to exit (used when the home tab is closed).
         main.py polls /api/app/should-exit and stops Uvicorn.
         """
+        try:
+            from core.beta_time_guard import record_beta_session_checkpoint
+            from core.elia_license import get_license_status
+
+            st = get_license_status()
+            if st.is_beta or st.reason == "beta":
+                record_beta_session_checkpoint()
+        except Exception:
+            pass
         exit_flag["value"] = True
         return {"ok": True}
 
@@ -365,6 +374,13 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Response:
         from core.elia_memory import export_for_team
+        from core.modules_config import is_feature_enabled
+
+        if not is_feature_enabled("team_memory_crypto"):
+            raise HTTPException(
+                status_code=403,
+                detail="Team Memory Crypto requiere Plan Enterprise",
+            )
 
         try:
             blob, filename = export_for_team(req.team_passphrase.strip())
@@ -385,6 +401,13 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         from core.elia_memory import import_from_team
+        from core.modules_config import is_feature_enabled
+
+        if not is_feature_enabled("team_memory_crypto"):
+            raise HTTPException(
+                status_code=403,
+                detail="Team Memory Crypto requiere Plan Enterprise",
+            )
 
         normalized_mode = (mode or "").strip().lower()
         if normalized_mode not in ("merge", "replace"):
@@ -416,7 +439,36 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "can_run_jobs": elia_license.can_run_jobs(),
             "expires_at": st.expires_at,
             "duration_code": st.duration_code,
+            "tier": st.tier_name,
+            "tier_label": (st.tier_name or "").replace("_", " ").title() if st.tier_name else None,
+            "is_beta": st.is_beta,
+            "upgrade_email": st.upgrade_email,
+            "features": st.features,
         }
+
+    @app.get("/api/entitlements")
+    def entitlements_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        from core.elia_license import get_entitlements
+        from core.modules_config import get_api_module_limits, list_modules
+
+        out = get_entitlements()
+        out["api_limits"] = get_api_module_limits()
+        mods = list_modules()
+        for key in (
+            "mobile_recording",
+            "legacy_recording",
+            "doc_to_bdd",
+            "api_testing",
+            "api_http_single",
+            "api_postman_suites",
+            "api_locust",
+            "publishers_standard",
+            "publishers_enterprise",
+            "team_memory_crypto",
+        ):
+            if key in mods:
+                out[key] = mods[key]
+        return out
 
     @app.get("/api/modules/status")
     def modules_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:

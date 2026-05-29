@@ -157,11 +157,32 @@ class ApiLoadHistoryCompare(BaseModel):
     run_b: str
 
 
-def _require_api_module() -> None:
-    from core.modules_config import get_api_module_limits, is_module_enabled
+def _require_api_http() -> None:
+    from core.modules_config import is_feature_enabled
 
-    if not is_module_enabled("api_testing"):
-        raise HTTPException(status_code=403, detail="Módulo api_testing no habilitado")
+    if not is_feature_enabled("api_http_single"):
+        raise HTTPException(status_code=403, detail="HTTP API básico no habilitado en tu plan")
+
+
+def _require_api_postman() -> None:
+    from core.modules_config import is_feature_enabled
+
+    if not is_feature_enabled("api_postman_suites"):
+        raise HTTPException(
+            status_code=403,
+            detail="Importación Postman/OpenAPI y suites requieren Plan Professional",
+        )
+
+
+def _require_api_locust() -> None:
+    from core.modules_config import is_feature_enabled
+
+    if not is_feature_enabled("api_locust"):
+        raise HTTPException(status_code=403, detail="Pruebas de carga Locust requieren Plan Enterprise")
+
+
+def _require_api_module() -> None:
+    _require_api_http()
 
 
 def _api_limits() -> Dict[str, Any]:
@@ -318,6 +339,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         req = ApiRequest.from_dict(body.scenario)
         sid = save_scenario(body.project, req, scenario_id=body.scenario_id)
         return {"ok": True, "scenario_id": sid}
@@ -351,6 +373,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         limits = _api_limits()
         scenario_ids = body.scenario_ids or []
         if len(scenario_ids) > int(limits.get("max_suite_scenarios", 200)):
@@ -385,6 +408,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         return {"flows": list_flows(project_name)}
 
     @app.get("/api/api/projects/{project_name}/flows/{flow_id}")
@@ -395,6 +419,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         try:
             flow = load_flow(project_name, flow_id)
         except FileNotFoundError as e:
@@ -408,6 +433,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         flow = ApiFlow.from_dict(body.flow)
         fid = save_flow(body.project, flow, flow_id=body.flow_id)
         return {"ok": True, "flow_id": fid}
@@ -454,6 +480,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_locust()
         run = test_runner_service.get(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
@@ -472,6 +499,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         if not body.collection:
             raise HTTPException(status_code=400, detail="Colección Postman requerida")
         requests = import_postman_collection(body.collection)
@@ -487,6 +515,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_postman()
         if not body.spec:
             raise HTTPException(status_code=400, detail="Especificación OpenAPI requerida")
         requests = import_openapi_spec(body.spec)
@@ -532,6 +561,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
+        _require_api_locust()
         project_path = prepare_project("api", body.project)
         scenarios = _load_scenarios_for_project(body.project, body.scenario_ids)
         if not scenarios:
@@ -616,6 +646,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         )
 
         _require_api_module()
+        _require_api_postman()
         payload = {
             "name": body.name,
             "environment": body.environment or "dev",
@@ -646,6 +677,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         )
 
         _require_api_module()
+        _require_api_locust()
         run = test_runner_service.get(body.run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
@@ -695,6 +727,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         from core.api_automation.load_run_history import list_load_runs
 
         _require_api_module()
+        _require_api_locust()
         return {"runs": list_load_runs(project_name)}
 
     @app.post("/api/api/load-history/snapshot")
@@ -706,6 +739,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         from core.api_automation.load_run_history import append_load_run
 
         _require_api_module()
+        _require_api_locust()
         run = test_runner_service.get(body.run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
@@ -733,6 +767,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         from core.api_automation.load_run_history import compare_load_runs
 
         _require_api_module()
+        _require_api_locust()
         try:
             return compare_load_runs(body.project, body.run_a, body.run_b)
         except FileNotFoundError as e:

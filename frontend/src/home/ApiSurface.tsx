@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   createApiProject,
   executeApiRequest,
@@ -36,10 +36,13 @@ import { RunConsolePanel } from "./RunConsolePanel";
 import { ApiPostmanSidebar } from "./api/ApiPostmanSidebar";
 import { ApiPostmanWorkspace, type PostmanPane } from "./api/ApiPostmanWorkspace";
 import { ApiSection, apiBtn, apiInputStyle } from "./api/apiUi";
+import { featureFromModules } from "../app/entitlements";
+import { TierBadge, UpsellModal } from "../components/UpsellModal";
+import type { ModulesStatus } from "../types";
 
 type Props = {
   c: Record<string, string>;
-  modules: { api_testing?: boolean; api_limits?: { max_load_users?: number; max_suite_scenarios?: number } } | null;
+  modules: ModulesStatus | null;
   canRunJobs: boolean;
   onShowError: (msg: string) => void;
   setHomeHint: (msg: string | null) => void;
@@ -89,6 +92,8 @@ export function ApiSurface(props: Props) {
   const [postmanPane, setPostmanPane] = useState<PostmanPane>("request");
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [webOriginAvailable, setWebOriginAvailable] = useState(false);
+  const [upsell, setUpsell] = useState<null | "api_postman" | "api_locust">(null);
+  const features = useMemo(() => featureFromModules(modules), [modules]);
 
   const refreshProjects = () => {
     void getApiProjects()
@@ -197,13 +202,53 @@ export function ApiSurface(props: Props) {
       .catch(() => undefined);
   }, [loadRunFinished, runId]);
 
-  if (!modules?.api_testing) {
+  if (!features.api_http_single) {
     return (
       <div style={{ fontSize: 14, color: c.muted }}>
-        El módulo de pruebas API requiere licencia vigente con <b>api_testing</b> habilitado.
+        El módulo de pruebas API requiere licencia vigente con acceso HTTP habilitado.
       </div>
     );
   }
+
+  const lockOverlay = (locked: boolean, tier: "api_postman" | "api_locust", message: string, child: React.ReactNode) => {
+    if (!locked) return child;
+    return (
+      <div style={{ position: "relative" }}>
+        <div style={{ opacity: 0.45, pointerEvents: "none" }}>{child}</div>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.08)",
+            borderRadius: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setUpsell(tier)}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: `1px solid ${c.border}`,
+              background: c.surface,
+              color: c.text,
+              cursor: "pointer",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: c.shadow,
+            }}
+          >
+            🔒 {message}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const headersToRecord = (rows: HeaderRow[]) =>
     Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]));
@@ -435,8 +480,14 @@ export function ApiSurface(props: Props) {
 
   return (
     <div data-testid="elia-api-panel">
+      {upsell ? <UpsellModal c={c} requiredTier={upsell} onClose={() => setUpsell(null)} /> : null}
       <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
         Pruebas API: constructor estilo Postman y pruebas de carga JMeter-lite con Locust.
+        {modules?.tier_label ? (
+          <span style={{ marginLeft: 8 }}>
+            <TierBadge c={c} label={modules.tier_label} />
+          </span>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
@@ -494,24 +545,37 @@ export function ApiSurface(props: Props) {
           ] as const
         ).map(({ id, label }) => {
           const active = apiTab === id;
+          const locked = id === "load" && !features.api_locust;
           return (
             <button
               key={id}
               type="button"
               data-testid={`elia-api-subtab-${id}`}
-              onClick={() => setApiTab(id)}
+              onClick={() => {
+                if (locked) {
+                  setUpsell("api_locust");
+                  return;
+                }
+                setApiTab(id);
+              }}
               style={{
                 padding: "7px 18px",
                 borderRadius: 8,
                 border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
                 background: active ? c.primary : c.btnGhostBg,
-                color: active ? c.primaryFg : c.text,
+                color: active ? c.primaryFg : locked ? c.muted : c.text,
                 fontWeight: active ? 700 : 400,
                 cursor: "pointer",
                 fontSize: 14,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                opacity: locked ? 0.75 : 1,
               }}
             >
+              {locked ? <span style={{ fontSize: 12 }}>🔒</span> : null}
               {label}
+              {locked ? <TierBadge c={c} label="Enterprise" /> : null}
             </button>
           );
         })}
@@ -522,23 +586,43 @@ export function ApiSurface(props: Props) {
           data-testid="elia-api-postman-layout"
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(220px, 28%) 1fr",
+            gridTemplateColumns: features.api_postman_suites ? "minmax(220px, 28%) 1fr" : "1fr",
             gap: 14,
             alignItems: "start",
           }}
         >
-          <ApiPostmanSidebar
-            c={c}
-            busy={busy}
-            canRunJobs={canRunJobs}
-            scenarios={scenarios}
-            captures={captures}
-            importKind={importKind}
-            onImportKindChange={setImportKind}
-            onImportFile={handleImportFile}
-            onImportCapture={handleImportCapture}
-            onLoadScenario={handleLoadScenario}
-          />
+          {features.api_postman_suites ? (
+            <ApiPostmanSidebar
+              c={c}
+              busy={busy}
+              canRunJobs={canRunJobs}
+              scenarios={scenarios}
+              captures={captures}
+              importKind={importKind}
+              onImportKindChange={setImportKind}
+              onImportFile={handleImportFile}
+              onImportCapture={handleImportCapture}
+              onLoadScenario={handleLoadScenario}
+            />
+          ) : (
+            lockOverlay(
+              true,
+              "api_postman",
+              "Desbloquea importación Postman con Plan Professional",
+              <ApiPostmanSidebar
+                c={c}
+                busy={busy}
+                canRunJobs={canRunJobs}
+                scenarios={scenarios}
+                captures={captures}
+                importKind={importKind}
+                onImportKindChange={setImportKind}
+                onImportFile={handleImportFile}
+                onImportCapture={handleImportCapture}
+                onLoadScenario={handleLoadScenario}
+              />,
+            )
+          )}
           <ApiPostmanWorkspace
             c={c}
             busy={busy}
@@ -571,12 +655,16 @@ export function ApiSurface(props: Props) {
             body={body}
             onBodyChange={setBody}
             onSend={handleSend}
-            onSaveScenario={handleSaveScenario}
+            onSaveScenario={features.api_postman_suites ? handleSaveScenario : () => setUpsell("api_postman")}
             execResult={execResult}
             onExportEvidence={handleExportEvidence}
           />
         </div>
-      ) : (
+      ) : lockOverlay(
+        !features.api_locust,
+        "api_locust",
+        "Desbloquea pruebas de carga con Plan Enterprise",
+        (
         <>
       <ApiSection c={c} title="Datos CSV (data-driven)">
         <DataCsvPanel c={c} project={project} busy={busy} onError={onShowError} onHint={setHomeHint} />
@@ -720,6 +808,7 @@ export function ApiSurface(props: Props) {
         ) : null}
       </ApiSection>
         </>
+        ),
       )}
     </div>
   );

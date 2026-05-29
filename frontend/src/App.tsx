@@ -29,6 +29,7 @@ import { useLicense } from "./hooks/useLicense";
 import { useMobileRecording } from "./hooks/useMobileRecording";
 import { HomeSurface } from "./home/HomeSurface";
 import { AppHeader, ErrorAlert } from "./layout/AppShell";
+import { BetaExpiredScreen } from "./components/BetaExpiredScreen";
 import { JobWorkspace } from "./job/JobWorkspace";
 import { SettingsDialog } from "./settings/SettingsDialog";
 
@@ -633,12 +634,23 @@ export default function App() {
     ],
   );
 
+  const betaBlocked =
+    license?.reason === "beta_expired" || license?.reason === "clock_tamper";
+
   return (
     <LicenseProvider value={licenseCtx}>
       <ConnectorProvider value={connectorCtx}>
         <RecordingProvider value={recordingCtx}>
           <SettingsUiProvider value={settingsUiCtx}>
             <HomeUiProvider value={homeUiCtx}>
+              {betaBlocked ? (
+                <BetaExpiredScreen
+                  c={c}
+                  message={license?.message ?? ""}
+                  reason={license?.reason}
+                  upgradeEmail={license?.upgrade_email}
+                />
+              ) : (
               <div
                 style={{
                   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
@@ -688,6 +700,7 @@ export default function App() {
                   )}
                 </div>
               </div>
+              )}
             </HomeUiProvider>
           </SettingsUiProvider>
         </RecordingProvider>

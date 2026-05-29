@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { stopMobileAppium, getRecordings, getScenarios, uploadDocs } from "../api";
 import { encodeRecordingLink, encodeScenarioLink } from "../app/linkUtils";
+import { featureFromModules } from "../app/entitlements";
 import {
   formatLicenseExpiryDate,
   licenseNeedsActivationBanner,
@@ -8,6 +9,7 @@ import {
   type LicenseState,
 } from "../app/licenseUtils";
 import { OutlinedButton, SecondaryToolbar } from "../components/ui";
+import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
 import { WebConfigForm } from "../recording/WebConfigForm";
@@ -46,6 +48,7 @@ export function HomeSurface() {
 
   const [runProject, setRunProject] = useState("");
   const runProjects = usePlatformProjects(platform);
+  const features = useMemo(() => featureFromModules(modules), [modules]);
 
   useEffect(() => {
     setRunProject("");
@@ -101,7 +104,13 @@ export function HomeSurface() {
               <button
                 type="button"
                 data-testid="elia-home-tab-req"
-                onClick={() => setHomeTab("req")}
+                onClick={() => {
+                  if (!features.doc_to_bdd) {
+                    setShowLockModal("doc_to_bdd");
+                    return;
+                  }
+                  setHomeTab("req");
+                }}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -110,9 +119,14 @@ export function HomeSurface() {
                   color: homeTab === "req" ? c.primaryFg : c.text,
                   cursor: "pointer",
                   fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
+                {!features.doc_to_bdd ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
+                {!features.doc_to_bdd ? <TierBadge c={c} label="Pro" /> : null}
               </button>
               <button
                 type="button"
@@ -217,45 +231,19 @@ export function HomeSurface() {
               <>
                 {/* Lock Modal */}
                 {showLockModal && (
-                  <div
-                    style={{
-                      position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-                      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-                    }}
-                    onClick={() => setShowLockModal(null)}
-                  >
-                    <div
-                      data-testid="elia-lock-modal"
-                      style={{
-                        background: c.surface,
-                        border: `1px solid ${c.border}`,
-                        borderRadius: 16,
-                        padding: "28px 32px",
-                        maxWidth: 380,
-                        textAlign: "center",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div style={{ fontSize: 32, marginBottom: 12 }}>🔒</div>
-                      <div style={{ fontWeight: 700, fontSize: 16, color: c.text, marginBottom: 8 }}>
-                        Módulo no habilitado
-                      </div>
-                      <div style={{ fontSize: 14, color: c.muted, marginBottom: 20 }}>
-                        La grabación <b>{showLockModal === "mobile" ? "Móvil" : "Legacy"}</b> requiere una licencia adicional.
-                        Contacta a soporte para activar este módulo.
-                      </div>
-                      <button
-                        onClick={() => setShowLockModal(null)}
-                        style={{
-                          padding: "8px 20px", borderRadius: 8,
-                          background: c.primary, color: c.primaryFg, border: "none", cursor: "pointer",
-                        }}
-                      >
-                        Entendido
-                      </button>
-                    </div>
-                  </div>
+                  <UpsellModal
+                    c={c}
+                    requiredTier={
+                      showLockModal === "mobile"
+                        ? "mobile"
+                        : showLockModal === "legacy"
+                          ? "legacy"
+                          : showLockModal === "doc_to_bdd"
+                            ? "doc_to_bdd"
+                            : "mobile"
+                    }
+                    onClose={() => setShowLockModal(null)}
+                  />
                 )}
 
                 <div
@@ -269,7 +257,8 @@ export function HomeSurface() {
                 <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                   {(["web", "mobile", "legacy"] as const).map((p) => {
                     const labels = { web: "Web", mobile: "Móvil", legacy: "Legacy" };
-                    const locked = (p === "mobile" && !modules?.mobile_recording) || (p === "legacy" && !modules?.legacy_recording);
+                    const locked = (p === "mobile" && !features.mobile_recording) || (p === "legacy" && !features.legacy_recording);
+                    const badge = p === "mobile" ? "Pro" : p === "legacy" ? "Enterprise" : null;
                     const active = platform === p;
                     return (
                       <button
@@ -294,6 +283,7 @@ export function HomeSurface() {
                       >
                         {locked && <span style={{ fontSize: 12 }}>🔒</span>}
                         {labels[p]}
+                        {locked && badge ? <TierBadge c={c} label={badge} /> : null}
                       </button>
                     );
                   })}
@@ -487,8 +477,8 @@ export function HomeSurface() {
                   <button
                     disabled={
                       (license ? !license.can_run_jobs : false) ||
-                      (platform === "mobile" && !modules?.mobile_recording) ||
-                      (platform === "legacy" && !modules?.legacy_recording)
+                      (platform === "mobile" && !features.mobile_recording) ||
+                      (platform === "legacy" && !features.legacy_recording)
                     }
                     onClick={() => {
                       if (platform === "web") void startJob("puppeteer_to_behave");

@@ -499,6 +499,11 @@ export type LicenseStatusResponse = {
   can_run_jobs: boolean;
   expires_at?: number | null;
   duration_code?: string | null;
+  tier?: string | null;
+  tier_label?: string | null;
+  is_beta?: boolean;
+  upgrade_email?: string;
+  features?: Record<string, boolean>;
 };
 
 export async function getLicenseStatus(): Promise<LicenseStatusResponse> {

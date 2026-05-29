@@ -8,6 +8,10 @@ export type LicenseState = {
   reason?: string;
   expires_at?: number | null;
   duration_code?: string | null;
+  tier?: string | null;
+  tier_label?: string | null;
+  is_beta?: boolean;
+  upgrade_email?: string;
 };
 
 export function licenseFromApi(l: LicenseStatusResponse): LicenseState {
@@ -19,6 +23,10 @@ export function licenseFromApi(l: LicenseStatusResponse): LicenseState {
     reason: l.reason,
     expires_at: l.expires_at ?? null,
     duration_code: l.duration_code ?? null,
+    tier: l.tier ?? null,
+    tier_label: l.tier_label ?? null,
+    is_beta: l.is_beta,
+    upgrade_email: l.upgrade_email,
   };
 }
 
@@ -44,6 +52,12 @@ export function formatLicenseStatusLabel(license: LicenseState): string {
     }
     if (license.reason === "license_expired") {
       return "Inactiva — licencia caducada.";
+    }
+    if (license.reason === "beta_expired") {
+      return "Beta finalizada — adquiere suscripción.";
+    }
+    if (license.reason === "clock_tamper") {
+      return "Bloqueada — reloj del sistema inválido.";
     }
     return license.message;
   }

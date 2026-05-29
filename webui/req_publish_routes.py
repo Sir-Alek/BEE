@@ -34,7 +34,29 @@ def _require_doc_module() -> None:
     from core.modules_config import is_module_enabled
 
     if not is_module_enabled("doc_to_bdd"):
-        raise HTTPException(status_code=403, detail="Módulo doc_to_bdd no habilitado")
+        raise HTTPException(status_code=403, detail="Inteligencia de Requerimientos requiere Plan Professional")
+
+
+def _require_publisher_target(target: PublishTarget) -> None:
+    from core.modules_config import is_feature_enabled
+
+    standard = {"local_file", "git", "jira_vanilla"}
+    enterprise = {"jira_xray", "value_edge", "azure_devops"}
+    if target in standard:
+        if target != "local_file" and not is_feature_enabled("publishers_standard"):
+            raise HTTPException(
+                status_code=403,
+                detail="Publishers Git/Jira requieren Plan Professional",
+            )
+        return
+    if target in enterprise:
+        if not is_feature_enabled("publishers_enterprise"):
+            raise HTTPException(
+                status_code=403,
+                detail="Publishers Xray/Value Edge/Azure DevOps requieren Plan Enterprise",
+            )
+        return
+    raise HTTPException(status_code=400, detail=f"Destino de publicación no soportado: {target}")
 
 
 def register_req_publish_routes(app, *, require_localhost, require_active_license) -> None:
@@ -47,6 +69,7 @@ def register_req_publish_routes(app, *, require_localhost, require_active_licens
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_doc_module()
+        _require_publisher_target(body.target)
         profile = load_profile_by_id(body.profile_id)
         if profile is None:
             raise HTTPException(status_code=404, detail="Perfil de conector no encontrado")
@@ -81,6 +104,7 @@ def register_req_publish_routes(app, *, require_localhost, require_active_licens
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_doc_module()
+        _require_publisher_target(body.target)
         profile = load_profile_by_id(body.profile_id)
         if profile is None:
             raise HTTPException(status_code=404, detail="Perfil de conector no encontrado")

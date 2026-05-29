@@ -1,18 +1,14 @@
 """
 Building Blocks — módulos atados estrictamente a la licencia activa.
 
-Sin licencia vigente (caducada, no activada o revocada): todos los módulos false,
-incluido doc_to_bdd.
+Sin licencia vigente (caducada, no activada o revocada): todos los módulos false.
 
-Con licencia vigente:
-  - doc_to_bdd: true (producto base)
-  - mobile_recording / legacy_recording / api_testing: flags M/L/A de la clave activa
+Con licencia vigente: flags resueltos desde tier/features de la clave activa.
 
 Desarrollo:
   - ELIA_SKIP_LICENSE=1 → todos los módulos true
-  - ELIA_MODULE_<NAME>=1|0 → override puntual
-
-Las claves de módulo individuales (enable_module) no tienen efecto en producción.
+  - ELIA_MODULE_<NAME>=1|0 → override puntual (legacy)
+  - ELIA_FEATURE_<NAME>=1|0 → override puntual (granular)
 """
 from __future__ import annotations
 
@@ -21,7 +17,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-_MODULE_NAMES: Dict[str, bool] = {
+from core.entitlements import FEATURE_KEYS, TIER_BASIC, get_tier_flags, legacy_modules_from_features
+
+_LEGACY_MODULE_NAMES: Dict[str, bool] = {
     "mobile_recording": False,
     "legacy_recording": False,
     "doc_to_bdd": False,
@@ -56,23 +54,43 @@ def _env_override(name: str) -> bool | None:
     return None
 
 
-def _modules_from_license() -> Dict[str, bool]:
+def _feature_env_override(name: str) -> bool | None:
+    env_key = f"ELIA_FEATURE_{name.upper()}"
+    val = (os.environ.get(env_key) or "").strip().lower()
+    if val in ("1", "true", "yes"):
+        return True
+    if val in ("0", "false", "no"):
+        return False
+    if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
+        return True
+    return None
+
+
+def _features_from_license() -> Dict[str, bool]:
     try:
-        from core.elia_license import get_active_license_modules, is_license_operational
+        from core.elia_license import get_active_license_features, get_license_status, is_license_operational
 
         if not is_license_operational():
-            return dict(_MODULE_NAMES)
-        lic = get_active_license_modules()
-        if lic is None:
-            return dict(_MODULE_NAMES)
-        return {
-            "mobile_recording": bool(lic.get("mobile_recording")),
-            "legacy_recording": bool(lic.get("legacy_recording")),
-            "doc_to_bdd": True,
-            "api_testing": bool(lic.get("api_testing")),
-        }
+            return get_tier_flags(TIER_BASIC)
+        feats = get_active_license_features()
+        if feats is None:
+            st = get_license_status()
+            if st.features:
+                return dict(st.features)
+            return get_tier_flags(TIER_BASIC)
+        return dict(feats)
     except Exception:
-        return dict(_MODULE_NAMES)
+        return get_tier_flags(TIER_BASIC)
+
+
+def _resolved_features() -> Dict[str, bool]:
+    base = _features_from_license()
+    out = dict(base)
+    for key in FEATURE_KEYS:
+        override = _feature_env_override(key)
+        if override is not None:
+            out[key] = override
+    return out
 
 
 def apply_licensed_modules(*, mobile: bool, legacy: bool) -> None:
@@ -80,24 +98,54 @@ def apply_licensed_modules(*, mobile: bool, legacy: bool) -> None:
     del mobile, legacy
 
 
+def is_feature_enabled(name: str) -> bool:
+    if name not in FEATURE_KEYS:
+        return False
+    return bool(_resolved_features().get(name, False))
+
+
 def is_module_enabled(name: str) -> bool:
-    if name not in _MODULE_NAMES:
+    if name in FEATURE_KEYS:
+        return is_feature_enabled(name)
+    if name not in _LEGACY_MODULE_NAMES:
         return False
     override = _env_override(name)
     if override is not None:
         return override
-    return bool(_modules_from_license().get(name, False))
+    legacy = legacy_modules_from_features(_resolved_features())
+    return bool(legacy.get(name, False))
 
 
-def list_modules() -> Dict[str, bool]:
-    resolved = _modules_from_license()
-    result: Dict[str, bool] = {}
-    for name in _MODULE_NAMES:
+def list_modules() -> Dict[str, Any]:
+    features = _resolved_features()
+    legacy = legacy_modules_from_features(features)
+    try:
+        from core.elia_license import get_entitlements
+
+        ent = get_entitlements()
+    except Exception:
+        ent = {
+            "tier": TIER_BASIC,
+            "tier_label": "Basic",
+            "is_beta": False,
+            "upgrade_email": "",
+        }
+    result: Dict[str, Any] = {
+        "tier": ent.get("tier", TIER_BASIC),
+        "tier_label": ent.get("tier_label", "Basic"),
+        "is_beta": bool(ent.get("is_beta")),
+        "upgrade_email": ent.get("upgrade_email", ""),
+        "features": dict(features),
+    }
+    for name in _LEGACY_MODULE_NAMES:
         override = _env_override(name)
         if override is not None:
             result[name] = override
         else:
-            result[name] = bool(resolved.get(name, False))
+            result[name] = bool(legacy.get(name, False))
+    for key in FEATURE_KEYS:
+        if key not in result:
+            result[key] = bool(features.get(key, False))
     return result
 
 

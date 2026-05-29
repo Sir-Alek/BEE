@@ -3,23 +3,20 @@
 Genera claves de activación offline (misma lógica que core/elia_license.py).
 
 Uso (desde la raíz del repo):
-  python scripts/generate_license_key.py --machine <huella32hex>
-  python scripts/generate_license_key.py --machine <huella> --duration 15d
-  python scripts/generate_license_key.py --machine <huella> --duration 30d --mobile --legacy
-  python scripts/generate_license_key.py --machine <huella> --duration perm
+  python scripts/generate_license_key.py --machine <huella32hex> --tier professional
+  python scripts/generate_license_key.py --machine <huella> --tier basic --duration 30d
+  python scripts/generate_license_key.py --machine <huella> --tier enterprise --duration 365d
+  python scripts/generate_license_key.py --beta-global
+  python scripts/generate_license_key.py --beta-global --exp-ts 1782863999
+
+Tiers:
+  basic | professional | enterprise
 
 Duraciones:
-  15d   — 15 días (por defecto)
-  30d   — 1 mes
-  365d  — 1 año
-  perm  — permanente 
+  15d | 30d | 365d | perm
 
-Módulos opcionales:
-  --mobile   incluye grabación móvil (flag M en la clave)
-  --legacy   incluye grabación legacy (flag L en la clave)
-
-Formato de clave (v2): ELIA-{dur}-{mods}-{issue_ts}-{hmac64}
-  issue_ts = momento de emisión (segundos UNIX), firmado dentro del HMAC.
+Formato v3: ELIA-V3-{TIER}-{dur}-{issue_ts}-{hmac64}
+Clave beta global: ELIA-BETA-GLOBAL-{exp_ts}-{hmac64}
 
 La huella la obtiene el usuario desde la UI o con:
   python scripts/show_machine_fingerprint.py
@@ -63,6 +60,7 @@ DURATION_365D = _lic.DURATION_365D
 DURATION_LABELS = _lic.DURATION_LABELS
 DURATION_PERM = _lic.DURATION_PERM
 build_activation_key = _lic.build_activation_key
+build_beta_global_key = _lic.build_beta_global_key
 
 
 def _parse_duration(raw: str) -> str:
@@ -90,12 +88,29 @@ def _parse_duration(raw: str) -> str:
     return m[key]
 
 
+def _parse_tier(raw: str) -> str:
+    m = {
+        "basic": "basic",
+        "starter": "basic",
+        "pro": "professional",
+        "professional": "professional",
+        "power": "professional",
+        "ent": "enterprise",
+        "enterprise": "enterprise",
+    }
+    key = raw.strip().lower()
+    if key not in m:
+        raise ValueError(f"Tier no válido: {raw!r}. Use: basic, professional, enterprise")
+    return m[key]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Generar clave de licencia ELIA")
+    ap.add_argument("--machine", help="Huella de 32 hex (get_machine_fingerprint)")
     ap.add_argument(
-        "--machine",
-        required=True,
-        help="Huella de 32 hex (get_machine_fingerprint)",
+        "--tier",
+        default="enterprise",
+        help="Plan: basic, professional, enterprise (default: enterprise)",
     )
     ap.add_argument(
         "--duration",
@@ -103,22 +118,38 @@ def main() -> int:
         help="Opciones: 15d, 30d, 365d, perm. (Por defecto: 15d)",
     )
     ap.add_argument(
-        "--mobile",
-        action="store_true",
-        help="Incluir módulo de grabación móvil",
-    )
-    ap.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Incluir módulo de grabación legacy (escritorio)",
-    )
-    ap.add_argument(
         "--issue-ts",
         type=int,
         default=None,
         help="Timestamp UNIX de emisión (default: ahora). Solo pruebas/soporte.",
     )
+    ap.add_argument(
+        "--beta-global",
+        action="store_true",
+        help="Genera clave beta global (sin huella, misma para todos)",
+    )
+    ap.add_argument(
+        "--exp-ts",
+        type=int,
+        default=None,
+        help="Expiración UNIX para --beta-global (default: ELIA_BETA_DEADLINE del build)",
+    )
     args = ap.parse_args()
+
+    if args.beta_global:
+        key = build_beta_global_key(exp_ts=args.exp_ts)
+        exp = args.exp_ts
+        if exp is None:
+            from core._version import elia_beta_deadline_ts
+
+            exp = int(elia_beta_deadline_ts())
+        print(key)
+        print(f"# beta global | exp_ts: {exp}", file=sys.stderr)
+        return 0
+
+    if not args.machine:
+        print("Indica --machine o usa --beta-global.", file=sys.stderr)
+        return 1
 
     fp = args.machine.strip().lower()
     if len(fp) != 32 or any(c not in "0123456789abcdef" for c in fp):
@@ -127,6 +158,7 @@ def main() -> int:
 
     try:
         dur = _parse_duration(args.duration)
+        tier = _parse_tier(args.tier)
     except ValueError as e:
         print(e, file=sys.stderr)
         return 1
@@ -134,21 +166,14 @@ def main() -> int:
     key = build_activation_key(
         fp,
         dur,
-        mobile=args.mobile,
-        legacy=args.legacy,
+        tier=tier,
         issue_ts=args.issue_ts,
     )
     label = DURATION_LABELS.get(dur, dur)
-    mods = []
-    if args.mobile:
-        mods.append("móvil")
-    if args.legacy:
-        mods.append("legacy")
-    mod_txt = ", ".join(mods) if mods else "ninguno"
     issue_ts = args.issue_ts if args.issue_ts is not None else int(time.time())
 
     print(key)
-    print(f"# duración: {label} | módulos: {mod_txt} | issue_ts: {issue_ts}", file=sys.stderr)
+    print(f"# tier: {tier} | duración: {label} | issue_ts: {issue_ts}", file=sys.stderr)
     return 0
 
 

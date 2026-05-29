@@ -32,6 +32,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.entitlements import (
+    CODE_TO_TIER,
+    TIER_BASIC,
+    TIER_BETA,
+    TIER_CODES,
+    UPGRADE_CONTACT_EMAIL,
+    entitlements_payload,
+    get_tier_flags,
+    infer_tier_from_v2_mods,
+    legacy_modules_from_features,
+)
+from core._version import elia_beta_deadline_ts
+
+
+def _distribution_channel() -> str:
+    """Canal de build (beta | release); re-leído para tests."""
+    from core._version import ELIA_CHANNEL as channel
+
+    return (channel or "release").strip().lower()
+
 # Duraciones emitidas por el generador de claves
 DURATION_15D = "15D"
 DURATION_30D = "30D"
@@ -54,6 +74,16 @@ DURATION_LABELS: Dict[str, str] = {
 
 _LICENSE_SEED = b"ELIA-LICENSE-v1-REPLACE-IN-RELEASE-BUILD"
 
+# v3: ELIA-V3-PRO-365D-1779324449-{hmac64} — tier + duración + issue_ts firmados.
+_KEY_PREFIX_V3_RE = re.compile(
+    r"^ELIA-V3-(?P<tier>BASIC|PRO|ENT)-(?P<dur>15D|30D|365D|PERM)-(?P<issue_ts>\d{9,12})-(?P<sig>[0-9a-f]{64})$",
+    re.IGNORECASE,
+)
+# Clave global beta (sin huella): ELIA-BETA-GLOBAL-1779324449-{hmac64}
+_KEY_BETA_GLOBAL_RE = re.compile(
+    r"^ELIA-BETA-GLOBAL-(?P<exp_ts>\d{9,12})-(?P<sig>[0-9a-f]{64})$",
+    re.IGNORECASE,
+)
 # v2: ELIA-15D-0-1779324449-{hmac64} — issue_ts forma parte del HMAC (zero trust en caducidad).
 _KEY_PREFIX_V2_RE = re.compile(
     r"^ELIA-(?P<dur>15D|30D|365D|PERM)-(?P<mods>[0ML]+)-(?P<issue_ts>\d{9,12})-(?P<sig>[0-9a-f]{64})$",
@@ -185,7 +215,35 @@ def _parse_mods_token(token: str) -> Tuple[bool, bool]:
     return ("M" in t, "L" in t)
 
 
-def _license_message_v1(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
+def _license_message_v3(
+    machine_fp: str, tier_code: str, duration: str, issue_ts: int
+) -> bytes:
+    return f"{machine_fp}|V3|{tier_code.upper()}|{duration.upper()}|{issue_ts}".encode("ascii")
+
+
+def _license_message_beta_global(exp_ts: int) -> bytes:
+    return f"BETA|GLOBAL|{exp_ts}".encode("ascii")
+
+
+def _expected_signature_v3(
+    machine_fp: str,
+    tier_code: str,
+    duration: str,
+    issue_ts: int,
+) -> str:
+    return hmac.new(
+        _secret_key(),
+        _license_message_v3(machine_fp, tier_code, duration, issue_ts),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _expected_signature_beta_global(exp_ts: int) -> str:
+    return hmac.new(
+        _secret_key(),
+        _license_message_beta_global(exp_ts),
+        hashlib.sha256,
+    ).hexdigest()
     if duration == "FULL":
         return machine_fp.encode("ascii") + b"|FULL"
     flags = _mods_token(mobile, legacy)
@@ -241,14 +299,58 @@ def build_activation_key(
     machine_fp: str,
     duration: str = DURATION_PERM,
     *,
+    tier: str = "enterprise",
     mobile: bool = False,
     legacy: bool = False,
     issue_ts: Optional[int] = None,
 ) -> str:
     """
-    Genera clave v2: ELIA-{dur}-{mods}-{issue_ts}-{hmac64}.
-    issue_ts por defecto = tiempo actual (segundos UNIX).
+    Genera clave v3: ELIA-V3-{TIER}-{dur}-{issue_ts}-{hmac64}.
+    tier: basic | professional | enterprise
     """
+    del mobile, legacy  # v3 usa tier; flags M/L solo en v2 legacy
+    tier_norm = (tier or "enterprise").strip().lower()
+    tier_code = TIER_CODES.get(tier_norm)
+    if tier_code is None or tier_code == TIER_CODES[TIER_BETA]:
+        raise ValueError(f"Tier no válido para clave por máquina: {tier!r}")
+    dur = duration.upper()
+    if dur not in DURATION_SECONDS:
+        raise ValueError(f"Duración no válida: {duration}")
+    fp = machine_fp.strip().lower()
+    if len(fp) != 32:
+        raise ValueError("La huella debe tener 32 caracteres hex.")
+    ts = int(issue_ts if issue_ts is not None else time.time())
+    if not _valid_issue_ts(ts):
+        raise ValueError(f"issue_ts no válido: {ts}")
+    sig = _expected_signature_v3(fp, tier_code, dur, ts)
+    return f"ELIA-V3-{tier_code}-{dur}-{ts}-{sig}"
+
+
+def build_beta_global_key(*, exp_ts: Optional[int] = None) -> str:
+    """Clave única global para extender/distribuir beta (sin huella de equipo)."""
+    ts = int(exp_ts if exp_ts is not None else elia_beta_deadline_ts())
+    if ts <= 0:
+        raise ValueError(f"exp_ts no válido: {ts}")
+    sig = _expected_signature_beta_global(ts)
+    return f"ELIA-BETA-GLOBAL-{ts}-{sig}"
+
+
+def _license_message_v1(machine_fp: str, duration: str, mobile: bool, legacy: bool) -> bytes:
+    if duration == "FULL":
+        return machine_fp.encode("ascii") + b"|FULL"
+    flags = _mods_token(mobile, legacy)
+    return f"{machine_fp}|{duration}|{flags}".encode("ascii")
+
+
+def build_activation_key_v2(
+    machine_fp: str,
+    duration: str = DURATION_PERM,
+    *,
+    mobile: bool = False,
+    legacy: bool = False,
+    issue_ts: Optional[int] = None,
+) -> str:
+    """Genera clave v2 legada (tests / compatibilidad). Preferir build_activation_key (v3)."""
     dur = duration.upper()
     if dur not in DURATION_SECONDS:
         raise ValueError(f"Duración no válida: {duration}")
@@ -285,9 +387,18 @@ def build_activation_key_v1_legacy(
 @dataclass
 class ParsedLicenseKey:
     duration: str
+    tier: str
     mobile: bool
     legacy: bool
     issue_ts: Optional[int] = None
+    beta_global_exp: Optional[int] = None
+    is_beta_global: bool = False
+
+    @property
+    def features(self) -> Dict[str, bool]:
+        if self.is_beta_global or self.tier == TIER_BETA:
+            return get_tier_flags(TIER_BETA)
+        return get_tier_flags(self.tier)
 
 
 def _sig_matches(provided: str, expected: str) -> bool:
@@ -298,8 +409,63 @@ def _sig_matches(provided: str, expected: str) -> bool:
     return len(provided) >= 32 and expected.startswith(provided[:32])
 
 
+def _match_beta_global_key(key: str) -> Optional[ParsedLicenseKey]:
+    raw = (key or "").strip().replace(" ", "")
+    m = _KEY_BETA_GLOBAL_RE.match(raw)
+    if not m:
+        return None
+    try:
+        exp_ts = int(m.group("exp_ts"))
+    except ValueError:
+        return None
+    sig = m.group("sig")
+    expected = _expected_signature_beta_global(exp_ts)
+    if not _sig_matches(sig, expected):
+        return None
+    return ParsedLicenseKey(
+        duration=DURATION_PERM,
+        tier=TIER_BETA,
+        mobile=True,
+        legacy=True,
+        issue_ts=exp_ts,
+        beta_global_exp=exp_ts,
+        is_beta_global=True,
+    )
+
+
 def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey]:
     raw = (key or "").strip().replace(" ", "")
+
+    beta = _match_beta_global_key(raw)
+    if beta is not None:
+        return beta
+
+    m3 = _KEY_PREFIX_V3_RE.match(raw)
+    if m3:
+        tier_code = m3.group("tier").upper()
+        tier = CODE_TO_TIER.get(tier_code)
+        if tier is None:
+            return None
+        dur = m3.group("dur").upper()
+        try:
+            issue_ts = int(m3.group("issue_ts"))
+        except ValueError:
+            return None
+        if not _valid_issue_ts(issue_ts):
+            return None
+        sig = m3.group("sig")
+        expected = _expected_signature_v3(machine_fp, tier_code, dur, issue_ts)
+        if _sig_matches(sig, expected):
+            mobile = tier in ("professional", "enterprise", "beta")
+            legacy = tier in ("enterprise", "beta")
+            return ParsedLicenseKey(
+                duration=dur,
+                tier=tier,
+                mobile=mobile,
+                legacy=legacy,
+                issue_ts=issue_ts,
+            )
+        return None
 
     m2 = _KEY_PREFIX_V2_RE.match(raw)
     if m2:
@@ -314,8 +480,13 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
         sig = m2.group("sig")
         expected = _expected_signature_v2(machine_fp, dur, issue_ts, mobile, legacy)
         if _sig_matches(sig, expected):
+            tier = infer_tier_from_v2_mods(mobile, legacy)
             return ParsedLicenseKey(
-                duration=dur, mobile=mobile, legacy=legacy, issue_ts=issue_ts
+                duration=dur,
+                tier=tier,
+                mobile=mobile,
+                legacy=legacy,
+                issue_ts=issue_ts,
             )
         return None
 
@@ -326,7 +497,14 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
         sig = m1.group("sig")
         expected = _expected_signature_v1(machine_fp, dur, mobile, legacy)
         if _sig_matches(sig, expected):
-            return ParsedLicenseKey(duration=dur, mobile=mobile, legacy=legacy, issue_ts=None)
+            tier = infer_tier_from_v2_mods(mobile, legacy)
+            return ParsedLicenseKey(
+                duration=dur,
+                tier=tier,
+                mobile=mobile,
+                legacy=legacy,
+                issue_ts=None,
+            )
         return None
 
     hex_only = raw.replace("-", "")
@@ -335,7 +513,13 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
 
     expected_full = _expected_signature_v1(machine_fp, "FULL", False, False)
     if _sig_matches(hex_only, expected_full):
-        return ParsedLicenseKey(duration=DURATION_PERM, mobile=False, legacy=False, issue_ts=None)
+        return ParsedLicenseKey(
+            duration=DURATION_PERM,
+            tier=infer_tier_from_v2_mods(False, False),
+            mobile=False,
+            legacy=False,
+            issue_ts=None,
+        )
 
     if len(hex_only) == 64:
         for dur in DURATION_SECONDS:
@@ -343,8 +527,10 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
                 for legacy in (False, True):
                     expected = _expected_signature_v1(machine_fp, dur, mobile, legacy)
                     if hex_only.lower() == expected.lower():
+                        tier = infer_tier_from_v2_mods(mobile, legacy)
                         return ParsedLicenseKey(
                             duration=dur,
+                            tier=tier,
                             mobile=mobile,
                             legacy=legacy,
                             issue_ts=None,
@@ -353,11 +539,16 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
 
 
 def verify_activation_key(key: str, machine_fp: Optional[str] = None) -> bool:
+    if _match_beta_global_key((key or "").strip().replace(" ", "")) is not None:
+        return True
     fp = machine_fp or get_machine_fingerprint()
     return _match_key_signature(key, fp) is not None
 
 
 def parse_activation_key(key: str, machine_fp: Optional[str] = None) -> Optional[ParsedLicenseKey]:
+    beta = _match_beta_global_key((key or "").strip().replace(" ", ""))
+    if beta is not None:
+        return beta
     fp = machine_fp or get_machine_fingerprint()
     return _match_key_signature(key, fp)
 
@@ -519,9 +710,15 @@ def _load_effective_state() -> Dict[str, Any]:
         parsed = parse_activation_key(key, fp)
         if parsed:
             state["duration_code"] = parsed.duration
+            state["tier"] = parsed.tier
             sec = DURATION_SECONDS.get(parsed.duration)
-            state["expires_at"] = (activated_ts + sec) if sec is not None else None
+            if parsed.is_beta_global:
+                state["expires_at"] = float(parsed.beta_global_exp or parsed.issue_ts or 0) or None
+            else:
+                base_ts = float(parsed.issue_ts if parsed.issue_ts is not None else activated_ts)
+                state["expires_at"] = (base_ts + sec) if sec is not None else None
             state["licensed_modules"] = _licensed_modules_dict(parsed)
+            state["licensed_features"] = _licensed_features_dict(parsed)
         _save_state(state)
         _sync_licensed_modules(
             bool((state.get("licensed_modules") or {}).get("mobile_recording")),
@@ -555,11 +752,12 @@ def _normalize_stored_key(key: str) -> str:
 
 
 def _licensed_modules_dict(parsed: ParsedLicenseKey) -> Dict[str, bool]:
-    return {
-        "mobile_recording": parsed.mobile,
-        "legacy_recording": parsed.legacy,
-        "api_testing": True,
-    }
+    legacy = legacy_modules_from_features(parsed.features)
+    return legacy
+
+
+def _licensed_features_dict(parsed: ParsedLicenseKey) -> Dict[str, bool]:
+    return dict(parsed.features)
 
 
 def _resolve_license_from_state(
@@ -568,9 +766,15 @@ def _resolve_license_from_state(
     saved_key = state.get("saved_activation_key")
     if not saved_key:
         return None
-    parsed = parse_activation_key(_normalize_stored_key(str(saved_key)), machine_fp)
+    key_norm = _normalize_stored_key(str(saved_key))
+    parsed = parse_activation_key(key_norm, machine_fp)
     if parsed is None:
         return None
+
+    if parsed.is_beta_global:
+        exp_ts = float(parsed.beta_global_exp or parsed.issue_ts or 0)
+        return parsed, exp_ts, exp_ts
+
     if parsed.issue_ts is not None:
         activated_ts = float(parsed.issue_ts)
     else:
@@ -587,13 +791,20 @@ def is_time_limited_license_active() -> bool:
     return st.ok and st.reason == "activated"
 
 
-def get_active_license_modules() -> Optional[Dict[str, bool]]:
+def get_active_license_features() -> Optional[Dict[str, bool]]:
     st = get_license_status()
-    if not st.ok or st.reason != "activated":
+    if not st.ok or st.reason not in ("activated", "beta"):
         return None
-    if st.licensed_modules is not None:
-        return dict(st.licensed_modules)
-    return {"mobile_recording": False, "legacy_recording": False, "api_testing": False, "doc_to_bdd": False}
+    if st.features is not None:
+        return dict(st.features)
+    return None
+
+
+def get_active_license_modules() -> Optional[Dict[str, bool]]:
+    feats = get_active_license_features()
+    if feats is None:
+        return None
+    return legacy_modules_from_features(feats)
 
 
 def activate_with_key(key: str) -> bool:
@@ -610,8 +821,10 @@ def activate_with_key(key: str) -> bool:
     state["activated_ts"] = issue_ts
     state["issue_ts"] = parsed.issue_ts
     state["duration_code"] = parsed.duration
+    state["tier"] = parsed.tier
     state["expires_at"] = (issue_ts + sec) if sec is not None else None
     state["licensed_modules"] = _licensed_modules_dict(parsed)
+    state["licensed_features"] = _licensed_features_dict(parsed)
     _save_state(state)
     _sync_activation_backups(fp, key_norm, issue_ts)
     _sync_licensed_modules(parsed.mobile, parsed.legacy)
@@ -634,11 +847,68 @@ class LicenseStatus:
     expires_at: Optional[float] = None
     duration_code: Optional[str] = None
     licensed_modules: Optional[Dict[str, bool]] = None
+    tier_name: Optional[str] = None
+    features: Optional[Dict[str, bool]] = None
+    is_beta: bool = False
+    upgrade_email: str = UPGRADE_CONTACT_EMAIL
+
+
+def _beta_guard_for_parsed(parsed: Optional[ParsedLicenseKey]) -> Optional[Any]:
+    from core.beta_time_guard import BetaGuardResult, check_beta_expiration
+
+    extra: Optional[float] = None
+    if parsed is not None and parsed.is_beta_global:
+        extra = float(parsed.beta_global_exp or parsed.issue_ts or 0) or None
+    return check_beta_expiration(extra_deadline_ts=extra)
+
+
+def _status_from_beta_guard(guard: Any, fp: str) -> LicenseStatus:
+    from core.beta_time_guard import beta_expired_user_message
+
+    features = get_tier_flags(TIER_BETA)
+    legacy = legacy_modules_from_features(features)
+    if guard.ok:
+        days_left = max(0.0, (guard.deadline_ts - guard.effective_now) / 86400.0)
+        return LicenseStatus(
+            ok=True,
+            reason="beta",
+            activated=True,
+            machine_fingerprint=fp,
+            message=f"Beta ELIA: quedan aprox. {days_left:.1f} día(s).",
+            expires_at=guard.deadline_ts,
+            duration_code="BETA",
+            licensed_modules=legacy,
+            tier_name=TIER_BETA,
+            features=features,
+            is_beta=True,
+        )
+    msg = guard.message
+    if guard.reason == "beta_expired":
+        msg = beta_expired_user_message(UPGRADE_CONTACT_EMAIL)
+    return LicenseStatus(
+        ok=False,
+        reason=guard.reason,
+        activated=True,
+        machine_fingerprint=fp,
+        message=msg,
+        expires_at=guard.deadline_ts,
+        duration_code="BETA",
+        licensed_modules=legacy,
+        tier_name=TIER_BETA,
+        features=features,
+        is_beta=True,
+    )
 
 
 def can_run_jobs() -> bool:
     st = get_license_status()
-    return st.ok and st.reason not in ("not_activated", "license_expired", "killed")
+    return st.ok and st.reason not in (
+        "not_activated",
+        "license_expired",
+        "beta_expired",
+        "clock_tamper",
+        "killed",
+    )
 
 
 def is_license_operational() -> bool:
@@ -646,10 +916,25 @@ def is_license_operational() -> bool:
     st = get_license_status()
     if st.reason == "skip":
         return True
-    return st.ok and st.reason == "activated"
+    return st.ok and st.reason in ("activated", "beta")
+
+
+def get_entitlements() -> Dict[str, Any]:
+    """Payload unificado para UI y API."""
+    st = get_license_status()
+    features = dict(st.features or get_tier_flags(TIER_BASIC))
+    return entitlements_payload(
+        tier=st.tier_name or TIER_BASIC,
+        features=features,
+        is_beta=st.is_beta,
+        upgrade_email=st.upgrade_email,
+    )
 
 
 def get_license_status() -> LicenseStatus:
+    all_features = get_tier_flags(TIER_BETA)
+    all_legacy = legacy_modules_from_features(all_features)
+
     if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "true", "yes"):
         return LicenseStatus(
             ok=True,
@@ -657,12 +942,9 @@ def get_license_status() -> LicenseStatus:
             activated=True,
             machine_fingerprint=get_machine_fingerprint(),
             message="Licencia omitida (ELIA_SKIP_LICENSE).",
-            licensed_modules={
-                "mobile_recording": True,
-                "legacy_recording": True,
-                "api_testing": True,
-                "doc_to_bdd": True,
-            },
+            licensed_modules=all_legacy,
+            tier_name=TIER_BETA,
+            features=all_features,
         )
 
     if kill_switch_active():
@@ -680,13 +962,20 @@ def get_license_status() -> LicenseStatus:
 
     if resolved is not None:
         parsed, _activated_ts, exp_ts = resolved
-        duration_code = parsed.duration
+        features = _licensed_features_dict(parsed)
         licensed_modules = _licensed_modules_dict(parsed)
         _sync_licensed_modules(parsed.mobile, parsed.legacy)
 
+        if parsed.is_beta_global or parsed.tier == TIER_BETA:
+            guard = _beta_guard_for_parsed(parsed)
+            assert guard is not None
+            st = _status_from_beta_guard(guard, fp)
+            st.duration_code = parsed.duration if not parsed.is_beta_global else "BETA"
+            return st
+
         if exp_ts is not None and time.time() > exp_ts:
             _clear_licensed_modules()
-            left_label = DURATION_LABELS.get(duration_code, "limitada")
+            left_label = DURATION_LABELS.get(parsed.duration, "limitada")
             return LicenseStatus(
                 ok=False,
                 reason="license_expired",
@@ -694,11 +983,14 @@ def get_license_status() -> LicenseStatus:
                 machine_fingerprint=fp,
                 message=f"La licencia ({left_label}) ha caducado. Solicita una nueva clave.",
                 expires_at=exp_ts,
-                duration_code=duration_code,
+                duration_code=parsed.duration,
                 licensed_modules=licensed_modules,
+                tier_name=parsed.tier,
+                features=features,
             )
 
-        dur_label = DURATION_LABELS.get(duration_code, "activada")
+        dur_label = DURATION_LABELS.get(parsed.duration, "activada")
+        tier_label = parsed.tier.replace("_", " ").title()
         mod_parts = []
         if licensed_modules.get("mobile_recording"):
             mod_parts.append("móvil")
@@ -707,9 +999,9 @@ def get_license_status() -> LicenseStatus:
         mod_txt = f" Módulos: {', '.join(mod_parts)}." if mod_parts else ""
         if exp_ts is not None:
             days_left = max(0.0, (exp_ts - time.time()) / 86400.0)
-            msg = f"Licencia ({dur_label}): quedan aprox. {days_left:.1f} día(s).{mod_txt}"
+            msg = f"Plan {tier_label} ({dur_label}): quedan aprox. {days_left:.1f} día(s).{mod_txt}"
         else:
-            msg = f"Licencia {dur_label}.{mod_txt}"
+            msg = f"Plan {tier_label} ({dur_label}).{mod_txt}"
         return LicenseStatus(
             ok=True,
             reason="activated",
@@ -717,9 +1009,16 @@ def get_license_status() -> LicenseStatus:
             machine_fingerprint=fp,
             message=msg,
             expires_at=exp_ts,
-            duration_code=duration_code,
+            duration_code=parsed.duration,
             licensed_modules=licensed_modules,
+            tier_name=parsed.tier,
+            features=features,
         )
+
+    if _distribution_channel() == "beta":
+        guard = _beta_guard_for_parsed(None)
+        assert guard is not None
+        return _status_from_beta_guard(guard, fp)
 
     _clear_licensed_modules()
     return LicenseStatus(

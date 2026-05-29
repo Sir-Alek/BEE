@@ -19,11 +19,17 @@ class TestEliaLicense(unittest.TestCase):
         self._state_file = Path(self._tmp.name) / "license_state.json"
         self._fp = "a" * 32
         self._issue_ts = 1_700_000_000
-        self._key_v2_perm = lic.build_activation_key(
+        self._key_v2_perm = lic.build_activation_key_v2(
             self._fp, lic.DURATION_PERM, issue_ts=self._issue_ts
         )
-        self._key_v2_15d = lic.build_activation_key(
+        self._key_v2_15d = lic.build_activation_key_v2(
             self._fp, lic.DURATION_15D, issue_ts=self._issue_ts
+        )
+        self._key_v3_pro = lic.build_activation_key(
+            self._fp,
+            lic.DURATION_365D,
+            tier="professional",
+            issue_ts=self._issue_ts,
         )
         # Asegurar que los tests no hereden ELIA_SKIP_LICENSE del entorno de desarrollo.
         self._env_patch = patch.dict(
@@ -37,8 +43,11 @@ class TestEliaLicense(unittest.TestCase):
             lic, "_get_hidden_backup_paths", lambda: self._backup_paths
         )
         self._backup_patch.start()
+        self._channel_patch = patch.object(lic, "_distribution_channel", return_value="release")
+        self._channel_patch.start()
 
     def tearDown(self) -> None:
+        self._channel_patch.stop()
         self._backup_patch.stop()
         self._env_patch.stop()
         self._tmp.cleanup()
@@ -52,6 +61,23 @@ class TestEliaLicense(unittest.TestCase):
 
     def _patch_fp(self):
         return patch.object(lic, "get_machine_fingerprint", return_value=self._fp)
+
+    def test_v3_key_format_includes_tier(self) -> None:
+        self.assertRegex(
+            self._key_v3_pro,
+            re.compile(
+                r"^ELIA-V3-PRO-365D-" + str(self._issue_ts) + r"-[0-9a-f]{64}$",
+                re.IGNORECASE,
+            ),
+        )
+
+    def test_beta_global_key_no_machine(self) -> None:
+        key = lic.build_beta_global_key(exp_ts=self._issue_ts + 86400)
+        self.assertTrue(lic.verify_activation_key(key))
+        parsed = lic.parse_activation_key(key)
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertTrue(parsed.is_beta_global)
 
     def test_v2_key_format_includes_issue_ts(self) -> None:
         self.assertRegex(
