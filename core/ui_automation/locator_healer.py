@@ -197,6 +197,7 @@ def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return {
         "primary":         primary,
         "fallbacks":       fallbacks,
+        "strategies":      _strategies_from_candidates(candidates[:3]),
         "strategy":        strategy,
         "stability_score": round(score, 3),
     }
@@ -226,55 +227,58 @@ def _gemma_heal(
     ancestors: List[Dict]       = record.get("ancestors")   or []
     shadow: Dict[str, Any]      = record.get("shadow")      or {}
     pruned_dom: str             = str(record.get("pruned_dom") or "")
+    interactables               = record.get("interactables_index") or []
     original_selector: str      = str(record.get("selector") or "")
     original_xpath: str         = str(record.get("xpath")    or "")
     kind: str                   = str(record.get("kind")     or "click")
 
     # Limitar DOM podado para no saturar el contexto del modelo
-    dom_excerpt = pruned_dom[:2000] if len(pruned_dom) > 2000 else pruned_dom
+    dom_excerpt = pruned_dom[:1200] if len(pruned_dom) > 1200 else pruned_dom
+    interactables_excerpt = _compact_json(interactables[:40] if isinstance(interactables, list) else [])
 
     prompt = (
         "You are a test automation expert generating stable Selenium/Puppeteer locators.\n"
-        "Analyze the element context below and return ONE JSON object (no extra text):\n"
-        '{"primary": "<css or xpath>", "fallbacks": ["<alt1>", "<alt2>"], '
-        '"strategy": "<data-testid|aria|id|text|xpath|shadow>", "stability_score": <0.0-1.0>}\n\n'
+        "Return ONE JSON object with element_name and strategies (ordered most→least stable):\n"
+        '{"element_name":"btn_login","strategies":[{"type":"id|css|xpath|aria|data-testid|name|text","value":"..."},...]}\n\n'
         f"Action kind: {kind}\n"
         f"Element fingerprint: {_compact_json(fp)}\n"
         f"Ancestor chain (nearest first): {_compact_json(ancestors[:3])}\n"
         f"Shadow DOM: {_compact_json(shadow)}\n"
+        f"Interactables index (page): {interactables_excerpt}\n"
         f"Original selector: {original_selector}\n"
         f"Original XPath: {original_xpath}\n"
-        f"Pruned DOM context:\n{dom_excerpt}\n\n"
+        f"Pruned DOM context (local):\n{dom_excerpt}\n\n"
         "Rules:\n"
-        "- Prefer data-testid, aria-label, role+name over fragile selectors.\n"
-        "- If shadow.is_shadow_child=true, use shadow host selector + inner selector pattern.\n"
-        "- Avoid nth-child, dynamic class names, auto-generated ids (contain 4+ digits).\n"
-        "- stability_score: 1.0=perfect (data-testid), 0.5=fragile (nth-child), 0.0=invalid.\n"
+        "- Provide 2-3 strategies when possible (id/data-testid, stable css, semantic xpath).\n"
+        "- Prefer interactables index over raw HTML when choosing anchors.\n"
+        "- Avoid nth-child and auto-generated ids.\n"
     )
 
-    data = run_llama_json_prompt(prompt, max_tokens=256, temperature=temperature)
+    try:
+        from core.gemma_inference import run_llama_gbnf_json
+
+        data = run_llama_gbnf_json(
+            prompt,
+            gbnf_file="locator.gbnf",
+            max_tokens=320,
+            temperature=temperature,
+            system_prefix=(
+                "You are a test automation assistant. Reply with ONLY one valid JSON object.\n\n"
+            ),
+        )
+    except ImportError:
+        data = None
+    if not data:
+        from core.gemma_inference import run_llama_json_prompt
+
+        data = run_llama_json_prompt(prompt, max_tokens=256, temperature=temperature)
     if not data:
         return None
 
-    primary = str(data.get("primary") or "").strip()
-    if not primary:
+    parsed = _parse_gemma_locator_response(data, original_xpath=original_xpath)
+    if not parsed:
         return None
-
-    score = float(data.get("stability_score") or 0)
-    strategy = str(data.get("strategy") or "gemma").strip()
-    fallbacks_raw = data.get("fallbacks") or []
-    fallbacks = [str(f).strip() for f in fallbacks_raw if str(f).strip()]
-
-    # Agregar original xpath como último fallback de seguridad
-    if original_xpath and original_xpath not in fallbacks:
-        fallbacks.append(original_xpath)
-
-    return {
-        "primary":         primary,
-        "fallbacks":       fallbacks,
-        "strategy":        strategy,
-        "stability_score": round(min(max(score, 0.0), 1.0), 3),
-    }
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -291,10 +295,110 @@ def _original_fallback(record: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "primary":         selector,
         "fallbacks":       fallbacks,
+        "strategies":      _strategies_from_values([selector] + fallbacks),
         "strategy":        "original",
         "stability_score": 0.4,
         "shadow":          shadow,
         "healed":          False,
+    }
+
+
+def _strategy_type_label(raw: str, value: str) -> str:
+    label = (raw or "").strip().lower()
+    if label in ("id", "css", "xpath", "aria", "data-testid", "name", "text"):
+        return label
+    if value.startswith("//") or value.startswith("xpath="):
+        return "xpath"
+    if value.startswith("#") or value.startswith("."):
+        return "css"
+    if "data-testid" in value:
+        return "data-testid"
+    return "css"
+
+
+def _strategies_from_candidates(candidates: List[tuple[str, float, str]]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for sel, _score, strat in candidates:
+        val = str(sel).strip()
+        if not val or val in seen:
+            continue
+        seen.add(val)
+        out.append({"type": _strategy_type_label(strat, val), "value": val})
+    return out[:3]
+
+
+def _strategies_from_values(values: List[str]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for val in values:
+        v = str(val).strip()
+        if not v or v in seen:
+            continue
+        seen.add(v)
+        out.append({"type": _strategy_type_label("", v), "value": v})
+    return out[:3]
+
+
+def _score_for_strategy(strat_type: str) -> float:
+    scores = {
+        "data-testid": 0.98,
+        "id": 0.93,
+        "aria": 0.88,
+        "name": 0.82,
+        "css": 0.78,
+        "text": 0.72,
+        "xpath": 0.68,
+    }
+    return scores.get(strat_type, 0.7)
+
+
+def _parse_gemma_locator_response(
+    data: Dict[str, Any],
+    *,
+    original_xpath: str = "",
+) -> Optional[Dict[str, Any]]:
+    strategies_raw = data.get("strategies")
+    if isinstance(strategies_raw, list) and strategies_raw:
+        strategies: List[Dict[str, str]] = []
+        for item in strategies_raw:
+            if not isinstance(item, dict):
+                continue
+            val = str(item.get("value") or "").strip()
+            if not val:
+                continue
+            stype = _strategy_type_label(str(item.get("type") or ""), val)
+            strategies.append({"type": stype, "value": val})
+        if strategies:
+            primary = strategies[0]["value"]
+            fallbacks = [s["value"] for s in strategies[1:] if s["value"] != primary]
+            if original_xpath and original_xpath not in fallbacks and original_xpath != primary:
+                fallbacks.append(original_xpath)
+            stype = strategies[0]["type"]
+            return {
+                "primary": primary,
+                "fallbacks": fallbacks,
+                "strategies": strategies[:3],
+                "strategy": stype,
+                "stability_score": round(_score_for_strategy(stype), 3),
+            }
+
+    primary = str(data.get("primary") or "").strip()
+    if not primary:
+        return None
+    fallbacks_raw = data.get("fallbacks") or []
+    fallbacks = [str(f).strip() for f in fallbacks_raw if str(f).strip()]
+    if original_xpath and original_xpath not in fallbacks:
+        fallbacks.append(original_xpath)
+    strategy = str(data.get("strategy") or "gemma").strip()
+    score = float(data.get("stability_score") or 0.7)
+    strategies = _strategies_from_values([primary] + fallbacks)
+    return {
+        "primary": primary,
+        "fallbacks": fallbacks,
+        "strategies": strategies,
+        "strategy": strategy,
+        "stability_score": round(min(max(score, 0.0), 1.0), 3),
     }
 
 

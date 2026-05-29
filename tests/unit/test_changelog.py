@@ -5,7 +5,7 @@ import os
 import unittest
 
 from core._version import ELIA_VERSION, elia_version_display
-from core.changelog import load_changelog, parse_changelog_markdown
+from core.changelog import CHANGELOG_UI_ENTRY_LIMIT, load_changelog, parse_changelog_markdown
 
 
 class TestChangelogParser(unittest.TestCase):
@@ -41,6 +41,15 @@ class TestChangelogParser(unittest.TestCase):
         versions = [entry["version"] for entry in entries]
         self.assertIn("0.6.61", versions)
         self.assertIn("0.5.0", versions)
+
+    def test_load_changelog_ui_limit(self) -> None:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        all_entries = load_changelog(repo_root)
+        limited = load_changelog(repo_root, limit=CHANGELOG_UI_ENTRY_LIMIT)
+        self.assertLessEqual(len(limited), CHANGELOG_UI_ENTRY_LIMIT)
+        if len(all_entries) > CHANGELOG_UI_ENTRY_LIMIT:
+            self.assertEqual(len(limited), CHANGELOG_UI_ENTRY_LIMIT)
+            self.assertEqual(limited, all_entries[:CHANGELOG_UI_ENTRY_LIMIT])
 
 
 class TestVersionDisplay(unittest.TestCase):

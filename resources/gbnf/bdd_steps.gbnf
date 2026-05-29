@@ -1,0 +1,15 @@
+# JSON steps-only (second pass in ELIA_AI_COT_MODE=two_pass).
+
+root ::= "{" ws "\"steps\"" ":" ws steps-array ws "}" ws
+
+steps-array ::= "[" ws step-object ("," ws step-object)* "]"
+
+step-object ::= "{" ws "\"keyword\"" ":" ws keyword "," ws "\"text\"" ":" ws string "}"
+
+keyword ::= "\"Given\"" | "\"When\"" | "\"Then\"" | "\"And\"" | "\"But\""
+
+string ::= "\"" char* "\""
+
+char ::= [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+
+ws ::= [ \t\n\r]*

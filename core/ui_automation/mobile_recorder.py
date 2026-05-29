@@ -15,7 +15,7 @@ import os
 import re
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from webui.job_manager import JobManager, Prompt
 
@@ -487,10 +487,18 @@ class MobileRecorder:
 
                     source = driver.page_source
                     if source != prev_source:
+                        interactables_index: List[Dict[str, Any]] = []
+                        try:
+                            from core.ui_automation.mobile_dom_parser import interactables_index_from_page_source
+
+                            interactables_index = interactables_index_from_page_source(source, max_elements=80)
+                        except Exception:
+                            interactables_index = []
                         recorded_events.append({
                             "ts": round(time.time() - start_ts, 3),
                             "type": "page_source",
                             "source": source[:4000],
+                            "interactables_index": interactables_index,
                         })
                         prev_source = source
                         jm.update_progress(

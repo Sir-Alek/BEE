@@ -277,7 +277,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             ELIA_VERSION,
             elia_version_display,
         )
-        from core.changelog import load_changelog
+        from core.changelog import CHANGELOG_UI_ENTRY_LIMIT, load_changelog
         from webui.error_reporting import beta_feedback_url, execution_log_about_hint
 
         licence_path = os.path.join(base_dir, "Licence.txt")
@@ -299,7 +299,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "support_email": ELIA_SUPPORT_EMAIL,
             "tagline": ELIA_TAGLINE,
             "license_text": license_text,
-            "changelog": load_changelog(base_dir),
+            "changelog": load_changelog(base_dir, limit=CHANGELOG_UI_ENTRY_LIMIT),
             "beta_feedback_url": feedback or None,
             "local_logs_hint": execution_log_about_hint(),
         }

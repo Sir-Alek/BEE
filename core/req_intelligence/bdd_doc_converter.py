@@ -2,17 +2,16 @@
 Conversor de documentos a BDD usando LLM local (Gemma + llama.cpp).
 
 Características:
-  - GBNF Grammar: restricción a nivel de inferencia para garantizar output Gherkin válido.
-  - Few-Shot Prompting: ejemplos calibran el modelo para replicar el formato sin "pensar".
-  - Silent error handling: errores se registran en _elia_errors.log y el proceso continúa.
-  - Fallback heurístico: si LLM no está disponible, genera BDD básico desde el contenido.
+  - GBNF JSON (bdd_response.gbnf): Chain-of-Thought + steps estructurados → Gherkin en Python.
+  - Few-Shot Prompting: ejemplos calibran el modelo.
+  - ELIA_AI_COT_MODE=two_pass: análisis libre + steps con GBNF.
+  - Silent error handling + fallback heurístico.
 """
 from __future__ import annotations
 
 import logging
 import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -78,36 +77,25 @@ Feature: Gestión de Usuarios
 
 _SYSTEM_PROMPT = (
     "Eres un SDET experto en Behavior-Driven Development (BDD). "
-    "Tu tarea es convertir requerimientos de software en escenarios BDD estrictos en formato Gherkin en español. "
-    "REGLAS OBLIGATORIAS:\n"
-    "1. Usa ÚNICAMENTE las palabras clave: Feature:, Scenario:, Given, When, Then, And, But\n"
-    "2. Indenta 2 espacios para Scenario: y 4 espacios para los pasos\n"
-    "3. Escribe en lenguaje de negocio (sin términos técnicos, sin selectores HTML/CSS)\n"
-    "4. Máximo 120 caracteres por línea de paso\n"
-    "5. Given: contexto/precondición; When: acción principal; Then: resultado verificable\n"
-    "6. NO incluyas texto explicativo, comentarios ni markdown — solo el bloque Gherkin\n"
-    "7. NO uses prefijos genéricos como «Verificar:» en Scenario: ni «el contexto es:» en Given; "
-    "escribe el nombre del escenario y los pasos de forma directa en lenguaje de negocio\n\n"
+    "Conviertes requerimientos de software en escenarios BDD en español.\n"
+    "IMPORTANTE — responde SOLO con un JSON válido con estos campos:\n"
+    '  "analisis_previo": texto breve donde mapeas requerimientos → pasos de negocio (Chain of Thought).\n'
+    '  "scenario_title": nombre del escenario sin prefijos «Verificar:» ni IDs de caso.\n'
+    '  "steps": lista de objetos {"keyword":"Given|When|Then|And|But","text":"..."}\n'
+    "REGLAS para steps:\n"
+    "1. Lenguaje de negocio; PROHIBIDO selectores HTML, ids técnicos o nombres de botones del DOM.\n"
+    "2. Estructura: ≤1 Given, exactamente 1 When, ≤1 And, exactamente 1 Then; orden Given→When→And?→Then.\n"
+    "3. Máximo 120 caracteres por paso.\n"
+    "4. Usa analisis_previo para razonar ANTES de redactar los steps.\n\n"
     f"EJEMPLOS DE REFERENCIA:\n{_FEW_SHOT_EXAMPLES}\n"
 )
 
 
 def _resolve_gbnf_path() -> Optional[str]:
-    """Localiza el archivo .gbnf tanto en desarrollo como en bundle PyInstaller."""
-    candidates = []
-    if getattr(sys, "frozen", False):
-        meipass = getattr(sys, "_MEIPASS", None)
-        exe_dir = os.path.dirname(sys.executable)
-        for base in filter(None, [meipass, exe_dir]):
-            candidates.append(os.path.join(base, "resources", "gbnf", "gherkin.gbnf"))
-    # Desarrollo: buscar relativo a este módulo
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(os.path.join(this_dir, "..", "..", "resources", "gbnf", "gherkin.gbnf"))
-    for p in candidates:
-        p = os.path.normpath(p)
-        if os.path.isfile(p):
-            return p
-    return None
+    """Localiza bdd_response.gbnf (desarrollo o bundle PyInstaller)."""
+    from core.gemma_gbnf import resolve_gbnf_path
+
+    return resolve_gbnf_path("bdd_response.gbnf")
 
 
 def _trim_doc_excerpt(source_chunks: List[DocChunk], max_chars: int = 10000) -> str:
@@ -154,7 +142,7 @@ def _build_prompt(chunk: DocChunk, *, memory_block: str = "") -> str:
         "=== NUEVO REQUERIMIENTO A CONVERTIR ===\n"
         f"Título: {chunk.title}\n"
         f"{chunk.content}\n\n"
-        "=== SALIDA GHERKIN (solo el bloque, sin texto adicional) ===\n"
+        "=== SALIDA JSON (analisis_previo + scenario_title + steps) ===\n"
     )
 
 
@@ -521,26 +509,75 @@ class BDDDocConverter:
         return last_rendered
 
     def _load_grammar(self):
-        """Carga la gramática GBNF de Gherkin para llama-cpp-python."""
+        """Carga la gramática GBNF JSON para Doc-to-BDD."""
         try:
+            from core.gemma_gbnf import load_llama_grammar
+
+            grammar = load_llama_grammar("bdd_response.gbnf")
+            if grammar is not None:
+                return grammar
             from llama_cpp import LlamaGrammar  # type: ignore
-            gbnf_path = _resolve_gbnf_path()
-            if gbnf_path:
-                return LlamaGrammar.from_file(gbnf_path)
-            # Inline grammar como fallback si no se encuentra el archivo
+
             gbnf_inline = (
-                'root ::= feature-block\n'
-                'feature-block ::= "Feature: " text newline scenario+\n'
-                'scenario ::= newline "  Scenario: " text newline step+\n'
-                'step ::= "    " keyword " " text newline\n'
-                'keyword ::= "Given" | "When" | "Then" | "And" | "But"\n'
-                'text ::= [^\\n\\r]+\n'
-                'newline ::= "\\n"\n'
+                'root ::= "{" ws "\\"analisis_previo\\"" ":" ws string "," ws "\\"scenario_title\\"" ":" ws string "," '
+                'ws "\\"steps\\"" ":" ws steps-array ws "}" ws\n'
+                'steps-array ::= "[" ws step-object ("," ws step-object)* "]"\n'
+                'step-object ::= "{" ws "\\"keyword\\"" ":" ws keyword "," ws "\\"text\\"" ":" ws string "}"\n'
+                'keyword ::= "\\"Given\\"" | "\\"When\\"" | "\\"Then\\"" | "\\"And\\"" | "\\"But\\""\n'
+                'string ::= "\\"" char* "\\""\n'
+                'char ::= [^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])\n'
+                'ws ::= [ \\t\\n\\r]*\n'
             )
             return LlamaGrammar.from_string(gbnf_inline)
         except (ImportError, Exception) as e:
             logger.debug(f"GBNF grammar no disponible: {e}")
             return None
+
+    def _convert_with_llm_two_pass(
+        self,
+        chunk: DocChunk,
+        *,
+        memory_block: str = "",
+        temperature: float = 0.1,
+    ) -> Optional[str]:
+        """ELIA_AI_COT_MODE=two_pass: análisis JSON libre + steps con GBNF."""
+        from core.bdd_llm_response import extract_json_object, render_gherkin_from_bdd_response
+        from core.gemma_inference import is_ai_runtime_configured, run_llama_gbnf_completion, run_llama_json_prompt
+
+        if not is_ai_runtime_configured():
+            return None
+
+        analysis_prompt = (
+            f"{_SYSTEM_PROMPT}\n\n{memory_block}"
+            "Analiza el requerimiento y responde SOLO con JSON: "
+            '{"analisis_previo":"..."}\n\n'
+            f"Título: {chunk.title}\n{chunk.content}\n"
+        )
+        analysis_data = run_llama_json_prompt(analysis_prompt, max_tokens=320, temperature=temperature)
+        analysis = str((analysis_data or {}).get("analisis_previo") or "").strip()
+
+        steps_prompt = (
+            f"{memory_block}"
+            f"Análisis previo del requerimiento:\n{analysis or '(sin análisis)'}\n\n"
+            f"Título: {chunk.title}\n{chunk.content}\n\n"
+            "Genera steps BDD en español (lenguaje de negocio). "
+            f'Escenario sugerido: "{_scenario_display_name(chunk)}"\n'
+        )
+        steps_text = run_llama_gbnf_completion(
+            steps_prompt,
+            gbnf_file="bdd_steps.gbnf",
+            max_tokens=512,
+            temperature=temperature,
+        )
+        if not steps_text:
+            return None
+        steps_data = extract_json_object(steps_text) or {}
+        merged = {
+            "analisis_previo": analysis,
+            "scenario_title": _scenario_display_name(chunk),
+            "steps": steps_data.get("steps"),
+        }
+        return render_gherkin_from_bdd_response(merged, feature_name=_scenario_display_name(chunk))
 
     def _convert_with_llm(
         self,
@@ -549,44 +586,35 @@ class BDDDocConverter:
         memory_block: str = "",
         temperature: float = 0.1,
     ) -> Optional[str]:
-        """Llama al LLM con el prompt del chunk y opcionalmente con la gramática GBNF."""
+        """Llama al LLM con GBNF JSON (CoT + steps) y renderiza Gherkin en Python."""
         try:
-            from core.gemma_inference import _get_llama, is_ai_runtime_configured, _INFERENCE_LOCK  # type: ignore
+            from core.gemma_inference import ai_cot_mode, is_ai_runtime_configured, run_llama_gbnf_completion
         except ImportError:
             return None
 
         if not is_ai_runtime_configured():
             return None
 
+        if ai_cot_mode() == "two_pass":
+            return self._convert_with_llm_two_pass(
+                chunk, memory_block=memory_block, temperature=temperature
+            )
+
+        from core.bdd_llm_response import parse_bdd_llm_text
+
         prompt = _build_prompt(chunk, memory_block=memory_block)
-
-        try:
-            llm = _get_llama()
-        except Exception:
+        text = run_llama_gbnf_completion(
+            prompt,
+            gbnf_file="bdd_response.gbnf",
+            grammar=grammar,
+            max_tokens=768,
+            temperature=temperature,
+        )
+        if not text:
             return None
-
-        call_kwargs = {
-            "prompt": prompt,
-            "max_tokens": 512,
-            "temperature": float(temperature),
-            "top_p": 0.9,
-        }
-        if grammar is not None:
-            call_kwargs["grammar"] = grammar
-
-        with _INFERENCE_LOCK:
-            try:
-                result = llm.create_completion(**call_kwargs)
-            except Exception as e:
-                logger.debug(f"LLM inference error for chunk {chunk.id}: {e}")
-                return None
-
-        try:
-            choices = result.get("choices") if isinstance(result, dict) else None
-            if choices and isinstance(choices[0], dict):
-                return str(choices[0].get("text", "") or "").strip()
-        except Exception:
-            pass
+        gherkin = parse_bdd_llm_text(text, feature_name=_scenario_display_name(chunk))
+        if gherkin and _validate_gherkin(gherkin):
+            return gherkin
         return None
 
     def _extract_scenarios(self, gherkin_text: str, chunk: DocChunk) -> str:

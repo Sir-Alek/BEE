@@ -1,4 +1,4 @@
-# GBNF Grammar for Gherkin BDD output
+# GBNF Grammar for Gherkin BDD output (LEGACY — superseded by bdd_response.gbnf in 0.9.65)
 # Restricts llama.cpp inference to valid Gherkin syntax only.
 # Used by BDDDocConverter to guarantee syntactically valid .feature output.
 

@@ -1570,6 +1570,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         overflow: "auto",
                       }}
                     >
+                      <div style={{ fontSize: 11, color: c.muted, marginBottom: 10 }}>
+                        Últimas {aboutInfo.changelog.length} versiones. El historial completo permanece en{" "}
+                        <code style={{ fontSize: 10 }}>CHANGELOG.md</code> del repositorio.
+                      </div>
                       {aboutInfo.changelog.map((entry, entryIndex) => {
                         const isCurrent = entry.version === aboutInfo.version;
                         const isLast = entryIndex === aboutInfo.changelog.length - 1;

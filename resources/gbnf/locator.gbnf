@@ -1,0 +1,15 @@
+# Typed multi-strategy locator response for Gemma (web/mobile healing).
+
+root ::= "{" ws "\"element_name\"" ":" ws string "," ws "\"strategies\"" ":" ws strategies-array ws "}" ws
+
+strategies-array ::= "[" ws strategy-object ("," ws strategy-object)* "]"
+
+strategy-object ::= "{" ws "\"type\"" ":" ws strat-type "," ws "\"value\"" ":" ws string "}"
+
+strat-type ::= "\"id\"" | "\"css\"" | "\"xpath\"" | "\"aria\"" | "\"data-testid\"" | "\"name\"" | "\"text\""
+
+string ::= "\"" char* "\""
+
+char ::= [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+
+ws ::= [ \t\n\r]*

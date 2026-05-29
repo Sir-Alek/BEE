@@ -1296,50 +1296,29 @@ class WebCaptureBehaveBuilder:
         except Exception:
             return None
 
-    def _preferred_selector_for_locator(self, selector: str) -> str:
-        """
-        Devuelve el locator más estable para un selector grabado.
-
-        Orden de resolución:
-          1. locator_healer (híbrido algorítmico + Gemma 4) — si hay metadatos enriquecidos.
-          2. suggest_preferred_locator legacy (CSS vs XPath simple) — fallback si el meta
-             no tiene fingerprint (grabaciones antiguas).
-          3. Selector original.
-        """
+    def _heal_bundle_for_selector(self, selector: str) -> Dict[str, Any]:
+        """Devuelve primary, fallbacks y strategies tipadas para un selector grabado."""
         if not self._recording_meta:
-            return selector
+            return {"primary": selector, "fallbacks": [], "strategies": []}
         actions = self._recording_meta.get("actions") if isinstance(self._recording_meta, dict) else None
         if not isinstance(actions, list):
-            return selector
-
+            return {"primary": selector, "fallbacks": [], "strategies": []}
         for rec in actions:
-            if not isinstance(rec, dict):
+            if not isinstance(rec, dict) or rec.get("selector") != selector:
                 continue
-            if rec.get("selector") != selector:
-                continue
-
-            # ── Camino 1: metadatos enriquecidos con fingerprint (recorder nuevo) ──
-            if rec.get("fingerprint"):
+            if rec.get("fingerprint") or rec.get("interactables_index"):
                 try:
                     from core.ui_automation.locator_healer import heal_locator
-                    result = heal_locator(rec, use_ai=self.use_ai)
-                    primary = result.get("primary") or selector
-                    if primary and primary != selector:
-                        logger.debug(
-                            f"locator_healer: '{selector}' → '{primary}' "
-                            f"[{result.get('strategy')}  score={result.get('stability_score')}]"
-                        )
-                    return primary
+
+                    return heal_locator(rec, use_ai=self.use_ai)
                 except Exception as e:
                     logger.debug(f"locator_healer error para '{selector}': {e}")
-
-            # ── Camino 2: fallback legacy (grabaciones sin fingerprint) ──
             xp = (rec.get("xpath") or "").strip()
-            if not xp:
-                return selector
-            if self.use_ai:
+            primary = selector
+            if self.use_ai and xp:
                 try:
                     from core import gemma_inference
+
                     if gemma_inference.is_ai_runtime_configured():
                         pref = gemma_inference.suggest_preferred_locator(
                             selector=selector,
@@ -1348,11 +1327,40 @@ class WebCaptureBehaveBuilder:
                             element_id=str(rec.get("id") or ""),
                         )
                         if pref:
-                            return pref
+                            primary = pref
                 except Exception:
                     pass
-            return selector
-        return selector
+            fallbacks = [xp] if xp and xp != primary else []
+            strategies = [{"type": "css", "value": primary}]
+            if xp and xp != primary:
+                strategies.append({"type": "xpath", "value": xp})
+            return {
+                "primary": primary,
+                "fallbacks": fallbacks,
+                "strategies": strategies,
+                "strategy": "legacy",
+                "stability_score": 0.5,
+                "healed": primary != selector,
+            }
+        return {"primary": selector, "fallbacks": [], "strategies": []}
+
+    def _preferred_selector_for_locator(self, selector: str) -> str:
+        """
+        Devuelve el locator más estable para un selector grabado.
+
+        Orden de resolución:
+          1. locator_healer (algorítmico + Gemma 4 + interactables_index).
+          2. suggest_preferred_locator legacy — grabaciones antiguas.
+          3. Selector original.
+        """
+        bundle = self._heal_bundle_for_selector(selector)
+        primary = str(bundle.get("primary") or selector).strip()
+        if primary and primary != selector:
+            logger.debug(
+                f"locator_healer: '{selector}' → '{primary}' "
+                f"[{bundle.get('strategy')}  score={bundle.get('stability_score')}]"
+            )
+        return primary or selector
 
     def _shadow_info_for_selector(self, selector: str) -> Optional[Dict[str, Any]]:
         """
@@ -2185,6 +2193,8 @@ class {class_name}:
                 continue
 
             use_sel = self._preferred_selector_for_locator(selector)
+            bundle = self._heal_bundle_for_selector(selector)
+            strategies = bundle.get("strategies") if isinstance(bundle.get("strategies"), list) else []
             name = self._generate_element_name(selector)
             xpath = self._selector_to_xpath(use_sel)
             
@@ -2217,6 +2227,14 @@ class {class_name}:
             else:
                 xpath_escaped = self._escape_xpath_for_python_string(xpath)
                 locator_lines.append(f'        self.{locator_type}_{name} = "{xpath_escaped}"')
+                if len(strategies) > 1:
+                    fb_parts = [
+                        f'{s.get("type", "alt")}:{str(s.get("value", ""))[:48]}'
+                        for s in strategies[1:3]
+                        if isinstance(s, dict) and s.get("value")
+                    ]
+                    if fb_parts:
+                        locator_lines.append(f'        # Fallbacks {name}: {" | ".join(fb_parts)}')
 
         return "\n".join(locator_lines)    
 

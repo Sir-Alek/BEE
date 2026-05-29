@@ -1,0 +1,9 @@
+{
+  "analisis_previo": "El usuario debe autenticarse; credenciales válidas llevan al dashboard.",
+  "scenario_title": "Login exitoso con credenciales válidas",
+  "steps": [
+    {"keyword": "Given", "text": "el usuario está en la página de inicio de sesión"},
+    {"keyword": "When", "text": "ingresa usuario y contraseña correctos"},
+    {"keyword": "Then", "text": "accede al dashboard principal"}
+  ]
+}

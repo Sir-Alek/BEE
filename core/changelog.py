@@ -5,6 +5,9 @@ import os
 import re
 from typing import Any
 
+# Entradas mostradas en Configuración → Acerca de → Ver novedades.
+CHANGELOG_UI_ENTRY_LIMIT = 5
+
 _VERSION_HEADER_RE = re.compile(
     r"^##\s+\[([^\]]+)\]\s*(?:-\s*(\d{4}-\d{2}-\d{2}))?\s*$"
 )
@@ -63,12 +66,15 @@ def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
     return entries
 
 
-def load_changelog(repo_root: str) -> list[dict[str, Any]]:
+def load_changelog(repo_root: str, *, limit: int | None = None) -> list[dict[str, Any]]:
     path = os.path.join(repo_root, "CHANGELOG.md")
     if not os.path.isfile(path):
         return []
     try:
         with open(path, encoding="utf-8") as f:
-            return parse_changelog_markdown(f.read())
+            entries = parse_changelog_markdown(f.read())
     except OSError:
         return []
+    if limit is not None and limit > 0:
+        return entries[:limit]
+    return entries

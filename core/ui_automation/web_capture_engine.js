@@ -690,6 +690,43 @@ let actionRecorder = null;
         };
       }
 
+      // ── Índice de nodos interactivos (DOM pruning para IA) ─────────────────────
+      let cachedInteractablesSnapshot = null;
+      let cachedInteractablesUrl = '';
+
+      function collectInteractablesSnapshot(maxNodes) {
+        maxNodes = maxNodes || 80;
+        const selector = 'button, input, select, textarea, a[href], [role="button"], [role="link"], [role="textbox"], [onclick]';
+        const nodes = document.querySelectorAll(selector);
+        const out = [];
+        for (let i = 0; i < nodes.length && out.length < maxNodes; i++) {
+          const el = nodes[i];
+          if (!el || el.offsetParent === null && el.tagName !== 'INPUT') continue;
+          const tag = el.tagName ? el.tagName.toLowerCase() : '';
+          const id = el.id || undefined;
+          const name = el.name || undefined;
+          const text = el.innerText ? el.innerText.trim().substring(0, 50) : undefined;
+          const testId = el.getAttribute('data-testid') || undefined;
+          const role = el.getAttribute('role') || undefined;
+          let cls;
+          if (typeof el.className === 'string' && el.className.trim()) {
+            cls = el.className.trim().split(/\s+/).slice(0, 3).join(' ');
+          }
+          if (!id && !name && !testId && !text && !role) continue;
+          out.push({ tag: tag, id: id, name: name, text: text, test_id: testId, role: role, class: cls });
+        }
+        return out;
+      }
+
+      function getInteractablesSnapshot() {
+        const url = location.href;
+        if (cachedInteractablesUrl !== url || !cachedInteractablesSnapshot) {
+          cachedInteractablesSnapshot = collectInteractablesSnapshot(80);
+          cachedInteractablesUrl = url;
+        }
+        return cachedInteractablesSnapshot;
+      }
+
       // ── Self-Healing: DOM podado alrededor del elemento interactuado ──────────
       function getPrunedDOM(el, maxAncestorDepth, maxBytes) {
         maxAncestorDepth = maxAncestorDepth || 2;
@@ -892,7 +929,8 @@ let actionRecorder = null;
         const ancestors   = getAncestorChain(el, 4);
         const shadow      = detectShadow(composedPath || []);
         const pruned_dom  = getPrunedDOM(el, 2, 4096);
-        return { kind, selector, xpath: xp, tag, id, fingerprint, ancestors, shadow, pruned_dom };
+        const interactables_index = getInteractablesSnapshot();
+        return { kind, selector, xpath: xp, tag, id, fingerprint, ancestors, shadow, pruned_dom, interactables_index };
       }
 
       document.addEventListener('click', (e) => {

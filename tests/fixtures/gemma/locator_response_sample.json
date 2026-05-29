@@ -1,0 +1,8 @@
+{
+  "element_name": "btn_ingresar",
+  "strategies": [
+    {"type": "id", "value": "#login-submit"},
+    {"type": "css", "value": "button.primary-btn"},
+    {"type": "xpath", "value": "//button[contains(text(),'Ingresar')]"}
+  ]
+}

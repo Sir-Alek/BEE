@@ -239,6 +239,89 @@ def suggest_bdd_steps_from_actions(
     return out
 
 
+def ai_cot_mode() -> str:
+    """ELIA_AI_COT_MODE: single (default) | two_pass for Doc-to-BDD."""
+    mode = (os.environ.get("ELIA_AI_COT_MODE") or "single").strip().lower()
+    return mode if mode in ("single", "two_pass") else "single"
+
+
+def run_llama_gbnf_completion(
+    user_prompt: str,
+    *,
+    gbnf_file: str = "bdd_response.gbnf",
+    grammar: Any = None,
+    gguf_path: Optional[str] = None,
+    max_tokens: int = 768,
+    temperature: float = 0.1,
+    system_prefix: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Inferencia con gramática GBNF. Devuelve texto crudo (JSON restringido por grammar).
+    """
+    if not is_ai_runtime_configured():
+        return None
+    try:
+        llm = _get_llama(gguf_path)
+    except (ImportError, FileNotFoundError, OSError):
+        return None
+
+    if grammar is None:
+        from core.gemma_gbnf import load_llama_grammar
+
+        grammar = load_llama_grammar(gbnf_file)
+
+    prefix = system_prefix or (
+        "You are a test automation assistant. Reply with ONLY one valid JSON object, no markdown.\n\n"
+    )
+    full_prompt = prefix + user_prompt
+
+    with _INFERENCE_LOCK:
+        try:
+            kwargs: Dict[str, Any] = {
+                "prompt": full_prompt,
+                "max_tokens": max_tokens,
+                "temperature": float(temperature),
+                "top_p": 0.9,
+            }
+            if grammar is not None:
+                kwargs["grammar"] = grammar
+            result = llm.create_completion(**kwargs)
+        except Exception:
+            return None
+
+    try:
+        choices = result.get("choices") if isinstance(result, dict) else None
+        if choices and isinstance(choices[0], dict):
+            return str(choices[0].get("text", "") or "").strip()
+    except Exception:
+        return None
+    return None
+
+
+def run_llama_gbnf_json(
+    user_prompt: str,
+    *,
+    gbnf_file: str = "bdd_response.gbnf",
+    grammar: Any = None,
+    gguf_path: Optional[str] = None,
+    max_tokens: int = 768,
+    temperature: float = 0.1,
+    system_prefix: Optional[str] = None,
+) -> Optional[dict]:
+    text = run_llama_gbnf_completion(
+        user_prompt,
+        gbnf_file=gbnf_file,
+        grammar=grammar,
+        gguf_path=gguf_path,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system_prefix=system_prefix,
+    )
+    if not text:
+        return None
+    return _extract_json_object(text)
+
+
 def suggest_preferred_locator(
     *,
     selector: str,
@@ -247,6 +330,23 @@ def suggest_preferred_locator(
     element_id: str = "",
     gguf_path: Optional[str] = None,
 ) -> Optional[str]:
+    """Elige el locator más estable; delega en locator_healer cuando hay metadatos."""
+    try:
+        from core.ui_automation.locator_healer import heal_locator
+
+        record = {
+            "selector": selector,
+            "xpath": xpath,
+            "tag": tag,
+            "id": element_id,
+        }
+        healed = heal_locator(record, use_ai=True, temperature=0.05)
+        primary = str(healed.get("primary") or "").strip()
+        if primary:
+            return primary
+    except Exception:
+        pass
+
     prompt = (
         "Pick the more stable locator for automated UI tests (prefer unique id, data-testid, then robust xpath).\n"
         "Output JSON: {\"choice\": \"css\" | \"xpath\", \"reason\": \"short\"}\n"

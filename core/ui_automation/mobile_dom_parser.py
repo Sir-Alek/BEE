@@ -166,6 +166,31 @@ def parse_android_page_source(xml_source: str, *, max_elements: int = 12) -> Lis
     return candidates[:max_elements]
 
 
+def interactables_index_from_page_source(
+    xml_source: str,
+    *,
+    max_elements: int = 80,
+) -> List[Dict[str, Any]]:
+    """
+    Índice JSON de nodos interactivos Android para Gemma / meta de grabación móvil.
+    Complementa el XML crudo con una vista podada similar a la captura web.
+    """
+    elements = parse_android_page_source(xml_source, max_elements=max_elements)
+    index: List[Dict[str, Any]] = []
+    for el in elements:
+        entry: Dict[str, Any] = {
+            "resource_id": el.resource_id or None,
+            "text": (el.text[:50] if el.text else None),
+            "content_desc": (el.content_desc[:50] if el.content_desc else None),
+            "class_name": el.class_name or None,
+            "clickable": el.clickable,
+            "appium_by": el.appium_by or None,
+            "appium_value": el.appium_value or None,
+        }
+        index.append({k: v for k, v in entry.items() if v is not None})
+    return index
+
+
 def screen_anchor_element(elements: List[MobileElement]) -> Optional[MobileElement]:
     """Elemento principal para esperar que la pantalla cargó."""
     if not elements:
