@@ -1,5 +1,6 @@
 *.pem
-*totp*
+license_totp.secret
+*totp*.secret
 license_issued.log
 __pycache__/
 *.pyc
