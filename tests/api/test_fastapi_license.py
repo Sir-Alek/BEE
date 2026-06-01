@@ -41,8 +41,7 @@ class TestLicenseApiFlow(ApiTestCase):
         key_ml = lic.build_activation_key(
             self.FP,
             lic.DURATION_PERM,
-            mobile=True,
-            legacy=True,
+            tier="enterprise",
             issue_ts=1_700_000_000,
         )
         with isolated_license(self.FP, activate=False):

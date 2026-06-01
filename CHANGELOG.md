@@ -4,6 +4,27 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.66] - 2026-05-28
+
+### Añadido
+
+- Planes de suscripción **Basic**, **Professional** y **Enterprise** con mapa de features por tier (Web, API HTTP, Doc-to-BDD, Postman/suites, Locust, Móvil, Legacy, publishers y Team Memory Crypto).
+- Claves de licencia v3 por tier (`ELIA-V3-{BASIC|PRO|ENT}-{duración}-{issue_ts}-{firma}`) y clave beta global sin huella (`ELIA-BETA-GLOBAL-*`).
+- Beta plug-and-play: canal `ELIA_CHANNEL=beta`, caducidad fija embebida (30-jun-2026), guardia temporal (reloj de red + ancla anti-retroceso) y pantalla de fin de beta.
+- Modal comercial de upselling, badges Pro/Enterprise y bloqueos parciales en la pestaña de pruebas API.
+- Endpoint `/api/entitlements` y enriquecimiento de `/api/modules/status` y `/api/license/status`.
+
+### Cambiado
+
+- Los módulos ya no dependen solo de flags M/L: cada feature se valida según el tier activo (backend y UI).
+- `doc_to_bdd` deja de estar incluido en cualquier licencia base; requiere Plan Professional o superior.
+- Fecha límite beta hardcodeada (sin override por variable de entorno) para evitar bypass de caducidad.
+
+### Corregido
+
+- Compilación Cython de `elia_license.py` (código inalcanzable y `del` sobre parámetros).
+- Closure `on_key_press` en grabación Legacy (`nonlocal last_event_emit`).
+
 ## [0.9.65] - 2026-05-28
 
 ### Añadido

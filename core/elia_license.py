@@ -244,10 +244,6 @@ def _expected_signature_beta_global(exp_ts: int) -> str:
         _license_message_beta_global(exp_ts),
         hashlib.sha256,
     ).hexdigest()
-    if duration == "FULL":
-        return machine_fp.encode("ascii") + b"|FULL"
-    flags = _mods_token(mobile, legacy)
-    return f"{machine_fp}|{duration}|{flags}".encode("ascii")
 
 
 def _license_message_v2(
@@ -300,15 +296,12 @@ def build_activation_key(
     duration: str = DURATION_PERM,
     *,
     tier: str = "enterprise",
-    mobile: bool = False,
-    legacy: bool = False,
     issue_ts: Optional[int] = None,
 ) -> str:
     """
     Genera clave v3: ELIA-V3-{TIER}-{dur}-{issue_ts}-{hmac64}.
     tier: basic | professional | enterprise
     """
-    del mobile, legacy  # v3 usa tier; flags M/L solo en v2 legacy
     tier_norm = (tier or "enterprise").strip().lower()
     tier_code = TIER_CODES.get(tier_norm)
     if tier_code is None or tier_code == TIER_CODES[TIER_BETA]:

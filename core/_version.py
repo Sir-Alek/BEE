@@ -17,14 +17,14 @@ ELIA_CONTACT_EMAIL = "elia.qa.software+contacto@gmail.com"
 # - Configuración → Licencia: SupportSettingsContact (SettingsDialog.tsx)
 # - Configuración → Acerca de: solo ELIA_CONTACT_EMAIL (sin formulario beta)
 ELIA_SUPPORT_EMAIL = "elia.qa.software+soporte@gmail.com"
-ELIA_BETA_FEEDBACK_URL = "https://forms.gle/LxrfHressWy48jDZ6"
+ELIA_BETA_FEEDBACK_URL = "https://forms.gle/Ep4AzkPToW8A2Zd99"
 ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
 
 # Canal de distribución: "beta" (plug-and-play, todo desbloqueado hasta deadline) | "release"
 ELIA_CHANNEL = (os.environ.get("ELIA_CHANNEL") or "beta").strip().lower()
 
-# Fecha límite de builds beta (UTC). Extensible vía clave global ELIA-BETA-GLOBAL-*.
-ELIA_BETA_DEADLINE_ISO = (os.environ.get("ELIA_BETA_DEADLINE") or "2026-06-30T23:59:59").strip()
+# Fecha límite fija de builds beta (UTC). No configurable por env para evitar bypass.
+ELIA_BETA_DEADLINE_ISO = "2026-06-30T23:59:59"
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:

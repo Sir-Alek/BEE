@@ -93,7 +93,9 @@ class TestModulesConfig(unittest.TestCase):
         self.assertFalse(status["mobile_recording"])
 
     def test_beta_channel_auto_entitlements(self) -> None:
-        with self._patch_state(), self._patch_fp(), patch.object(lic, "_distribution_channel", return_value="beta"):
+        with self._patch_state(), self._patch_fp(), patch.object(
+            lic, "_get_hidden_backup_paths", return_value=[]
+        ), patch.object(lic, "_distribution_channel", return_value="beta"):
             with patch("core.beta_time_guard.check_beta_expiration") as mock_check:
                 from core.beta_time_guard import BetaGuardResult
 

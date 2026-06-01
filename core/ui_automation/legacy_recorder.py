@@ -245,6 +245,7 @@ class LegacyRecorder:
                 return None
 
             def on_key_press(key: Any) -> Optional[bool]:
+                nonlocal last_event_emit
                 try:
                     key_str = key.char
                 except AttributeError:
