@@ -18,7 +18,7 @@ class TestEliaLicense(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self._state_file = Path(self._tmp.name) / "license_state.json"
         self._fp = "a" * 32
-        self._issue_ts = 1_700_000_000
+        self._issue_ts = 1_770_000_000
         self._key_v2_perm = lic.build_activation_key_v2(
             self._fp, lic.DURATION_PERM, issue_ts=self._issue_ts
         )
@@ -70,6 +70,10 @@ class TestEliaLicense(unittest.TestCase):
                 re.IGNORECASE,
             ),
         )
+
+    def test_build_activation_key_rejects_perm(self) -> None:
+        with self.assertRaises(ValueError):
+            lic.build_activation_key(self._fp, lic.DURATION_PERM, issue_ts=self._issue_ts)
 
     def test_beta_global_key_no_machine(self) -> None:
         key = lic.build_beta_global_key(exp_ts=self._issue_ts + 86400)

@@ -1,0 +1,5 @@
+*.pem
+*totp*
+license_issued.log
+__pycache__/
+*.pyc

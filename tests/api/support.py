@@ -19,6 +19,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from core import elia_license as lic
+from tests.helpers.license_v4_test import build_test_v4_key
 from webui.fastapi_app import create_app
 from webui.job_manager import JobManager
 
@@ -167,7 +168,7 @@ def isolated_license(
     key_builder=None,
 ) -> Generator[Path, None, None]:
     """
-    Temporary license_state.json under a temp dir; optionally activates a perm key.
+    Temporary license_state.json under a temp dir; optionally activates a v4 test key.
     """
     with tempfile.TemporaryDirectory() as tmp:
         state_file = Path(tmp) / "license_state.json"
@@ -185,7 +186,7 @@ def isolated_license(
         try:
             if activate:
                 builder = key_builder or (
-                    lambda fp: lic.build_activation_key(fp, lic.DURATION_PERM, issue_ts=1_700_000_000)
+                    lambda fp: build_test_v4_key(fp, issue_ts=1_770_000_000)
                 )
                 lic.activate_with_key(builder(fingerprint))
             yield state_file

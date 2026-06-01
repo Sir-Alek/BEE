@@ -44,6 +44,7 @@ from core.entitlements import (
     legacy_modules_from_features,
 )
 from core._version import elia_beta_deadline_ts
+from core.license_verify import verify_v4_key
 
 
 def _distribution_channel() -> str:
@@ -293,20 +294,22 @@ def _valid_issue_ts(issue_ts: int) -> bool:
 
 def build_activation_key(
     machine_fp: str,
-    duration: str = DURATION_PERM,
+    duration: str = DURATION_365D,
     *,
     tier: str = "enterprise",
     issue_ts: Optional[int] = None,
 ) -> str:
     """
-    Genera clave v3: ELIA-V3-{TIER}-{dur}-{issue_ts}-{hmac64}.
-    tier: basic | professional | enterprise
+    Genera clave v3 legada (HMAC): ELIA-V3-{TIER}-{dur}-{issue_ts}-{hmac64}.
+    Preferir ``license-tools/generate_license_key.py`` (v4 Ed25519).
     """
     tier_norm = (tier or "enterprise").strip().lower()
     tier_code = TIER_CODES.get(tier_norm)
     if tier_code is None or tier_code == TIER_CODES[TIER_BETA]:
         raise ValueError(f"Tier no válido para clave por máquina: {tier!r}")
     dur = duration.upper()
+    if dur == DURATION_PERM:
+        raise ValueError("Duración PERM eliminada; use 15D, 30D o 365D (o license-tools v4).")
     if dur not in DURATION_SECONDS:
         raise ValueError(f"Duración no válida: {duration}")
     fp = machine_fp.strip().lower()
@@ -386,6 +389,8 @@ class ParsedLicenseKey:
     issue_ts: Optional[int] = None
     beta_global_exp: Optional[int] = None
     is_beta_global: bool = False
+    signed_expires_at: Optional[float] = None
+    license_format: str = "legacy"
 
     @property
     def features(self) -> Dict[str, bool]:
@@ -402,8 +407,32 @@ def _sig_matches(provided: str, expected: str) -> bool:
     return len(provided) >= 32 and expected.startswith(provided[:32])
 
 
+def _verified_v4_to_parsed(verified: Any) -> ParsedLicenseKey:
+    return ParsedLicenseKey(
+        duration=verified.duration,
+        tier=verified.tier,
+        mobile=verified.mobile,
+        legacy=verified.legacy,
+        issue_ts=verified.issue_ts,
+        beta_global_exp=verified.beta_global_exp,
+        is_beta_global=verified.is_beta_global,
+        signed_expires_at=verified.expires_at,
+        license_format="v4",
+    )
+
+
+def _match_v4_key(key: str, machine_fp: str) -> Optional[ParsedLicenseKey]:
+    verified = verify_v4_key(key, machine_fp)
+    if verified is None:
+        return None
+    return _verified_v4_to_parsed(verified)
+
+
 def _match_beta_global_key(key: str) -> Optional[ParsedLicenseKey]:
     raw = (key or "").strip().replace(" ", "")
+    v4 = verify_v4_key(raw, None)
+    if v4 is not None and v4.is_beta_global:
+        return _verified_v4_to_parsed(v4)
     m = _KEY_BETA_GLOBAL_RE.match(raw)
     if not m:
         return None
@@ -432,6 +461,10 @@ def _match_key_signature(key: str, machine_fp: str) -> Optional[ParsedLicenseKey
     beta = _match_beta_global_key(raw)
     if beta is not None:
         return beta
+
+    v4 = _match_v4_key(raw, machine_fp)
+    if v4 is not None:
+        return v4
 
     m3 = _KEY_PREFIX_V3_RE.match(raw)
     if m3:
@@ -707,6 +740,8 @@ def _load_effective_state() -> Dict[str, Any]:
             sec = DURATION_SECONDS.get(parsed.duration)
             if parsed.is_beta_global:
                 state["expires_at"] = float(parsed.beta_global_exp or parsed.issue_ts or 0) or None
+            elif parsed.signed_expires_at is not None:
+                state["expires_at"] = float(parsed.signed_expires_at)
             else:
                 base_ts = float(parsed.issue_ts if parsed.issue_ts is not None else activated_ts)
                 state["expires_at"] = (base_ts + sec) if sec is not None else None
@@ -774,8 +809,11 @@ def _resolve_license_from_state(
         activated_ts = float(state.get("activated_ts") or 0.0)
         if activated_ts <= 0:
             activated_ts = time.time()
-    sec = DURATION_SECONDS.get(parsed.duration)
-    exp_ts = (activated_ts + sec) if sec is not None else None
+    if parsed.signed_expires_at is not None:
+        exp_ts = float(parsed.signed_expires_at)
+    else:
+        sec = DURATION_SECONDS.get(parsed.duration)
+        exp_ts = (activated_ts + sec) if sec is not None else None
     return parsed, activated_ts, exp_ts
 
 
@@ -808,14 +846,18 @@ def activate_with_key(key: str) -> bool:
     state = _load_state()
     key_norm = _normalize_stored_key(key)
     issue_ts = float(parsed.issue_ts) if parsed.issue_ts is not None else time.time()
-    sec = DURATION_SECONDS.get(parsed.duration)
+    if parsed.signed_expires_at is not None:
+        expires_at: Optional[float] = float(parsed.signed_expires_at)
+    else:
+        sec = DURATION_SECONDS.get(parsed.duration)
+        expires_at = (issue_ts + sec) if sec is not None else None
     state["saved_activation_key"] = key_norm
     state["activated"] = True
     state["activated_ts"] = issue_ts
     state["issue_ts"] = parsed.issue_ts
     state["duration_code"] = parsed.duration
     state["tier"] = parsed.tier
-    state["expires_at"] = (issue_ts + sec) if sec is not None else None
+    state["expires_at"] = expires_at
     state["licensed_modules"] = _licensed_modules_dict(parsed)
     state["licensed_features"] = _licensed_features_dict(parsed)
     _save_state(state)

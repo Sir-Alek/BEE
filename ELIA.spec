@@ -138,6 +138,7 @@ a = Analysis(
     binaries=llama_binaries + excel_binaries + recording_binaries + cython_binaries,
     datas=_datas_if_exists(
         ('core/node',       'core/node'),
+        ('core/license_public_keys.json', 'core'),
         ('frontend/dist',   'frontend/dist'),   # generado con: npm run build (en frontend/)
         ('resources',       'resources'),
         ('Licence.txt',     '.'),

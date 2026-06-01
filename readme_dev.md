@@ -153,16 +153,19 @@ python -m PyInstaller --noconfirm ELIA.spec
 - **Módulos:** `mobile_recording` y `legacy_recording` vienen **solo** de la clave activa (flags `M`/`L`). `doc_to_bdd` requiere licencia vigente. Las claves de módulo individuales no tienen efecto en producción.
 - **Huella de equipo:** `get_machine_fingerprint()` usa hardware estable (Windows: `wmic` baseboard/cpu/csproduct + MAC); **no** usa el nombre del equipo, para sobrevivir a reinstalar Windows.
 - **Estado:** `%LOCALAPPDATA%\ELIA\license_state.json` + respaldos de comodidad firmados (HMAC) con la clave. Borrar el JSON restaura desde respaldo si existe; borrar todo exige volver a introducir la clave.
-- **Activación:** UI web, o `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar. Se **revalida HMAC en cada arranque**; editar solo `"activated": true` no concede licencia.
+- **Activación:** UI web, o `ELIA_ACTIVATION_KEY=<clave>` antes de arrancar. Claves **v4** (Ed25519) preferidas; v1/v2/v3 HMAC legado aún se verifican.
 - **Huella en el PC del usuario (soporte):** `python scripts/show_machine_fingerprint.py` (no requiere `ELIA_SKIP_LICENSE` ni licencia activa).
-- **Formato de clave v2:** `ELIA-{dur}-{mods}-{issue_ts}-{hmac64}` — el timestamp de emisión va en la clave y en el HMAC; la caducidad no depende de `activated_ts` en JSON.
-- **Claves v1** (`ELIA-{dur}-{mods}-{hmac64}` sin timestamp): legado; caducidad aún usa `activated_ts` del JSON. Reemitir con el generador actual.
-- **Generar clave** (`scripts/generate_license_key.py`; `_LICENSE_SEED` debe coincidir con el build):
-  - `python scripts/generate_license_key.py --machine <huella32hex>` — emite v2 con `issue_ts` = ahora
-  - `--duration 15d|30d|365d|perm` — temporal o permanente
-  - `--issue-ts <unix>` — solo pruebas (timestamp fijo)
-  - `--mobile` / `--legacy` — incluir grabación móvil o legacy en la licencia
-  - Ejemplo: `python scripts/generate_license_key.py --machine <huella> --duration 30d --mobile --legacy`
+- **Formato v4 (producción):** `ELIA-V4.{kid}.{payload_b64url}.{sig_b64url}` — firma Ed25519; claves públicas en `core/license_public_keys.json`.
+- **Generar clave v4** (`license-tools/` — **no** se empaqueta en ELIA):
+  - `pip install -r license-tools/requirements.txt`
+  - `python license-tools/setup_license_keys.py --update-repo`
+  - `python license-tools/setup_license_totp.py`
+  - `python license-tools/generate_license_key.py --machine <huella32hex> --tier professional --duration 365d`
+  - `--duration 15d|30d|365d` — sin licencia permanente (PERM eliminado)
+  - `--beta-global` — clave beta global v4
+  - TOTP obligatorio al firmar (bypass solo CI: `ELIA_LICENSE_TOTP_BYPASS=1`)
+- **Legado v3 HMAC** (solo tests / claves antiguas): `build_activation_key` en `elia_license.py` — deprecado.
+- **Formato v2 legado:** `ELIA-{dur}-{mods}-{issue_ts}-{hmac64}`
 - **Solo desarrollo:** `ELIA_SKIP_LICENSE=1` omite comprobaciones y **habilita todos los módulos** (móvil, legacy, doc_to_bdd). No usar en entregas.
 - Tras cambiar `elia_license.py` o `modules_config.py`, recompila Cython (`python setup_cython.py build_ext --inplace`) para que el `.pyd` no quede desactualizado.
 

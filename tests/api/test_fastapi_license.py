@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from core import elia_license as lic
 from tests.api.support import ApiTestCase, elia_test_app, isolated_license
+from tests.helpers.license_v4_test import build_test_v4_key
 
 
 class TestLicenseApiFlow(ApiTestCase):
@@ -22,7 +23,7 @@ class TestLicenseApiFlow(ApiTestCase):
             self.assertEqual(body.get("machine_fingerprint"), self.FP)
 
     def test_activate_valid_key_via_api(self) -> None:
-        key = lic.build_activation_key(self.FP, lic.DURATION_PERM, issue_ts=1_700_000_000)
+        key = build_test_v4_key(self.FP, issue_ts=1_770_000_000)
         with elia_test_app(licensed=False, fingerprint=self.FP) as (api, _):
             code, body = api.post_json("/api/license/activate", {"key": key})
             self.assertEqual(code, 200)
@@ -31,18 +32,18 @@ class TestLicenseApiFlow(ApiTestCase):
 
     def test_activate_wrong_machine_key_rejected(self) -> None:
         other_fp = "e" * 32
-        key = lic.build_activation_key(other_fp, lic.DURATION_PERM, issue_ts=1_700_000_000)
+        key = build_test_v4_key(other_fp, issue_ts=1_770_000_000)
         with elia_test_app(licensed=False, fingerprint=self.FP) as (api, _):
             code, body = api.post_json("/api/license/activate", {"key": key})
             self.assertEqual(code, 200)
             self.assertFalse(body.get("ok"))
 
     def test_modules_status_tracks_license_flags(self) -> None:
-        key_ml = lic.build_activation_key(
+        key_ml = build_test_v4_key(
             self.FP,
-            lic.DURATION_PERM,
-            tier="enterprise",
-            issue_ts=1_700_000_000,
+            tier_code="ENT",
+            duration="365D",
+            issue_ts=1_770_000_000,
         )
         with isolated_license(self.FP, activate=False):
             with patch.object(lic, "get_machine_fingerprint", return_value=self.FP):
@@ -60,7 +61,12 @@ class TestLicenseApiFlow(ApiTestCase):
                     self.assertTrue(body["doc_to_bdd"])
 
     def test_expired_license_blocks_jobs_via_api(self) -> None:
-        key_15d = lic.build_activation_key(self.FP, lic.DURATION_15D, issue_ts=1_700_000_000)
+        key_15d = build_test_v4_key(
+            self.FP,
+            tier_code="BASIC",
+            duration="15D",
+            issue_ts=1_700_000_000,
+        )
         with isolated_license(self.FP, activate=False):
             with patch.object(lic, "get_machine_fingerprint", return_value=self.FP):
                 lic.activate_with_key(key_15d)

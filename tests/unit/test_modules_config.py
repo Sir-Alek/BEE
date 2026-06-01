@@ -23,12 +23,12 @@ class TestModulesConfig(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self._state_file = Path(self._tmp.name) / "license_state.json"
         self._fp = "b" * 32
-        self._issue_ts = 1_700_000_000
+        self._issue_ts = 1_770_000_000
         self._key_basic = lic.build_activation_key(
-            self._fp, lic.DURATION_PERM, tier="basic", issue_ts=self._issue_ts
+            self._fp, lic.DURATION_365D, tier="basic", issue_ts=self._issue_ts
         )
         self._key_pro = lic.build_activation_key(
-            self._fp, lic.DURATION_PERM, tier="professional", issue_ts=self._issue_ts
+            self._fp, lic.DURATION_365D, tier="professional", issue_ts=self._issue_ts
         )
         self._key_ml = lic.build_activation_key_v2(
             self._fp,

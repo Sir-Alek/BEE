@@ -4,6 +4,26 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.67] - 2026-05-28
+
+### Añadido
+
+- Licencias **v4 asimétricas Ed25519**: formato `ELIA-V4.{kid}.{payload}.{firma}`; clave privada solo en `license-tools/`.
+- Rotación de claves por **`kid`** en `core/license_public_keys.json` (varias claves públicas embebidas).
+- Generador externo `license-tools/` con TOTP (`pyotp`), scripts de setup de claves y auditoría local de emisiones.
+- Módulo `core/license_verify.py` (solo verificación; sin secreto simétrico en el cliente).
+
+### Cambiado
+
+- **Eliminada emisión de licencias permanentes (PERM)**; duraciones válidas: 15D, 30D, 365D.
+- `scripts/generate_license_key.py` redirige a `license-tools/generate_license_key.py`.
+- Claves v1/v2/v3 HMAC siguen verificándose como legado; nuevas emisiones usan v4.
+
+### Seguridad
+
+- El binario de ELIA ya no contiene `_LICENSE_SEED` usable para falsificar licencias nuevas (v4).
+- TOTP obligatorio al firmar (salvo bypass documentado solo para CI/desarrollo).
+
 ## [0.9.66] - 2026-05-28
 
 ### Añadido
