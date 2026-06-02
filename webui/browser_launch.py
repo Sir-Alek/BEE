@@ -105,6 +105,39 @@ def _candidate_executables() -> List[str]:
     return uniq
 
 
+def _chromium_no_restore_flags() -> List[str]:
+    return [
+        "--new-window",
+        "--start-maximized",
+        "--disable-restore-session-state",
+        "--no-first-run",
+        "--disable-session-crashed-bubble",
+    ]
+
+
+def open_elia_home_url(url: str) -> None:
+    """
+    Abre la UI de ELIA en una ventana limpia, sin restaurar pestañas zombie del perfil.
+    """
+    old_pids, old_hwnds = _browser_launch_snapshots()
+    flags = _chromium_no_restore_flags()
+    for exe in _candidate_executables():
+        if not os.path.isfile(exe):
+            continue
+        try:
+            subprocess.Popen(
+                [exe, *flags, url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=sys.platform != "win32",
+            )
+            _focus_new_browser_window_later(old_pids, maximize=True, old_hwnds=old_hwnds)
+            return
+        except Exception:
+            continue
+    open_url_in_new_browser_window(url)
+
+
 def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
     old_pids, old_hwnds = _browser_launch_snapshots()
 
@@ -113,7 +146,7 @@ def _try_chromium_new_window(url: str, executables: Iterable[str]) -> bool:
             continue
         try:
             subprocess.Popen(
-                [exe, "--new-window", "--start-maximized", url],
+                [exe, *_chromium_no_restore_flags(), url],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=sys.platform != "win32",
@@ -140,6 +173,33 @@ def open_url_in_new_browser_window(url: str) -> None:
         except Exception:
             return
     _focus_new_browser_window_later(old_pids, maximize=True, old_hwnds=old_hwnds)
+
+
+def open_url_in_browser_tab(url: str) -> None:
+    """
+    Abre la URL en una pestaña del navegador existente (sin --new-window).
+    Usado al re-enlazar una segunda instancia de ELIA al servidor ya activo.
+    """
+    for exe in _candidate_executables():
+        if not os.path.isfile(exe):
+            continue
+        try:
+            subprocess.Popen(
+                [exe, url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=sys.platform != "win32",
+            )
+            return
+        except Exception:
+            continue
+    try:
+        webbrowser.open(url, new=0)
+    except Exception:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
 
 
 def _try_chromium_open_urls(urls: Sequence[str], executables: Iterable[str]) -> bool:

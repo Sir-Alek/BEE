@@ -4,8 +4,8 @@ import { JobPromptRouter } from "./JobPromptRouter";
 import { JobRunningPanel } from "./JobRunningPanel";
 import { JobCancelledPanel, JobDonePanel } from "./JobTerminalPanels";
 import { cancelConvertJob } from "../api";
-import { broadcastJobTabClosed } from "./promptNav";
-import type { JobEvent } from "./jobEvents";
+import { isReloadNavigation, requestAppExitIfClosingWhenOrphanJobTab } from "../app/homeNavigation";
+import { broadcastJobTabClosed } from "./promptNav";import type { JobEvent } from "./jobEvents";
 import type { JobProgressState } from "./useJobProgress";
 import type { ActivePrompt } from "../types";
 
@@ -23,6 +23,7 @@ export type JobWorkspaceProps = {
   bddPreviewText: string;
   setBddPreviewText: (v: string) => void;
   betaFeedbackUrl?: string | null;
+  jobLoadError?: string | null;
   /** Versión comercial: aboutInfo?.support_email (ver JobErrorPanel.tsx) */
   // supportEmail?: string | null;
 };
@@ -30,12 +31,14 @@ export type JobWorkspaceProps = {
 export function JobWorkspace(props: JobWorkspaceProps) {
   const {
     c, jobId, job, jobEvents, activePrompt, stoppingRecording, setStoppingRecording,
-    setErrorText, textValue, setTextValue, bddPreviewText, setBddPreviewText, betaFeedbackUrl,
+    setErrorText, textValue, setTextValue, bddPreviewText, setBddPreviewText, betaFeedbackUrl, jobLoadError,
   } = props;
 
   useEffect(() => {
     if (!jobId) return;
     const onPageHide = () => {
+      if (isReloadNavigation()) return;
+      requestAppExitIfClosingWhenOrphanJobTab();
       if (sessionStorage.getItem(`elia_job_finished_broadcast:${jobId}`)) return;
       broadcastJobTabClosed(jobId);
       void cancelConvertJob(jobId).catch(() => {});
@@ -46,7 +49,12 @@ export function JobWorkspace(props: JobWorkspaceProps) {
 
   return (
     <>
-      {!job && jobId && <div style={{ color: c.muted }}>Cargando...</div>}
+      {!job && jobId && !jobLoadError && <div style={{ color: c.muted }}>Cargando...</div>}
+      {!job && jobId && jobLoadError ? (
+        <div style={{ color: c.errorBody ?? c.muted, fontSize: 14 }}>
+          {jobLoadError} Esta pestaña se cerrará sola…
+        </div>
+      ) : null}
 
       {job && job.state === "running" && !activePrompt && jobId && (
         <JobRunningPanel

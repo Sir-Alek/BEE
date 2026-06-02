@@ -3,11 +3,20 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
+
+
+def _subprocess_popen_kwargs() -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {}
+    if sys.platform == "win32":
+        # Evita ventanas extra y reduce handles colgados en consolas Windows.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return kwargs
 
 
 @dataclass
@@ -83,6 +92,7 @@ class TestRunnerService:
             self._runs[run_id] = run
 
         def _worker() -> None:
+            proc: Optional[subprocess.Popen[str]] = None
             try:
                 proc = subprocess.Popen(
                     command,
@@ -93,18 +103,37 @@ class TestRunnerService:
                     text=True,
                     encoding="utf-8",
                     errors="replace",
+                    bufsize=1,
+                    **_subprocess_popen_kwargs(),
                 )
                 assert proc.stdout is not None
-                for raw in proc.stdout:
-                    line = raw.rstrip("\n")
+
+                def _append_line(line: str) -> None:
                     with self._line_cond:
                         run.lines.append(line)
                         self._line_cond.notify_all()
                     if on_line:
                         on_line(line)
-                proc.wait()
-                run.return_code = int(proc.returncode or 0)
+
+                def _read_stdout() -> None:
+                    try:
+                        for raw in iter(proc.stdout.readline, ""):
+                            if raw:
+                                _append_line(raw.rstrip("\n"))
+                    except Exception:
+                        pass
+
+                reader = threading.Thread(target=_read_stdout, daemon=True)
+                reader.start()
+
+                run.return_code = int(proc.wait() or 0)
                 run.state = "done" if run.return_code == 0 else "error"
+
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
+                reader.join(timeout=5.0)
             except Exception as e:
                 run.error = str(e)
                 run.state = "error"

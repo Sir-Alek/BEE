@@ -29,6 +29,7 @@ export function HomeSurface() {
     setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
+    homeDataRefresh, pendingRunProject, clearPendingRunProject,
   } = useHomeUiContext();
   const {
     connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -47,12 +48,21 @@ export function HomeSurface() {
   } = useRecordingContext();
 
   const [runProject, setRunProject] = useState("");
-  const runProjects = usePlatformProjects(platform);
+  const runProjects = usePlatformProjects(platform, homeDataRefresh);
   const features = useMemo(() => featureFromModules(modules), [modules]);
 
   useEffect(() => {
     setRunProject("");
   }, [platform]);
+
+  useEffect(() => {
+    if (!pendingRunProject) return;
+    if (pendingRunProject.platform !== platform) return;
+    if (runProjects.includes(pendingRunProject.project)) {
+      setRunProject(pendingRunProject.project);
+      clearPendingRunProject();
+    }
+  }, [pendingRunProject, platform, runProjects, clearPendingRunProject]);
 
   if (!initialChecked) return null;
 
@@ -532,7 +542,7 @@ export function HomeSurface() {
                     />
                   </div>
                   <RunWorkspacePanel
-                    key={platform}
+                    key={`${platform}-${runProject}-${homeDataRefresh}`}
                     c={c}
                     platform={platform}
                     project={runProject}

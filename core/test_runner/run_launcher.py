@@ -29,6 +29,7 @@ def build_run_env(
     env["ELIA_BASE_DIR"] = elia_base_dir()
     env["ELIA_PLATFORM"] = platform
     env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
     logo = os.path.join(elia_base_dir(), "resources", "logo_elia.png")
     if os.path.isfile(logo):
         env["ELIA_LOGO_PATH"] = logo
@@ -46,7 +47,15 @@ def prepare_project(platform: str, project: str) -> str:
 
 
 def build_behave_command(feature: str = "features") -> List[str]:
-    return [sys.executable, "-m", "behave", feature]
+    return [
+        sys.executable,
+        "-u",
+        "-m",
+        "behave",
+        "--no-logcapture",
+        "--no-capture",
+        feature,
+    ]
 
 
 def build_locust_command(

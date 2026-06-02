@@ -1,5 +1,5 @@
 import React from "react";
-import { goHomeInThisTab, tryFocusOpenerAndCloseThisTab } from "../app/utils";
+import { inferBehaveProjectFromProgress, returnToHomeFromJobTab } from "../app/homeNavigation";
 import { GeneratedFilesResultView } from "./jobUiComponents";
 import type { JobProgressState } from "./useJobProgress";
 
@@ -26,17 +26,19 @@ export function JobDonePanel(props: Props) {
       </div>
       <div style={{ marginTop: 12, fontSize: 13, color: c.successHint }}>
         <b>Volver al inicio:</b> si abriste el flujo desde la pestaña de inicio, se cierra <b>esta</b> pestaña y se
-        pone al frente la de inicio (no duplicas el inicio). Si abriste solo esta URL (p. ej. desde el escritorio),
-        se abrirá otra vista de inicio en esta pestaña.
+        pone al frente la de inicio con el proyecto actualizado. Si abriste solo esta URL, esta pestaña mostrará el inicio.
       </div>
       <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <button
           type="button"
           title="Cierra esta pestaña de trabajo y enfoca la de inicio, si existe."
           onClick={() => {
-            if (!tryFocusOpenerAndCloseThisTab()) {
-              goHomeInThisTab();
-            }
+            const inferred = inferBehaveProjectFromProgress(job.progress);
+            returnToHomeFromJobTab({
+              jobId: job.job_id,
+              platform: inferred.platform,
+              project: inferred.project,
+            });
           }}
           style={{
             padding: "10px 14px",
@@ -70,11 +72,7 @@ export function JobCancelledPanel(props: { c: Record<string, string> }) {
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <button
           type="button"
-          onClick={() => {
-            if (!tryFocusOpenerAndCloseThisTab()) {
-              goHomeInThisTab();
-            }
-          }}
+          onClick={() => returnToHomeFromJobTab()}
           style={{
             padding: "10px 14px",
             borderRadius: 10,

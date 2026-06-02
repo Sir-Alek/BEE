@@ -62,7 +62,7 @@ def _needs_env_upgrade(path: Path, platform: str) -> bool:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return True
-    marker = f"ELIA_ENV_{platform.upper()}_V2"
+    marker = f"ELIA_ENV_{platform.upper()}_V3"
     return marker not in text
 
 
@@ -76,7 +76,7 @@ def _environment_template(platform: str) -> str:
     return _WEB_ENVIRONMENT_PY
 
 
-_WEB_ENVIRONMENT_PY = '''"""Entorno Behave web — ELIA_ENV_WEB_V2"""
+_WEB_ENVIRONMENT_PY = '''"""Entorno Behave web — ELIA_ENV_WEB_V3"""
 import os
 import logging
 from datetime import datetime
@@ -99,26 +99,71 @@ def before_scenario(context, scenario):
     headless_mode = os.getenv("HEADLESS", "true").lower() == "true"
     context.driver = BrowserSessionFactory.create_driver(headless_mode)
     context.diagnostic_logger = logging.getLogger("diagnostic")
+    context.diagnostic_logger.info("\\n✓ Iniciando escenario: %s", scenario.name)
     FeatureDatasetLoader.load_dataset(context)
     RunEvidenceCoordinator.setup_evidence(context, scenario)
     RunLogCoordinator.setup_scenario_logger(context, scenario)
+    logging.info(f"\\n✓ --> Iniciando escenario: {scenario.name}")
 
 def after_step(context, step):
     RunLogCoordinator.log_step_diagnostics(context, step)
-    if context.generate_evidence and step.status.name == "failed" and hasattr(context, "driver"):
+    if not context.generate_evidence:
+        return
+    step_status = step.status.name
+    if step_status == "passed":
+        logging.info(f"    [Step] PASADO: {step.keyword} {step.name}")
+    elif step_status == "skipped":
+        logging.warning(f"    [Step] OMITIDO: {step.keyword} {step.name}")
+    elif step_status == "failed":
+        if hasattr(context, "driver"):
+            bf.ui_inject_tab_indicator(context.driver, is_redirection=True)
+        error_msg = RunEvidenceCoordinator.parse_step_error(
+            context, step, str(step.exception) if step.exception else ""
+        )
+        logging.error(f"    [Step] FALLIDO: {step.keyword} {step.name} - {error_msg}")
         RunEvidenceCoordinator.capture_failure(context, step)
 
 def after_scenario(context, scenario):
-    if hasattr(context, "driver"):
-        context.driver.quit()
+    drv = getattr(context, "driver", None)
+    if drv is not None:
+        try:
+            drv.quit()
+        except Exception as e:
+            logging.warning("driver.quit() falló: %s", e)
+        finally:
+            context.driver = None
     RunStatsTracker.update_stats(context, scenario)
-    if context.generate_evidence and hasattr(context, "start_time"):
-        end_time = datetime.now()
-        if hasattr(context, "scenario_file_handler"):
-            context.scenario_file_handler.flush()
-            logging.root.removeHandler(context.scenario_file_handler)
-            context.scenario_file_handler.close()
-        RunReportPublisher.generate_scenario_report(context, scenario, end_time, getattr(context, "failure_screenshots", None))
+    status_name = scenario.status.name
+    if hasattr(context, "start_time"):
+        duration = datetime.now() - context.start_time
+        context.diagnostic_logger.info(
+            "Escenario completado: %s | Duración: %s | Estado: %s",
+            scenario.name,
+            duration,
+            status_name,
+        )
+    if context.generate_evidence:
+        status_msg = {"passed": "PASADO", "failed": "FALLIDO", "skipped": "OMITIDO"}
+        logging_fn = {"passed": logging.info, "failed": logging.error, "skipped": logging.warning}
+        if status_name in status_msg:
+            logging_fn[status_name](f"<-- Escenario {status_msg[status_name]}: {scenario.name}")
+        logging.info("==== FIN DE LA EJECUCIÓN ====")
+        logging.info(f"Resultado: {'Ok' if status_name == 'passed' else 'FAILED'}")
+        if hasattr(context, "txt_filename") and hasattr(context, "start_time"):
+            end_time = datetime.now()
+            duration_obj = end_time - context.start_time
+            if hasattr(context, "scenario_file_handler"):
+                context.scenario_file_handler.flush()
+                logging.root.removeHandler(context.scenario_file_handler)
+                context.scenario_file_handler.close()
+                delattr(context, "scenario_file_handler")
+            try:
+                with open(context.txt_filename, "a", encoding="utf-8") as f:
+                    f.write(f"\\nTook: {duration_obj}\\n")
+            except Exception as e:
+                logging.error(f"No se pudo escribir el Took en el log: {e}")
+            screenshots = getattr(context, "failure_screenshots", None)
+            RunReportPublisher.generate_scenario_report(context, scenario, end_time, screenshots)
 
 def after_feature(context, feature):
     RunLogCoordinator.consolidate_feature_logs(context, feature)

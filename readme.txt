@@ -207,7 +207,7 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
   • Licencia — Estado del periodo de pruebas de la Beta Pública. Monitorea de 
     forma autónoma el tiempo restante de tus 30 días de uso libre sin requerir 
     intervención o activación manual.
-  • Acerca de — Resumen de metadatos de ELIA: versión del producto (0.9.67), 
+  • Acerca de — Resumen de metadatos de ELIA: versión del producto (0.9.68), 
     créditos del desarrollador, enlaces al canal oficial de soporte y acceso al 
     formulario exclusivo para reportar feedback de la beta.
 
@@ -220,7 +220,7 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
   
   • Formulario de Feedback Beta: https://forms.gle/Ep4AzkPToW8A2Zd99
   • Correo de Contacto: elia.qa.software+contacto@gmail.com
-  • Versión del Producto: 0.9.67 (Canal: Beta Pública)
+  • Versión del Producto: 0.9.68 (Canal: Beta Pública)
   • Desarrollador: Alejandro Ramírez </Sir_Alek>
 
 ================================================================================

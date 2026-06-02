@@ -161,7 +161,7 @@ export function RunWorkspacePanel(props: Props) {
         onClick={() => setFullscreen((v) => !v)}
         style={btn(c, undefined, undefined, true)}
       >
-        {fullscreen ? "Ôñô" : "Ôñó"}
+        {fullscreen ? "🡷" : "🡵"}
       </button>
     </>
   );
@@ -206,7 +206,14 @@ export function RunWorkspacePanel(props: Props) {
           value={featureFile}
           onChange={(e) => setFeatureFile(e.target.value)}
           placeholder="features o features/mi.feature"
-          style={{ flex: "1 1 200px", padding: "8px 10px", borderRadius: 8, border: `1px solid ${c.inputBorder}` }}
+          style={{
+            flex: "1 1 200px",
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${c.inputBorder}`,
+            background: c.inputBg,
+            color: c.text,
+          }}
         />
         <button type="button" disabled={!canRunJobs || busy} onClick={runBehave} style={btn(c, c.primary, c.primaryFg)}>
           Ejecutar Behave
@@ -226,7 +233,14 @@ export function RunWorkspacePanel(props: Props) {
             <input
               value={loadUsers}
               onChange={(e) => setLoadUsers(e.target.value)}
-              style={{ width: 70, padding: "8px 10px", borderRadius: 8, border: `1px solid ${c.inputBorder}` }}
+              style={{
+                width: 70,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: `1px solid ${c.inputBorder}`,
+                background: c.inputBg,
+                color: c.text,
+              }}
             />
             <button type="button" disabled={!canRunJobs || busy} onClick={runLocust} style={btn(c)}>
               Ejecutar Locust
@@ -339,13 +353,20 @@ function btn(
   };
 }
 
-export function usePlatformProjects(platform: string) {
+export function usePlatformProjects(platform: string, refreshKey = 0) {
   const [projects, setProjects] = useState<string[]>([]);
   useEffect(() => {
-    setProjects([]);
+    let cancelled = false;
     void getPlatformProjects(platform)
-      .then((r) => setProjects(r.projects))
-      .catch(() => setProjects([]));
-  }, [platform]);
+      .then((r) => {
+        if (!cancelled) setProjects(r.projects);
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, refreshKey]);
   return projects;
 }

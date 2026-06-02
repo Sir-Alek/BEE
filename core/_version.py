@@ -9,7 +9,7 @@ import calendar
 import os
 from datetime import datetime, timezone
 
-ELIA_VERSION = "0.9.67"
+ELIA_VERSION = "0.9.68"
 ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
 ELIA_CONTACT_EMAIL = "elia.qa.software+contacto@gmail.com"
 # Versión comercial (≥1.0):

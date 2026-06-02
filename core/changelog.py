@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 # Entradas mostradas en Configuración → Acerca de → Ver novedades.
-CHANGELOG_UI_ENTRY_LIMIT = 5
+CHANGELOG_UI_ENTRY_LIMIT = 3
 
 _VERSION_HEADER_RE = re.compile(
     r"^##\s+\[([^\]]+)\]\s*(?:-\s*(\d{4}-\d{2}-\d{2}))?\s*$"

@@ -43,6 +43,9 @@ export type HomeUiContextValue = {
   availableRecordings: RecordingRef[];
   setAvailableScenarios: React.Dispatch<React.SetStateAction<ScenarioRef[]>>;
   setAvailableRecordings: React.Dispatch<React.SetStateAction<RecordingRef[]>>;
+  homeDataRefresh: number;
+  pendingRunProject: { platform: string; project: string } | null;
+  clearPendingRunProject: () => void;
 };
 
 const HomeUiContext = createContext<HomeUiContextValue | null>(null);

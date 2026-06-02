@@ -1,15 +1,11 @@
 import { cancelConvertJob, PROMPT_ANSWER_BACK, sendPromptResponse } from "../api";
 import { ELIA_UI_BC } from "../app/constants";
-import { tryFocusOpenerAndCloseThisTab } from "../app/utils";
+import { inferBehaveProjectFromProgress, notifyHomeJobFinished, returnToHomeFromJobTab } from "../app/homeNavigation";
 
-export function broadcastJobFinished(jobId: string) {
-  try {
-    const bc = new BroadcastChannel(ELIA_UI_BC);
-    bc.postMessage({ type: "elia_job_finished", job_id: jobId });
-    bc.close();
-  } catch {
-    // ignore
-  }
+export { returnToHomeFromJobTab, notifyHomeJobFinished, inferBehaveProjectFromProgress };
+
+export function broadcastJobFinished(jobId: string, extra?: { platform?: string; project?: string }) {
+  notifyHomeJobFinished({ jobId, platform: extra?.platform, project: extra?.project });
 }
 
 export function broadcastJobTabClosed(jobId: string) {
@@ -30,7 +26,7 @@ export async function cancelJobFlow(jobId: string) {
     // ignore: la pestaña puede cerrarse igual
   }
   broadcastJobFinished(jobId);
-  tryFocusOpenerAndCloseThisTab();
+  returnToHomeFromJobTab({ jobId });
 }
 
 export async function goBackPrompt(jobId: string, promptId: string) {

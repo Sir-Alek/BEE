@@ -5,6 +5,7 @@ import threading
 import time
 import traceback
 import sys
+import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -253,12 +254,22 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     logo_letters_path = os.path.join(base_dir, "resources", "logo_letras.png")
     logo_ico_path = os.path.join(base_dir, "resources", "logo_elia.ico")
     exit_flag = {"value": False}
+    ui_session = {"last_ping": 0.0, "ever": False}
+    elia_session_id = str(uuid.uuid4())
+    app.state.elia_session_id = elia_session_id
+
+    @app.post("/api/app/ping")
+    def app_ping(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Latido desde cualquier pestaña UI; no apaga el servidor por inactividad."""
+        ui_session["last_ping"] = time.time()
+        ui_session["ever"] = True
+        exit_flag["value"] = False
+        return {"ok": True, "session_id": elia_session_id}
 
     @app.post("/api/app/exit")
     def app_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         """
-        Request the local app to exit (used when the home tab is closed).
-        main.py polls /api/app/should-exit and stops Uvicorn.
+        Cierre explícito desde la UI (pestaña principal o ventana del navegador).
         """
         try:
             from core.beta_time_guard import record_beta_session_checkpoint
@@ -272,8 +283,15 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         exit_flag["value"] = True
         return {"ok": True}
 
+    @app.post("/api/app/cancel-exit")
+    def app_cancel_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Anula una solicitud de salida (p. ej. recarga F5 de la pestaña de inicio)."""
+        exit_flag["value"] = False
+        return {"ok": True}
+
     @app.get("/api/app/should-exit")
     def app_should_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Solo sale por cierre explícito de la UI; no hay apagado por tiempo."""
         return {"exit": bool(exit_flag["value"])}
 
     @app.get("/api/app/about")
@@ -300,6 +318,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         feedback = beta_feedback_url()
         return {
             "app_name": "ELIA",
+            "session_id": elia_session_id,
             "version": ELIA_VERSION,
             "version_display": elia_version_display(),
             "developer": ELIA_DEVELOPER,

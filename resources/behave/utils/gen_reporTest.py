@@ -435,6 +435,6 @@ class PdfReportDocument(FPDF):
 
         output_path = os.path.join(output_dir, f"{testName}_{dt_format}.pdf")
         pdf.output(output_path, 'F')
-        print(f"ELIA_PDF_REPORT:{output_path}", flush=True)
+        print(f"ELIA_PDF_REPORT:{os.path.abspath(output_path)}", flush=True)
 
         return output_path

@@ -288,6 +288,10 @@ class main:
             if open_home_and_job_in_browser is not None and open_home_and_job_in_browser(home_url, job_url):
                 return
             if open_url_in_new_browser_window is not None:
+                from webui.browser_launch import open_home_and_job_in_browser as _open_both
+
+                if _open_both(home_url, job_url):
+                    return
                 open_url_in_new_browser_window(home_url)
                 open_url_in_new_browser_window(job_url)
                 return
@@ -1024,9 +1028,26 @@ if __name__ == "__main__":
     def _run_web_ui() -> None:
         """
         Arranca FastAPI + Uvicorn en el hilo principal (bloqueante).
-        Un hilo daemon monitorea la señal de salida del frontend y, cuando la recibe,
-        para Uvicorn. Al retornar server.run(), el proceso termina con os._exit(0).
+        Un hilo daemon monitorea inactividad UI y para Uvicorn cuando no hay ping.
         """
+        from webui.web_runtime import (
+            acquire_single_instance_lock,
+            build_ui_url,
+            elia_ui_host,
+            elia_ui_port,
+            prepare_exclusive_new_instance,
+            release_single_instance_lock,
+            shutdown_elia_cluster,
+            try_attach_to_running_instance,
+            write_runtime,
+        )
+
+        if not acquire_single_instance_lock():
+            try_attach_to_running_instance(open_browser=False)
+            return
+
+        prepare_exclusive_new_instance()
+
         _ensure_web_ui_dependencies()
         import json
         import urllib.error
@@ -1043,17 +1064,10 @@ if __name__ == "__main__":
 
         import uvicorn  # type: ignore
 
-        host = "127.0.0.1"
-        port = 5173
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.bind((host, 0))
-            port = int(s.getsockname()[1])
-            s.close()
-        except Exception:
-            pass
+        host = elia_ui_host()
+        port = elia_ui_port()
 
-        url = f"http://{host}:{port}/"
+        url = build_ui_url(host=host, port=port)
 
         # In PyInstaller windowed mode (console=False), sys.stdout/stderr may not be a TTY.
         cfg = uvicorn.Config(
@@ -1083,17 +1097,31 @@ if __name__ == "__main__":
         server_thread = threading.Thread(target=_run_server, daemon=True)
         server_thread.start()
         _wait_until_server_ready(url)
+        session_id = str(getattr(getattr(app, "state", None), "elia_session_id", "") or "")
+        write_runtime(host=host, port=port, session_id=session_id)
+
+        open_url = build_ui_url(host=host, port=port, session_id=session_id)
 
         try:
-            if open_url_in_new_browser_window is not None:
-                open_url_in_new_browser_window(url)
-            else:
-                webbrowser.open_new(url)
+            from webui.browser_launch import open_elia_home_url
+
+            open_elia_home_url(open_url)
         except Exception:
-            pass
+            try:
+                from webui.browser_launch import open_url_in_browser_tab
+
+                open_url_in_browser_tab(open_url)
+            except Exception:
+                try:
+                    if open_url_in_new_browser_window is not None:
+                        open_url_in_new_browser_window(open_url)
+                    else:
+                        webbrowser.open_new(open_url)
+                except Exception:
+                    pass
 
         def _poll_exit_and_shutdown() -> None:
-            """Detecta POST /api/app/exit enviado por el frontend al cerrar la pestaña."""
+            """Detiene Uvicorn solo cuando la UI solicita salida explícita (/api/app/exit)."""
             exit_url = f"http://{host}:{port}/api/app/should-exit"
             while not server.should_exit:
                 time.sleep(0.35)
@@ -1112,7 +1140,8 @@ if __name__ == "__main__":
         while server_thread.is_alive() and not server.should_exit:
             server_thread.join(timeout=0.35)
 
-        # Garantiza la terminación completa del proceso (incluye hilos no-daemon).
+        shutdown_elia_cluster()
+        release_single_instance_lock()
         os._exit(0)
 
     if USE_WEB:

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getProjectReportUrl, getTestRun, openProjectFolder } from "../api";
+import { closeWithoutStoppingServer } from "../app/sessionGuard";
 
 export type RunArtifact = {
   kind: string;
@@ -25,6 +26,7 @@ export function RunConsolePanel(props: Props) {
   const [lines, setLines] = useState<string[]>([]);
   const [state, setState] = useState("running");
   const [returnCode, setReturnCode] = useState<number | null>(null);
+  const [serverOffline, setServerOffline] = useState(false);
   const [artifacts, setArtifacts] = useState<RunArtifact[]>([]);
   const [selectedPdf, setSelectedPdf] = useState<string>("");
   const [consoleHeight, setConsoleHeight] = useState(DEFAULT_CONSOLE_H);
@@ -70,6 +72,9 @@ export function RunConsolePanel(props: Props) {
             setArtifacts(r.artifacts);
             setSelectedPdf(r.artifacts[0].name);
           }
+        }).catch(() => {
+          setServerOffline(true);
+          closeWithoutStoppingServer();
         });
         es.close();
       }
@@ -79,6 +84,28 @@ export function RunConsolePanel(props: Props) {
       es.close();
     };
   }, [runId]);
+
+  useEffect(() => {
+    if (state !== "running") return;
+    const poll = window.setInterval(() => {
+      void getTestRun(runId)
+        .then((r) => {
+          if (r.state === "running") return;
+          setState(r.state);
+          setReturnCode(r.return_code);
+          if (r.lines?.length) setLines(r.lines);
+          if (r.artifacts?.length) {
+            setArtifacts(r.artifacts);
+            setSelectedPdf((prev) => prev || r.artifacts![0].name);
+          }
+        })
+        .catch(() => {
+          setServerOffline(true);
+          closeWithoutStoppingServer();
+        });
+    }, 2000);
+    return () => window.clearInterval(poll);
+  }, [runId, state]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,6 +122,13 @@ export function RunConsolePanel(props: Props) {
   }, [runId, project, state]);
 
   const passed = state === "done" && returnCode === 0;
+  const statusLabel = serverOffline
+    ? "Servidor desconectado"
+    : passed
+      ? "✓ Aprobado"
+      : state === "running"
+        ? "En curso…"
+        : "✗ Fallido";
   const pdfPreviewUrl =
     selectedPdf && platform && project ? getProjectReportUrl(platform, project, selectedPdf) : "";
 
@@ -145,7 +179,7 @@ export function RunConsolePanel(props: Props) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 700 }}>
-          Consola de ejecución — {passed ? "✓ Aprobado" : state === "running" ? "En curso…" : "✗ Fallido"}
+          Consola de ejecución — {statusLabel}
         </div>
         <button
           type="button"

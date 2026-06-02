@@ -17,6 +17,18 @@ import { useJobProgress } from "./job/useJobProgress";
 import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
+import {
+  inferBehaveProjectFromProgress,
+  requestAppExitIfClosing,
+} from "./app/homeNavigation";
+import {
+  applySessionGuard,
+  broadcastNewEliaSession,
+  closeWithoutStoppingServer,
+  listenForNewEliaSession,
+  reconcileEliaSession,
+  shouldSkipExitOnPageHide,
+} from "./app/sessionGuard";
 import { settingsTabsForLicense, type SettingsTabId } from "./app/settingsTabs";
 import { openJobUrlInNewTabPrepared } from "./app/utils";
 import { ConnectorProvider } from "./context/ConnectorContext";
@@ -42,12 +54,18 @@ export default function App() {
   const [polling, setPolling] = useState<boolean>(false);
   const { job, events: jobEvents, errorText: jobPollError } = useJobProgress(jobId, polling);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [serverOnline, setServerOnline] = useState(true);
   const [textValue, setTextValue] = useState<string>("");
   const [urlValue, setUrlValue] = useState<string>("");
   const [initialChecked, setInitialChecked] = useState<boolean>(false);
   const [workspaceMode, setWorkspaceMode] = useState<string | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
   const [homeHint, setHomeHint] = useState<string | null>(null);
+  const [homeDataRefresh, setHomeDataRefresh] = useState(0);
+  const [pendingRunProject, setPendingRunProject] = useState<{
+    platform: string;
+    project: string;
+  } | null>(null);
   const flowTabRef = useRef<Window | null>(null);
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
   const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
@@ -421,38 +439,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isHomeSurface) return;
-    const body = JSON.stringify({ reason: "home_closed" });
-    const fireExit = () => {
-      try {
-        const blob = new Blob([body], { type: "application/json" });
-        if (!navigator.sendBeacon("/api/app/exit", blob)) {
-          void fetch("/api/app/exit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-        }
-      } catch {
-        try {
-          void fetch("/api/app/exit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-        } catch {
-          // ignore
+    let alive = true;
+    let sessionAnnounced = false;
+    const tick = async () => {
+      if (!alive) return;
+      const result = await reconcileEliaSession();
+      if (!alive) return;
+      const keep = applySessionGuard(result);
+      if (!alive || !keep) return;
+      setServerOnline(result === "ok");
+      if (result === "ok" && isHomeSurface && !sessionAnnounced) {
+        const sid = sessionStorage.getItem("elia_session_id");
+        if (sid) {
+          broadcastNewEliaSession(sid);
+          sessionAnnounced = true;
         }
       }
     };
-    window.addEventListener("beforeunload", fireExit);
-    window.addEventListener("pagehide", fireExit);
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 4000);
+    const stopListen = listenForNewEliaSession(() => {
+      if (!alive) return;
+      closeWithoutStoppingServer();
+    });
     return () => {
-      window.removeEventListener("beforeunload", fireExit);
-      window.removeEventListener("pagehide", fireExit);
+      alive = false;
+      window.clearInterval(id);
+      stopListen();
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isHomeSurface) return;
+    const onHide = () => {
+      if (shouldSkipExitOnPageHide()) return;
+      requestAppExitIfClosing();
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
   }, [isHomeSurface]);
 
   useEffect(() => {
@@ -464,6 +490,14 @@ export default function App() {
         if (ev.data?.type === "elia_job_finished" || ev.data?.type === "elia_job_tab_closed") {
           flowTabRef.current = null;
           setHomeHint(null);
+          setHomeDataRefresh((n) => n + 1);
+          if (ev.data?.type === "elia_job_finished") {
+            const platform = typeof ev.data.platform === "string" ? ev.data.platform : "";
+            const project = typeof ev.data.project === "string" ? ev.data.project : "";
+            if (platform && project) {
+              setPendingRunProject({ platform, project });
+            }
+          }
         }
       };
     } catch {
@@ -513,8 +547,14 @@ export default function App() {
       const key = `elia_job_finished_broadcast:${jobId}`;
       if (sessionStorage.getItem(key)) return;
       sessionStorage.setItem(key, "1");
+      const inferred = inferBehaveProjectFromProgress(job.progress);
       const bc = new BroadcastChannel(ELIA_UI_BC);
-      bc.postMessage({ type: "elia_job_finished", job_id: jobId });
+      bc.postMessage({
+        type: "elia_job_finished",
+        job_id: jobId,
+        platform: inferred.platform,
+        project: inferred.project,
+      });
       bc.close();
     } catch {
       // ignore
@@ -625,12 +665,13 @@ export default function App() {
       setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
       setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
       availableRecordings, setAvailableScenarios, setAvailableRecordings,
+      homeDataRefresh, pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
     }),
     [
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
-      availableRecordings, startJob,
+      availableRecordings, startJob, homeDataRefresh, pendingRunProject,
     ],
   );
 
@@ -674,6 +715,24 @@ export default function App() {
                 <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
                 <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
+                  {!serverOnline && isHomeSurface ? (
+                    <div
+                      role="alert"
+                      style={{
+                        marginBottom: 12,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.errorBorder}`,
+                        background: c.errorBg,
+                        color: c.errorBody,
+                        fontSize: 14,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <strong>Servidor ELIA desconectado.</strong> Cerrando esta pestaña obsoleta (puerto{" "}
+                      <code>{window.location.port || "?"}</code>)… Si no se cierra sola, ciérrala manualmente.
+                    </div>
+                  ) : null}
                   {errorText && (
                     <ErrorAlert c={c} message={errorText} onDismiss={() => setErrorText(null)} />
                   )}
@@ -696,6 +755,7 @@ export default function App() {
                       bddPreviewText={bddPreviewText}
                       setBddPreviewText={setBddPreviewText}
                       betaFeedbackUrl={aboutInfo?.beta_feedback_url}
+                      jobLoadError={jobPollError}
                     />
                   )}
                 </div>

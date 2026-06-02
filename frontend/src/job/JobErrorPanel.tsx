@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { downloadJobErrorReport } from "../api";
-import { goHomeInThisTab, tryFocusOpenerAndCloseThisTab } from "../app/utils";
+import { returnToHomeFromJobTab } from "../app/homeNavigation";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 // Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
 // import { SupportContactLink } from "../components/SupportContactLink";
@@ -77,11 +77,7 @@ export function JobErrorPanel(props: Props) {
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <button
           type="button"
-          onClick={() => {
-            if (!tryFocusOpenerAndCloseThisTab()) {
-              goHomeInThisTab();
-            }
-          }}
+          onClick={() => returnToHomeFromJobTab({ jobId })}
           style={{
             padding: "10px 14px",
             borderRadius: 10,
@@ -104,11 +100,7 @@ export function JobErrorActions(props: { c: Record<string, string> }) {
     <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
       <button
         type="button"
-        onClick={() => {
-          if (!tryFocusOpenerAndCloseThisTab()) {
-            goHomeInThisTab();
-          }
-        }}
+        onClick={() => returnToHomeFromJobTab()}
         style={{
           padding: "10px 14px",
           borderRadius: 10,

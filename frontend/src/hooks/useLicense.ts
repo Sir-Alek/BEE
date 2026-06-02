@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getLicenseStatus } from "../api";
 import { licenseFromApi, type LicenseState } from "../app/licenseUtils";
+import { reconcileEliaSession } from "../app/sessionGuard";
 import { SETTINGS_TABS_WITHOUT_LICENSE, type SettingsTabId } from "../app/settingsTabs";
 
 export type UseLicenseOptions = {
@@ -26,7 +27,17 @@ export function useLicense(options: UseLicenseOptions) {
       const l = await getLicenseStatus();
       setLicense(licenseFromApi(l));
     } catch {
-      setLicense(null);
+      const pingOk = (await reconcileEliaSession()) === "ok";
+      const port = window.location.port || "?";
+      setLicense({
+        can_run_jobs: false,
+        message: pingOk
+          ? "No se pudo consultar el estado de la licencia."
+          : `Esta pestaña no puede contactar ELIA (puerto ${port}). Ciérrala si es una sesión antigua y usa la ventana activa.`,
+        activated: false,
+        machine_fingerprint: "",
+        reason: pingOk ? "license_fetch_failed" : "disconnected",
+      });
     }
   }, []);
 

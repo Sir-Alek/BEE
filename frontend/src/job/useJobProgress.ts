@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getJob, getJobEvents, type JobStateResponse } from "../api";
+import { closeWithoutStoppingServer } from "../app/sessionGuard";
 import type { ActivePrompt } from "../types";
 import type { JobEvent } from "./jobEvents";
 
@@ -79,7 +80,14 @@ export function useJobProgress(jobId: string | null, polling: boolean) {
         schedule(recordingRef.current ? POLL_RECORDING_MS : POLL_IDLE_MS);
       } catch (e: unknown) {
         if (!alive) return;
-        setErrorText(String((e as Error)?.message ?? e));
+        const msg = String((e as Error)?.message ?? e);
+        if (/404|not found|job not found/i.test(msg)) {
+          setJob(null);
+          setErrorText(null);
+          closeWithoutStoppingServer();
+          return;
+        }
+        setErrorText(msg);
       }
     };
 

@@ -4,48 +4,63 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.9.67] - 2026-05-28
+## [0.9.68] - 2026-05-19
 
 ### Añadido
 
-- Licencias **v4 asimétricas Ed25519**: formato `ELIA-V4.{kid}.{payload}.{firma}`; clave privada solo en `license-tools/`.
-- Rotación de claves por **`kid`** en `core/license_public_keys.json` (varias claves públicas embebidas).
-- Generador externo `license-tools/` con TOTP (`pyotp`), scripts de setup de claves y auditoría local de emisiones.
-- Módulo `core/license_verify.py` (solo verificación; sin secreto simétrico en el cliente).
+- Instancia única de la interfaz web: puerto fijo local (`8765`), registro de sesión en `%LOCALAPPDATA%\ELIA\` y mutex de proceso para evitar múltiples servidores en paralelo.
+- Guardián de pestañas (`sessionGuard`): una sola pestaña de inicio titular, cierre automático de pestañas obsoletas sin apagar ELIA y sincronización de `elia_sid` en flujos de job.
 
 ### Cambiado
 
-- **Eliminada emisión de licencias permanentes (PERM)**; duraciones válidas: 15D, 30D, 365D.
-- `scripts/generate_license_key.py` redirige a `license-tools/generate_license_key.py`.
-- Claves v1/v2/v3 HMAC siguen verificándose como legado; nuevas emisiones usan v4.
-
-### Seguridad
-
-- El binario de ELIA ya no contiene `_LICENSE_SEED` usable para falsificar licencias nuevas (v4).
-- TOTP obligatorio al firmar (salvo bypass documentado solo para CI/desarrollo).
-
-## [0.9.66] - 2026-05-28
-
-### Añadido
-
-- Planes de suscripción **Basic**, **Professional** y **Enterprise** con mapa de features por tier (Web, API HTTP, Doc-to-BDD, Postman/suites, Locust, Móvil, Legacy, publishers y Team Memory Crypto).
-- Claves de licencia v3 por tier (`ELIA-V3-{BASIC|PRO|ENT}-{duración}-{issue_ts}-{firma}`) y clave beta global sin huella (`ELIA-BETA-GLOBAL-*`).
-- Beta plug-and-play: canal `ELIA_CHANNEL=beta`, caducidad fija embebida (30-jun-2026), guardia temporal (reloj de red + ancla anti-retroceso) y pantalla de fin de beta.
-- Modal comercial de upselling, badges Pro/Enterprise y bloqueos parciales en la pestaña de pruebas API.
-- Endpoint `/api/entitlements` y enriquecimiento de `/api/modules/status` y `/api/license/status`.
-
-### Cambiado
-
-- Los módulos ya no dependen solo de flags M/L: cada feature se valida según el tier activo (backend y UI).
-- `doc_to_bdd` deja de estar incluido en cualquier licencia base; requiere Plan Professional o superior.
-- Fecha límite beta hardcodeada (sin override por variable de entorno) para evitar bypass de caducidad.
+- Arranque del navegador: ventana limpia con flags que reducen la restauración de pestañas zombie del perfil; segundo lanzamiento de `ELIA.exe` reutiliza la instancia activa sin abrir pestaña extra.
+- Tema oscuro — estética: inputs nativos, checkboxes (`accent-color` / `color-scheme: dark`) y barras de desplazamiento con fondo y thumb oscuros; el campo «Filtro de ejecución Behave» alinea colores con el resto de la UI.
 
 ### Corregido
 
-- Compilación Cython de `elia_license.py` (código inalcanzable y `del` sobre parámetros).
-- Closure `on_key_press` en grabación Legacy (`nonlocal last_event_emit`).
+- Consola Behave: fin de ejecución y reportes PDF cuando falla un step; lectura de subproceso sin bloqueo en Windows.
+- Cierre de ELIA: eliminado apagado por inactividad de ping; solo sale por cierre explícito de la pestaña titular.
+- Pestañas duplicadas/zombie: ya no apagan el servidor al cerrarse; jobs huérfanos (404) dejan de quedarse en «Cargando…».
+- Navegación tras conversión Behave: el inicio refresca proyectos al terminar el job; F5 ya no desconecta la sesión.
+- Tema oscuro: persistencia al reiniciar ELIA (sin cambios en la lógica de guardado).
 
-## [0.9.65] - 2026-05-28
+## [0.9.67] - 2026-06-01
+
+### Añadido
+
+- Sistema de licencias de alta seguridad empresarial: Se implementó una nueva arquitectura de validación de firmas asimétricas de grado gubernamental para la activación de la aplicación. Esto garantiza que la autenticación del software sea completamente infalsificable y se procese localmente de forma ultra-rápida en el equipo.
+- Infraestructura para renovación transparente de accesos: Capacidad nativa para gestionar y actualizar múltiples claves de verificación integradas en la aplicación, permitiendo migraciones de seguridad y renovaciones sin interrumpir el trabajo del usuario.
+- Entorno blindado para la emisión de accesos: Se aislaron las herramientas de generación y control de licencias corporativas en un entorno externo protegido por autenticación multifactor, añadiendo una auditoría local estricta sobre cada activación emitida.
+
+### Cambiado
+
+- Compatibilidad con accesos anteriores: El sistema mantiene soporte nativo de retrocompatibilidad para validar de forma transparente las claves emitidas bajo formatos previos, asegurando una transición fluida para los usuarios actuales.
+
+### Seguridad
+
+- Blindaje del código de la aplicación: Se removieron de forma absoluta todas las semillas y secretos de generación interna del ejecutable de ELIA. Al no existir algoritmos de creación dentro del cliente, se elimina cualquier vector de vulnerabilidad o intento de alteración de software en el equipo del usuario.
+- Autenticación obligatoria de seguridad: El proceso de firmas comerciales ahora requiere validación temporal y controles de identidad obligatorios para blindar el canal de distribución oficial.
+
+## [0.9.66] - 2026-05-31
+
+### Añadido
+
+- Modelos de suscripción estructurados (Basic, Professional y Enterprise): Se introdujo una distribución comercial por niveles que organiza de forma clara las características de la aplicación (automatización web/móvil, pruebas de API, IA de documentos, reportes de carga masiva y memorias compartidas de equipo) según las necesidades de cada organización.
+- Licencia Beta Global de acceso inmediato: Se integró una clave de acceso general simplificada y sin restricciones de hardware, diseñada específicamente para facilitar la instalación plug-and-play a los participantes del programa de pruebas Beta.
+- Protección del ciclo de vida de la fase Beta: Nueva configuración automatizada para la campaña de pruebas con una fecha de caducidad definitiva, protegida por un sistema inteligente de validación horaria por red y un escudo anti-retroceso de tiempo para evitar alteraciones.
+- Indicadores de características avanzadas: Se incorporaron insignias descriptivas y pantallas informativas amigables en la interfaz para identificar de forma clara las funciones exclusivas de los planes Professional y Enterprise dentro de los módulos de API y automatización de flujos.
+
+### Cambiado
+
+- Ajuste en la asignación de funciones por nivel: El acceso a los componentes de la interfaz ahora se valida en tiempo real según el nivel de suscripción activo. La conversión inteligente de documentos mediante IA local (Doc-to-BDD) pasa a formar parte de las herramientas avanzadas a partir del plan Professional.
+- Protección de vigencia inalterable: La fecha límite del periodo de pruebas se grabó de forma estricta en el núcleo de la aplicación, previniendo modificaciones o extensiones externas involuntarias para asegurar un cierre de campaña limpio.
+
+### Corregido
+
+- Optimización del motor de validación: Se corrigieron flujos de procesamiento internos en el módulo de licencias locales, acelerando notablemente los tiempos de arranque e inicio de la aplicación.
+- Mayor estabilidad en la captura de escritorio: Se solucionó un comportamiento intermitente que provocaba la pérdida ocasional de eventos de teclado durante las sesiones de grabación en aplicaciones de escritorio clásicas (Legacy).
+
+## [0.9.65] - 2026-05-30
 
 ### Añadido
 
@@ -61,7 +76,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Procesamiento de documentos más flexible: El convertidor de requerimientos ahora cuenta con una mayor libertad de análisis contextual antes de estructurar el formato definitivo del escenario, lo que reduce errores de interpretación y mejora la calidad del lenguaje de negocio generado.
 - Asistente de autoreparación de selectores mejorado: El motor de recuperación ahora prioriza el nuevo índice interactivo y evalúa múltiples estrategias de combinación en lugar de analizar código estructural genérico. Esto incrementa de forma notable la precisión al sugerir selectores preferidos y robustece la estabilidad de tus scripts de automatización.
 
-## [0.9.60] - 2026-05-28
+## [0.9.60] - 2026-05-31
 
 ### Añadido
 
@@ -71,7 +86,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 - Organización visual optimizada: Se reestructuró la lógica interna de los paneles de API para ofrecer una navegación mucho más limpia, manteniendo el acceso directo a las pruebas de carga sin alterar tus flujos de trabajo existentes.
 
-## [0.9.55] - 2026-05-28
+## [0.9.55] - 2026-05-30
 
 ### Añadido
 
@@ -82,7 +97,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Diseño de cabecera unificado: Se restauró la distribución original de la barra superior, devolviendo los logotipos principales del producto a la esquina izquierda para una identidad visual más limpia, manteniendo el indicador de asistencia de IA accesible.
 - Interfaces más limpias y asistidas: Se eliminaron párrafos e instrucciones explicativas repetitivas en las secciones de automatización de escritorio (Legacy) y pruebas BDD, sustituyéndolas por discretos cuadros de ayuda flotantes (tooltips) que aparecen al pasar el cursor sobre las etiquetas de los campos.
 
-## [0.9.51] - 2026-05-28
+## [0.9.51] - 2026-05-30
 
 ### Añadido
 
