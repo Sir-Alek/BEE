@@ -4,27 +4,28 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.9.68] - 2026-05-19
+## [0.9.68] - 2026-06-01
 
 ### Añadido
 
-- Instancia única de la interfaz web: puerto fijo local (`8765`), registro de sesión en `%LOCALAPPDATA%\ELIA\` y mutex de proceso para evitar múltiples servidores en paralelo.
-- Guardián de pestañas (`sessionGuard`): una sola pestaña de inicio titular, cierre automático de pestañas obsoletas sin apagar ELIA y sincronización de `elia_sid` en flujos de job.
+- Control de instancia única: La aplicación ahora se ejecuta bajo una única sesión activa y segura en el equipo. Si intentas abrir el software varias veces por accidente, el sistema detectará de forma inteligente el proceso existente y evitará la duplicación de servicios locales para proteger los recursos de tu máquina.
+- Gestión inteligente de pestañas de navegación: Se incorporó un sistema de control de sesiones que unifica la interfaz en una sola pestaña principal. Si abres ventanas secundarias para tareas específicas de grabación, estas se cerrarán automáticamente al concluir el flujo, manteniendo tu área de trabajo limpia y asegurando la sincronización de tus tareas en progreso.
 
 ### Cambiado
 
-- Arranque del navegador: ventana limpia con flags que reducen la restauración de pestañas zombie del perfil; segundo lanzamiento de `ELIA.exe` reutiliza la instancia activa sin abrir pestaña extra.
-- Tema oscuro — estética: inputs nativos, checkboxes (`accent-color` / `color-scheme: dark`) y barras de desplazamiento con fondo y thumb oscuros; el campo «Filtro de ejecución Behave» alinea colores con el resto de la UI.
+- Inicio optimizado de la aplicación: Lanzar el acceso directo de ELIA en Windows por segunda vez ahora te redirigirá automáticamente a la interfaz que ya tengas abierta en lugar de abrir ventanas duplicadas. Además, las sesiones de grabación web se iniciarán siempre de manera completamente limpia, evitando la restauración involuntaria de páginas web de sesiones anteriores del navegador.
+- Navegador dedicado para ELIA: La interfaz web se abre ahora con un perfil Chromium aislado (`%LOCALAPPDATA%\\ELIA\\browser-profile`), independiente del historial y de la opción «continuar donde lo dejé» del navegador personal. Cada arranque muestra solo ELIA, sin pestañas ajenas del perfil principal.
+- Rediseño estético del Tema Oscuro: Se mejoró visualmente toda la interfaz para ofrecer una experiencia mucho más integrada y cómoda para la vista. Las casillas de verificación, cuadros de texto, barras de desplazamiento y campos de filtrado de pruebas BDD ahora adaptan sus colores nativos y contornos al modo oscuro de forma homogénea.
 
 ### Corregido
 
-- Consola Behave: fin de ejecución y reportes PDF cuando falla un step; lectura de subproceso sin bloqueo en Windows.
-- Cierre de ELIA: eliminado apagado por inactividad de ping; solo sale por cierre explícito de la pestaña titular.
-- Pestañas duplicadas/zombie: ya no apagan el servidor al cerrarse; jobs huérfanos (404) dejan de quedarse en «Cargando…».
-- Navegación tras conversión Behave: el inicio refresca proyectos al terminar el job; F5 ya no desconecta la sesión.
-- Tema oscuro: persistencia al reiniciar ELIA (sin cambios en la lógica de guardado).
+- Estabilidad en la consola de ejecución: Se solucionó un problema de bloqueo en entornos Windows al procesar ejecuciones largas de pruebas BDD. Ahora, incluso si un paso de automatización falla durante la corrida, la consola concluirá correctamente su ciclo de lectura y generará de forma fiable el reporte de evidencias en PDF con el estado del error.
+- Control de apagado confiable: Se eliminó el sistema automático de cierre por inactividad en segundo plano. La aplicación ya no se desconectará de forma inesperada si la dejas en espera; ahora, solo detendrá sus servicios locales cuando cierres explícitamente la pestaña principal de la interfaz.
+- Corrección en la persistencia de tareas: Cerrar pestañas secundarias o de descarte ya no provocará el apagado accidental del software. Asimismo, aquellas tareas que hayan sido canceladas o interrumpidas en segundo plano dejarán de mostrar el indicador visual indefinido de «Cargando...», liberando la pantalla de inmediato.
+- Fluidez en la navegación de proyectos: Al finalizar con éxito una conversión automatizada, el panel de inicio refrescará al instante tu catálogo de proyectos disponibles. Además, ahora puedes recargar la interfaz de forma segura (presionando F5) sin temor a perder tu sesión activa ni interrumpir la comunicación con la aplicación.
+- Persistencia visual: Se garantizó que tu preferencia de tema (claro u oscuro) se mantenga guardada de forma correcta y se aplique de manera inmediata desde el primer instante en que vuelves a arrancar la aplicación.
 
-## [0.9.67] - 2026-06-01
+## [0.9.67] - 2026-05-31
 
 ### Añadido
 
@@ -41,7 +42,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Blindaje del código de la aplicación: Se removieron de forma absoluta todas las semillas y secretos de generación interna del ejecutable de ELIA. Al no existir algoritmos de creación dentro del cliente, se elimina cualquier vector de vulnerabilidad o intento de alteración de software en el equipo del usuario.
 - Autenticación obligatoria de seguridad: El proceso de firmas comerciales ahora requiere validación temporal y controles de identidad obligatorios para blindar el canal de distribución oficial.
 
-## [0.9.66] - 2026-05-31
+## [0.9.66] - 2026-05-30
 
 ### Añadido
 

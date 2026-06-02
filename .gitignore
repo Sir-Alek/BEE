@@ -10,6 +10,9 @@ build/
 # Directorio de distribución de paquetes
 ELIA/
 
+# Tools de Licencia
+license-tools/
+
 #cache
 *.pyc
 *__pycache__
