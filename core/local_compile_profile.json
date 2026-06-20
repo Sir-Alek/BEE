@@ -5,5 +5,5 @@
   "strict_types": false,
   "emit_debug_annotations": true,
   "parallel_jobs": 4,
-  "runtime_gate": "open"
+  "runtime_gate": "hold"
 }
