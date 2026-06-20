@@ -414,6 +414,164 @@ def close_windows_by_title_contains(
 
     return closed
 
+# ============================================================
+# LEGACY (escritorio Windows) — interacción visible + evidencia
+# ============================================================
+
+def _legacy_delays():
+    """Lee los tiempos de pausa (configurables por entorno) para que la
+    interacción legacy sea apreciable a simple vista durante la ejecución."""
+    def _f(name, default):
+        try:
+            return max(0.0, float(os.getenv(name, str(default))))
+        except Exception:
+            return default
+    return (
+        _f("ELIA_LEGACY_MOVE_DURATION", 0.45),  # duración del movimiento del cursor
+        _f("ELIA_LEGACY_STEP_DELAY", 0.8),      # pausa antes del clic (apreciar el enmarcado)
+        _f("ELIA_LEGACY_POST_DELAY", 0.6),      # pausa después del clic (apreciar el efecto)
+    )
+
+
+def _legacy_flash_highlight(x, y, box=70, blinks=2, on=0.18, off=0.12):
+    """Dibuja un recuadro rojo alrededor de (x, y) en pantalla (enmarcado en vivo).
+
+    Best-effort con tkinter; si algo falla nunca interrumpe la ejecución.
+    """
+    root = None
+    try:
+        import tkinter as tk
+        half = int(box)
+        size = half * 2
+        left = max(0, int(x) - half)
+        top = max(0, int(y) - half)
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        try:
+            root.attributes("-alpha", 0.65)
+        except Exception:
+            pass
+        root.geometry(f"{size}x{size}+{left}+{top}")
+        try:
+            root.config(bg="white")
+            root.attributes("-transparentcolor", "white")
+        except Exception:
+            pass
+        cv = tk.Canvas(root, width=size, height=size, bg="white", highlightthickness=0)
+        cv.pack()
+        for _ in range(max(1, int(blinks))):
+            cv.delete("all")
+            cv.create_rectangle(4, 4, size - 4, size - 4, outline="red", width=5)
+            root.update()
+            time.sleep(on)
+            cv.delete("all")
+            root.update()
+            time.sleep(off)
+    except Exception:
+        pass
+    finally:
+        try:
+            if root is not None:
+                root.destroy()
+        except Exception:
+            pass
+
+
+def _legacy_evidence_dir():
+    """Carpeta de evidencias del escenario actual (la fija el environment)."""
+    dir_name = getattr(_evidence_state, "dir_name", "") or ""
+    if not dir_name:
+        return None
+    base = os.path.join(os.getcwd(), "outputs", "evidences", dir_name)
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
+
+
+def _legacy_safe_label(label):
+    s = re.sub(r"[^\w]", "_", str(label or "elemento")).strip("_")
+    return s[:30] or "elemento"
+
+
+def legacy_capture_evidence(step, label, x=None, y=None, box=70, usar_create_screenshot=True):
+    """Captura el escritorio completo, enmarca el control interactuado y la guarda.
+
+    El nombre sigue el patrón ``NN_steptype_label.png`` para que el reporte PDF
+    la asocie automáticamente al paso Gherkin correspondiente.
+    """
+    should = usar_create_screenshot or getattr(_evidence_state, "take_evidence", False)
+    if not should:
+        return None
+    base = _legacy_evidence_dir()
+    if not base:
+        return None
+    try:
+        from PIL import ImageDraw
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab(all_screens=True)
+        except Exception:
+            img = pyautogui.screenshot()
+        img = img.convert("RGB")
+        if x is not None and y is not None:
+            d = ImageDraw.Draw(img)
+            half = int(box)
+            d.rectangle(
+                [int(x) - half, int(y) - half, int(x) + half, int(y) + half],
+                outline=(255, 0, 0), width=5,
+            )
+        name = f"{step or 'step'}_{_legacy_safe_label(label)}.png"
+        path = os.path.join(base, name)
+        img.save(path)
+        logging.info(f"Evidencia legacy: {name}")
+        return path
+    except Exception as ex:
+        logging.warning(f"No se pudo capturar evidencia legacy: {ex}")
+        return None
+
+
+def legacy_click(x, y, nombre_elemento="", step=None, usar_create_screenshot=False,
+                 box=70, highlight=True):
+    """Clic legacy por coordenadas con interacción VISIBLE y evidencia enmarcada.
+
+    1. Mueve el cursor de forma visible hasta (x, y).
+    2. Resalta el área del control con un recuadro en pantalla (enmarcado).
+    3. Captura una evidencia recuadrada y la guarda para el PDF.
+    4. Hace clic y aplica esperas para que la interacción sea apreciable.
+    """
+    move_dur, pre_delay, post_delay = _legacy_delays()
+    try:
+        pyautogui.moveTo(int(x), int(y), duration=move_dur)
+    except Exception:
+        pass
+    if highlight:
+        _legacy_flash_highlight(x, y, box=box)
+    time.sleep(pre_delay)
+    legacy_capture_evidence(
+        step, nombre_elemento, x=x, y=y, box=box,
+        usar_create_screenshot=usar_create_screenshot,
+    )
+    try:
+        pyautogui.click(int(x), int(y))
+    except Exception as ex:
+        logging.error(f"Error en clic legacy ({x},{y}): {ex}")
+        raise
+    time.sleep(post_delay)
+
+
+def legacy_capture_screen(step, nombre_elemento="estado_final", usar_create_screenshot=False):
+    """Captura el estado final de la pantalla (sin recuadro) para el paso Then."""
+    _, pre_delay, _ = _legacy_delays()
+    time.sleep(pre_delay)
+    return legacy_capture_evidence(
+        step, nombre_elemento, x=None, y=None,
+        usar_create_screenshot=usar_create_screenshot,
+    )
+
+
 def _list_excel_pids() -> set[int]:
     try:
         cp = subprocess.run(

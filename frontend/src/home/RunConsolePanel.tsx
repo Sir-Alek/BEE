@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { getProjectReportUrl, getTestRun, openProjectFolder } from "../api";
+import { getProjectReportUrl, getTestRun, openEliaLogsFolder, openProjectFolder } from "../api";
 import { closeWithoutStoppingServer } from "../app/sessionGuard";
 
 export type RunArtifact = {
@@ -177,17 +177,39 @@ export function RunConsolePanel(props: Props) {
         }}
       />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontWeight: 700 }}>
           Consola de ejecución — {statusLabel}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ border: "none", background: "transparent", color: c.primary, cursor: "pointer" }}
-        >
-          Cerrar
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {!passed && state !== "running" ? (
+            <button
+              type="button"
+              onClick={() => {
+                void openEliaLogsFolder().catch(() => undefined);
+              }}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: `1px solid ${c.btnGhostBorder}`,
+                background: c.btnGhostBg,
+                color: c.text,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              Abrir elia_execution.log
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ border: "none", background: "transparent", color: c.primary, cursor: "pointer" }}
+          >
+            Cerrar
+          </button>
+        </div>
       </div>
 
       <pre

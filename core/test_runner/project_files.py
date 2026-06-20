@@ -5,15 +5,18 @@ import os
 from pathlib import Path
 from typing import List
 
-EDITABLE_SUFFIXES = (".feature", ".py", ".ini", ".json", ".txt")
+EDITABLE_SUFFIXES = (".feature", ".py", ".ini", ".json", ".txt", ".md")
 EDITABLE_NAMES = frozenset({"locustfile.py", "behave.ini"})
+
+PAGE_FUNCTIONS_GUIDE = "utils/GUIA_FUNCIONES_PAGE.md"
 
 # Archivos visibles en el panel «Ejecutar y editar» (el resto sigue en disco).
 _RUNNER_ROOT_FILES = frozenset({"locustfile.py"})
-_RUNNER_UTILS_FILES = frozenset({"utils/button_functions.py"})
+_RUNNER_UTILS_FILES = frozenset({PAGE_FUNCTIONS_GUIDE})
+_RUNNER_UTILS_ADVANCED = frozenset({"utils/button_functions.py"})
 
 
-def is_runner_workspace_file(rel_path: str) -> bool:
+def is_runner_workspace_file(rel_path: str, *, include_advanced: bool = False) -> bool:
     """True si el archivo debe mostrarse en el árbol del runner (no incluye environment.py)."""
     rel = rel_path.replace("\\", "/").lstrip("/")
     lower = rel.lower()
@@ -21,7 +24,9 @@ def is_runner_workspace_file(rel_path: str) -> bool:
 
     if name == "environment.py":
         return False
-    if rel in _RUNNER_ROOT_FILES or lower in _RUNNER_UTILS_FILES:
+    if rel in _RUNNER_UTILS_ADVANCED or lower in {p.lower() for p in _RUNNER_UTILS_ADVANCED}:
+        return include_advanced
+    if rel in _RUNNER_ROOT_FILES or rel in _RUNNER_UTILS_FILES:
         return True
     if lower.startswith("features/steps/") and lower.endswith(".py"):
         return True
@@ -34,8 +39,12 @@ def is_runner_workspace_file(rel_path: str) -> bool:
     return False
 
 
-def list_runner_workspace_files(project_root: str | Path) -> List[dict]:
-    return [f for f in list_editable_files(project_root) if is_runner_workspace_file(f["path"])]
+def list_runner_workspace_files(project_root: str | Path, *, include_advanced: bool = False) -> List[dict]:
+    return [
+        f
+        for f in list_editable_files(project_root)
+        if is_runner_workspace_file(f["path"], include_advanced=include_advanced)
+    ]
 
 
 def _resolve_safe(project_root: Path, rel_path: str) -> Path:

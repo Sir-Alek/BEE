@@ -17,6 +17,29 @@ import { useJobProgress } from "./job/useJobProgress";
 import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
+
+// Caché del estado de módulos/licencia para que el arranque refleje de inmediato
+// el último tier conocido y no se muestren funciones como "bloqueadas" mientras
+// llega la verificación real (lo que confundía al usuario haciéndole creer que
+// perdió su licencia). NO sustituye los bloqueos reales: solo evita el parpadeo.
+const MODULES_CACHE_KEY = "elia.modules.cache.v1";
+
+function readCachedModules(): ModulesStatus | null {
+  try {
+    const raw = localStorage.getItem(MODULES_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as ModulesStatus) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedModules(m: ModulesStatus): void {
+  try {
+    localStorage.setItem(MODULES_CACHE_KEY, JSON.stringify(m));
+  } catch {
+    /* almacenamiento no disponible: degradar silenciosamente */
+  }
+}
 import {
   inferBehaveProjectFromProgress,
   requestAppExitIfClosing,
@@ -81,7 +104,9 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   const [aboutInfo, setAboutInfo] = useState<AppAboutResponse | null>(null);
   const [aboutChangelogOpen, setAboutChangelogOpen] = useState(false);
-  const [modules, setModules] = useState<ModulesStatus | null>(null);
+  const [modules, setModules] = useState<ModulesStatus | null>(() => readCachedModules());
+  // true mientras no haya un resultado de verificación (ni caché ni fetch resuelto).
+  const [modulesLoading, setModulesLoading] = useState<boolean>(() => readCachedModules() == null);
   const [showLockModal, setShowLockModal] = useState<string | null>(null);
   const [platform, setPlatform] = useState<"web" | "mobile" | "legacy">("web");
   const [recorderPreflight, setRecorderPreflight] = useState<RecorderPreflightResponse | null>(null);
@@ -247,9 +272,15 @@ export default function App() {
     void (async () => {
       try {
         const m = await getModulesStatus();
-        if (alive) setModules(m);
+        if (alive) {
+          setModules(m);
+          writeCachedModules(m);
+        }
       } catch {
-        if (alive) setModules(null);
+        // Error transitorio: conservar el último estado conocido (caché) en lugar
+        // de anularlo, para no aparentar que la licencia se perdió.
+      } finally {
+        if (alive) setModulesLoading(false);
       }
     })();
     return () => { alive = false; };
@@ -659,7 +690,7 @@ export default function App() {
   const homeUiCtx = useMemo(
     () => ({
       c, dark, initialChecked, homeTab, setHomeTab, homeHint, setHomeHint, aiCaps, license,
-      setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
+      setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules, modulesLoading,
       showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
       autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
       setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
@@ -668,7 +699,7 @@ export default function App() {
       homeDataRefresh, pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
     }),
     [
-      c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules,
+      c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules, modulesLoading,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
       availableRecordings, startJob, homeDataRefresh, pendingRunProject,

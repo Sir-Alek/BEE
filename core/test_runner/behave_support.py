@@ -28,9 +28,13 @@ def copy_behave_utils(project_path: Path, *, elia_root: Optional[str] = None) ->
     if os.path.isdir(src_utils):
         dst_utils.mkdir(parents=True, exist_ok=True)
         for name in os.listdir(src_utils):
-            if name in exclude or not name.endswith(".py"):
+            if name in exclude:
                 continue
-            shutil.copy2(os.path.join(src_utils, name), dst_utils / name)
+            src_path = os.path.join(src_utils, name)
+            if name.endswith(".py"):
+                shutil.copy2(src_path, dst_utils / name)
+            elif name.endswith(".md"):
+                shutil.copy2(src_path, dst_utils / name)
 
     logo_src = os.path.join(root, "resources", "logo_elia.png")
     logo_dst_dir = project_path / "resources"
@@ -43,11 +47,24 @@ def copy_behave_utils(project_path: Path, *, elia_root: Optional[str] = None) ->
         shutil.copytree(pdf_res, project_path / "resources" / "resourcesPDF", dirs_exist_ok=True)
 
 
+def ensure_page_functions_guide(project_path: Path, *, elia_root: Optional[str] = None) -> None:
+    """Copia la guía de funciones al proyecto si aún no existe."""
+    guide = project_path / "utils" / "GUIA_FUNCIONES_PAGE.md"
+    if guide.is_file():
+        return
+    root = elia_root or elia_base_dir()
+    src = Path(root) / "resources" / "behave" / "utils" / "GUIA_FUNCIONES_PAGE.md"
+    if src.is_file():
+        guide.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, guide)
+
+
 def ensure_platform_behave_support(project_path: Path, platform: str, *, elia_root: Optional[str] = None) -> None:
     platform = (platform or "web").lower()
     if platform not in BEHAVE_PLATFORMS:
         raise ValueError(f"Plataforma no soportada: {platform}")
     copy_behave_utils(project_path, elia_root=elia_root)
+    ensure_page_functions_guide(project_path, elia_root=elia_root)
     env_path = project_path / "features" / "environment.py"
     env_path.parent.mkdir(parents=True, exist_ok=True)
     template = _environment_template(platform)
@@ -277,36 +294,81 @@ def after_all(context):
     RunReportPublisher.generate_consolidated_report(context)
 '''
 
-_LEGACY_ENVIRONMENT_PY = '''"""Entorno Behave legacy (Windows) — ELIA_ENV_LEGACY_V2"""
+_LEGACY_ENVIRONMENT_PY = '''"""Entorno Behave legacy (Windows) — ELIA_ENV_LEGACY_V3"""
 import os
 import logging
 from datetime import datetime
-from utils.api_run_support import RunLogCoordinator, RunReportPublisher, RunStatsTracker
+from utils.env_manager import *
 
 def before_all(context):
     RunLogCoordinator.init_global_logger(context)
     RunStatsTracker.init_stats(context)
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logo = os.path.join(os.getcwd(), "resources", "logo_elia.png")
+    if os.path.isfile(logo):
+        os.environ.setdefault("ELIA_LOGO_PATH", logo)
+    logging.info("Inicio de pruebas legacy (escritorio Windows)")
 
 def before_feature(context, feature):
+    context.generate_evidence = os.getenv("GENERATE_EVIDENCE", "false").lower() == "true"
     RunLogCoordinator.setup_feature_logger(context, feature)
 
 def before_scenario(context, scenario):
     context.start_time = datetime.now()
+    context.driver = None
+    context.diagnostic_logger = logging.getLogger("diagnostic")
+    context.diagnostic_logger.info("\\n✓ Iniciando escenario legacy: %s", scenario.name)
+    RunEvidenceCoordinator.setup_evidence(context, scenario)
     RunLogCoordinator.setup_scenario_logger(context, scenario)
+    logging.info(f"\\n✓ --> Iniciando escenario: {scenario.name}")
 
 def after_step(context, step):
     RunLogCoordinator.log_step_diagnostics(context, step)
+    if not context.generate_evidence:
+        return
+    step_status = step.status.name
+    if step_status == "passed":
+        logging.info(f"    [Step] PASADO: {step.keyword} {step.name}")
+    elif step_status == "skipped":
+        logging.warning(f"    [Step] OMITIDO: {step.keyword} {step.name}")
+    elif step_status == "failed":
+        error_msg = RunEvidenceCoordinator.parse_step_error(
+            context, step, str(step.exception) if step.exception else ""
+        )
+        logging.error(f"    [Step] FALLIDO: {step.keyword} {step.name} - {error_msg}")
 
 def after_scenario(context, scenario):
     RunStatsTracker.update_stats(context, scenario)
-    if context.generate_evidence and hasattr(context, "start_time"):
-        end_time = datetime.now()
-        if hasattr(context, "scenario_file_handler"):
-            context.scenario_file_handler.flush()
-            logging.root.removeHandler(context.scenario_file_handler)
-            context.scenario_file_handler.close()
-        RunReportPublisher.generate_scenario_report(context, scenario, end_time)
+    status_name = scenario.status.name
+    if hasattr(context, "start_time"):
+        duration = datetime.now() - context.start_time
+        context.diagnostic_logger.info(
+            "Escenario completado: %s | Duración: %s | Estado: %s",
+            scenario.name,
+            duration,
+            status_name,
+        )
+    if context.generate_evidence:
+        status_msg = {"passed": "PASADO", "failed": "FALLIDO", "skipped": "OMITIDO"}
+        logging_fn = {"passed": logging.info, "failed": logging.error, "skipped": logging.warning}
+        if status_name in status_msg:
+            logging_fn[status_name](f"<-- Escenario {status_msg[status_name]}: {scenario.name}")
+        logging.info("==== FIN DE LA EJECUCIÓN ====")
+        logging.info(f"Resultado: {'Ok' if status_name == 'passed' else 'FAILED'}")
+        if hasattr(context, "txt_filename") and hasattr(context, "start_time"):
+            end_time = datetime.now()
+            duration_obj = end_time - context.start_time
+            if hasattr(context, "scenario_file_handler"):
+                context.scenario_file_handler.flush()
+                logging.root.removeHandler(context.scenario_file_handler)
+                context.scenario_file_handler.close()
+                delattr(context, "scenario_file_handler")
+            try:
+                with open(context.txt_filename, "a", encoding="utf-8") as f:
+                    f.write(f"\\nTook: {duration_obj}\\n")
+            except Exception as e:
+                logging.error(f"No se pudo escribir el Took en el log: {e}")
+            screenshots = getattr(context, "failure_screenshots", None)
+            RunReportPublisher.generate_scenario_report(context, scenario, end_time, screenshots)
 
 def after_feature(context, feature):
     RunLogCoordinator.consolidate_feature_logs(context, feature)

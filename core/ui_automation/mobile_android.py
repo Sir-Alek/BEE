@@ -96,9 +96,224 @@ def _run_cmd(
     )
 
 
+def _expand_win_env(value: str, env: Dict[str, str]) -> str:
+    if sys.platform != "win32" or not value:
+        return value
+    out = str(value)
+    for _ in range(12):
+        match = re.search(r"%([^%]+)%", out)
+        if not match:
+            break
+        key = match.group(1)
+        rep = env.get(key) or os.environ.get(key) or ""
+        out = out.replace(f"%{key}%", rep, 1)
+    return out
+
+
+def _read_windows_env_var(name: str) -> Optional[str]:
+    if sys.platform != "win32" or not name:
+        return None
+    import winreg
+
+    targets = [
+        (winreg.HKEY_CURRENT_USER, r"Environment"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    ]
+    for hive, subkey in targets:
+        try:
+            with winreg.OpenKey(hive, subkey) as key:
+                try:
+                    val, _ = winreg.QueryValueEx(key, name)
+                except OSError:
+                    continue
+                if val is not None and str(val).strip():
+                    return str(val).strip()
+        except OSError:
+            continue
+    return None
+
+
+def _get_env_var(name: str) -> Optional[str]:
+    """Lee variable del proceso; en Windows también del registro (HKCU/HKLM)."""
+    raw = os.environ.get(name)
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
+    if sys.platform != "win32":
+        return None
+    reg_val = _read_windows_env_var(name)
+    if not reg_val:
+        return None
+    merged = dict(os.environ)
+    return _expand_win_env(reg_val, merged).strip() or None
+
+
+def _path_env_keys(env: Dict[str, str]) -> List[str]:
+    return [k for k in env.keys() if k.lower() == "path"]
+
+
+def _prepend_path(env: Dict[str, str], folder: str) -> None:
+    folder = (folder or "").strip()
+    if not folder or not os.path.isdir(folder):
+        return
+    keys = _path_env_keys(env) or ["PATH"]
+    for key in keys:
+        existing = env.get(key, "")
+        parts = [p for p in existing.split(os.pathsep) if p]
+        norm_folder = os.path.normcase(os.path.normpath(folder))
+        if any(os.path.normcase(os.path.normpath(p)) == norm_folder for p in parts):
+            continue
+        env[key] = folder + (os.pathsep + existing if existing else "")
+
+
+def _validate_emulator_layout(exe_path: str) -> Optional[str]:
+    emulator_dir = _emulator_home_dir(exe_path)
+    if _basename_lower(exe_path) not in ("emulator.exe", "emulator"):
+        return (
+            f"Ruta inválida (use emulator.exe, no qemu): {exe_path}"
+        )
+    required_dlls = (
+        "libandroid-emu-metrics.dll",
+        "libglib2_windows_msvc-x86_64.dll",
+    )
+    missing = [dll for dll in required_dlls if not os.path.isfile(os.path.join(emulator_dir, dll))]
+    if missing:
+        return (
+            f"Instalación incompleta del Android Emulator en {emulator_dir}. "
+            f"Faltan: {', '.join(missing)}. Reinstale el paquete «Android Emulator» en SDK Manager."
+        )
+    return None
+
+
+def _basename_lower(path: str) -> str:
+    return os.path.basename(path or "").lower()
+
+
+def _is_qemu_engine_binary(path: str) -> bool:
+    name = _basename_lower(path)
+    return name.startswith("qemu-system") or name == "qemu.exe"
+
+
+def _sdk_root_from_emulator_exe(exe_path: str) -> Optional[str]:
+    """.../Android/Sdk/emulator/emulator.exe -> .../Android/Sdk"""
+    emulator_dir = os.path.dirname(os.path.abspath(exe_path))
+    if _basename_lower(emulator_dir) != "emulator":
+        return None
+    sdk_root = os.path.dirname(emulator_dir)
+    return sdk_root if sdk_root and os.path.isdir(sdk_root) else None
+
+
+def _emulator_home_dir(exe_path: str) -> str:
+    """Directorio raíz del paquete emulator (donde viven las DLL en Windows)."""
+    return os.path.dirname(os.path.abspath(exe_path))
+
+
+def _canonical_emulator_exe(path: str) -> Optional[str]:
+    """
+    Normaliza rutas al wrapper oficial emulator.exe.
+    Rechaza binarios internos qemu-system-* que no cargan DLLs sin el entorno del wrapper.
+    """
+    if not path or not os.path.isfile(path):
+        return None
+    norm = os.path.normpath(path)
+    if _is_qemu_engine_binary(norm):
+        parts = norm.split(os.sep)
+        try:
+            idx = parts.index("emulator")
+        except ValueError:
+            return None
+        emulator_dir = os.sep.join(parts[: idx + 1])
+        wrapper_name = "emulator.exe" if sys.platform == "win32" else "emulator"
+        wrapper = os.path.join(emulator_dir, wrapper_name)
+        return wrapper if os.path.isfile(wrapper) else None
+    name = _basename_lower(norm)
+    if name in ("emulator.exe", "emulator"):
+        return norm
+    return None
+
+
+def _emulator_child_env(exe_path: str) -> Dict[str, str]:
+    env = {k: v for k, v in os.environ.items()}
+    if sys.platform == "win32":
+        for key in (
+            "ELIA_EMULATOR_PATH",
+            "ELIA_ANDROID_HOME",
+            "ANDROID_HOME",
+            "ANDROID_SDK_ROOT",
+            "ANDROID_AVD_HOME",
+        ):
+            reg_val = _read_windows_env_var(key)
+            if reg_val and not (env.get(key) or "").strip():
+                env[key] = _expand_win_env(reg_val, env)
+    sdk_root = _sdk_root_from_emulator_exe(exe_path)
+    if not sdk_root:
+        for key in ("ELIA_ANDROID_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
+            val = _get_env_var(key)
+            if val and os.path.isdir(val):
+                sdk_root = val
+                break
+    emulator_dir = _emulator_home_dir(exe_path)
+    if sdk_root:
+        env["ANDROID_HOME"] = sdk_root
+        env["ANDROID_SDK_ROOT"] = sdk_root
+    env["ANDROID_EMULATOR_HOME"] = emulator_dir
+    _prepend_path(env, emulator_dir)
+    for sub in ("lib64", "lib", os.path.join("qemu", "windows-x86_64")):
+        _prepend_path(env, os.path.join(emulator_dir, sub))
+    if sdk_root:
+        _prepend_path(env, os.path.join(sdk_root, "platform-tools"))
+    return env
+
+
+def _run_emulator_cmd(
+    exe_path: str,
+    args: List[str],
+    *,
+    timeout: float = 30.0,
+) -> subprocess.CompletedProcess:
+    cwd = _emulator_home_dir(exe_path)
+    return subprocess.run(
+        [exe_path, *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=cwd,
+        env=_emulator_child_env(exe_path),
+        creationflags=_subprocess_flags(),
+    )
+
+
+def _popen_emulator(exe_path: str, args: List[str]) -> subprocess.Popen:
+    cwd = _emulator_home_dir(exe_path)
+    env = _emulator_child_env(exe_path)
+    if sys.platform == "win32":
+        # cmd + cd /d: garantiza cwd y PATH de DLLs para el wrapper y el qemu hijo.
+        cmd_line = f'cd /d "{cwd}" && {subprocess.list2cmdline([exe_path, *args])}'
+        return subprocess.Popen(
+            cmd_line,
+            shell=True,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=_subprocess_flags(),
+        )
+    return subprocess.Popen(
+        [exe_path, *args],
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=_subprocess_flags(),
+        close_fds=True,
+    )
+
+
 def resolve_android_sdk() -> Tuple[Optional[str], Optional[str]]:
     for env_name in ("ELIA_ANDROID_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        val = (os.environ.get(env_name) or "").strip()
+        val = _get_env_var(env_name)
         if val and os.path.isdir(val):
             return val, env_name.lower()
     local = (os.environ.get("LOCALAPPDATA") or "").strip()
@@ -115,7 +330,7 @@ def _resolve_from_env_or_sdk(
     which_name: str,
 ) -> Tuple[Optional[str], Optional[str]]:
     for env_name in env_names:
-        val = (os.environ.get(env_name) or "").strip()
+        val = _get_env_var(env_name)
         if val and os.path.isfile(val):
             return val, env_name.lower()
     sdk_root, sdk_src = resolve_android_sdk()
@@ -152,10 +367,17 @@ def resolve_emulator() -> AndroidTool:
         os.path.join("emulator", "emulator.exe" if sys.platform == "win32" else "emulator"),
         "emulator",
     )
+    canonical = _canonical_emulator_exe(path) if path else None
+    if path and not canonical:
+        path, source = None, None
+    elif canonical:
+        if path and _is_qemu_engine_binary(path):
+            source = (source or "sdk") + "+wrapper"
+        path = canonical
     version = None
     if path:
         try:
-            proc = _run_cmd([path, "-version"], timeout=10)
+            proc = _run_emulator_cmd(path, ["-version"], timeout=10)
             out = ((proc.stdout or "") + (proc.stderr or "")).strip()
             if out:
                 version = out.splitlines()[0]
@@ -436,7 +658,7 @@ def list_avds(*, emulator_tool: Optional[AndroidTool] = None) -> Tuple[List[str]
     if not tool.path:
         return [], "emulator no encontrado. Instala Android Emulator o define ANDROID_HOME."
     try:
-        proc = _run_cmd([tool.path, "-list-avds"], timeout=20)
+        proc = _run_emulator_cmd(tool.path, ["-list-avds"], timeout=20)
     except Exception as exc:
         return [], f"No se pudo listar AVDs: {exc}"
     if proc.returncode != 0:
@@ -519,6 +741,24 @@ def start_emulator(
             "hint": "Instala Android Emulator desde Android Studio y define ANDROID_HOME o ELIA_ANDROID_HOME.",
         }
 
+    layout_err = _validate_emulator_layout(emulator_tool.path)
+    if layout_err:
+        return {
+            "ok": False,
+            "message": layout_err,
+            "device_id": None,
+            "emulator_exe": emulator_tool.path,
+        }
+
+    launch_meta = {
+        "emulator_exe": emulator_tool.path,
+        "emulator_cwd": _emulator_home_dir(emulator_tool.path),
+        "emulator_source": emulator_tool.source,
+        "launcher": "cmd_cd" if sys.platform == "win32" else "direct",
+        "elia_emulator_path": _get_env_var("ELIA_EMULATOR_PATH"),
+        "android_home": _get_env_var("ANDROID_HOME"),
+    }
+
     adb_tool = resolve_adb()
     devices, _ = list_devices(adb_tool=adb_tool)
     online_emulators = [d for d in devices if d.kind == "emulator" and d.state == "device"]
@@ -533,21 +773,31 @@ def start_emulator(
             "message": "Emulador ya conectado en adb.",
             "device_id": device_id,
             "reused": True,
+            "launch": launch_meta,
         }
 
     try:
-        subprocess.Popen(
-            [emulator_tool.path, "-avd", avd],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=sys.platform != "win32",
-        )
+        _popen_emulator(emulator_tool.path, ["-avd", avd])
     except Exception as exc:
-        return {"ok": False, "message": f"No se pudo iniciar el emulador: {exc}", "device_id": None}
+        return {
+            "ok": False,
+            "message": f"No se pudo iniciar el emulador: {exc}",
+            "device_id": None,
+            "launch": launch_meta,
+        }
 
     device_id, wait_err = wait_for_emulator_device(timeout_sec=timeout_sec, adb_tool=adb_tool)
     if not device_id:
-        return {"ok": False, "message": wait_err or "Emulador no detectado", "device_id": None}
+        return {
+            "ok": False,
+            "message": wait_err or "Emulador no detectado",
+            "device_id": None,
+            "launch": launch_meta,
+            "hint": (
+                "Si aparecen errores de DLL de qemu-system-x86_64.exe, reinicie ELIA tras "
+                "guardar variables de entorno y verifique emulator.exe (no el binario qemu)."
+            ),
+        }
 
     if wait_boot:
         boot_ok, boot_err = wait_for_boot(device_id, timeout_sec=timeout_sec, adb_tool=adb_tool)
@@ -559,6 +809,7 @@ def start_emulator(
         "message": "Emulador listo.",
         "device_id": device_id,
         "reused": False,
+        "launch": launch_meta,
     }
 
 
@@ -777,17 +1028,22 @@ def collect_env_hints() -> Dict[str, Optional[str]]:
     sdk, sdk_src = resolve_android_sdk()
     adb = resolve_adb()
     emulator = resolve_emulator()
+    emu_dir = _emulator_home_dir(emulator.path) if emulator.path else None
+    layout_err = _validate_emulator_layout(emulator.path) if emulator.path else None
     return {
-        "elia_android_home": os.environ.get("ELIA_ANDROID_HOME"),
-        "android_home": os.environ.get("ANDROID_HOME"),
-        "android_sdk_root": os.environ.get("ANDROID_SDK_ROOT"),
-        "elia_adb_path": os.environ.get("ELIA_ADB_PATH"),
-        "elia_emulator_path": os.environ.get("ELIA_EMULATOR_PATH"),
+        "elia_android_home": _get_env_var("ELIA_ANDROID_HOME"),
+        "android_home": _get_env_var("ANDROID_HOME"),
+        "android_sdk_root": _get_env_var("ANDROID_SDK_ROOT"),
+        "elia_adb_path": _get_env_var("ELIA_ADB_PATH"),
+        "elia_emulator_path": _get_env_var("ELIA_EMULATOR_PATH"),
         "resolved_sdk": sdk,
         "resolved_sdk_source": sdk_src,
         "resolved_adb": adb.path,
         "resolved_emulator": emulator.path,
-        "elia_appium_path": os.environ.get("ELIA_APPIUM_PATH"),
+        "resolved_emulator_cwd": emu_dir,
+        "emulator_layout_ok": layout_err is None,
+        "emulator_layout_error": layout_err,
+        "elia_appium_path": _get_env_var("ELIA_APPIUM_PATH"),
         "appium_url": appium_url(),
     }
 

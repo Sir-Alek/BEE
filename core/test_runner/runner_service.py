@@ -91,6 +91,20 @@ class TestRunnerService:
         with self._lock:
             self._runs[run_id] = run
 
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution(
+                "run_started",
+                run_id=run_id,
+                kind=kind,
+                platform=platform,
+                project=project,
+                cwd=cwd,
+            )
+        except Exception:
+            pass
+
         def _worker() -> None:
             proc: Optional[subprocess.Popen[str]] = None
             try:
@@ -139,6 +153,24 @@ class TestRunnerService:
                 run.state = "error"
             finally:
                 run.finished_at = time.time()
+                try:
+                    from webui.error_reporting import log_execution
+                    import logging
+
+                    level = logging.INFO if run.state == "done" and run.return_code == 0 else logging.WARNING
+                    log_execution(
+                        "run_finished",
+                        level=level,
+                        run_id=run_id,
+                        kind=kind,
+                        platform=platform,
+                        project=project,
+                        state=run.state,
+                        return_code=run.return_code,
+                        error=run.error,
+                    )
+                except Exception:
+                    pass
                 if run.generate_evidence and run.project_path:
                     from core.test_runner.run_artifacts import collect_run_artifacts
 

@@ -724,7 +724,7 @@ class WebCaptureBehaveBuilder:
         header = (
             f"from behave import *\n"
             f"{page_imports}\n"
-            f"from utils.button_functions import ui_interact, ui_navigate\n"
+            f"from utils.button_functions import ui_interact, ui_navigate, take_global_evidence\n"
             f"from environment import *\n"
         )
 
@@ -879,11 +879,20 @@ class WebCaptureBehaveBuilder:
             if then_text not in generated_then:
                 generated_then.add(then_text)
                 step_counter += 1
+                step_id_then = f"{step_counter:02d}_then"
                 esc_then = then_text.replace("\\", "\\\\").replace("'", "\\'")
                 then_fn = self._create_step_method_name("then", then_text)
                 parts.append(
                     f"\n@then('{esc_then}')\n"
                     f"def {then_fn}(context):\n"
+                    f"    if getattr(context, 'driver', None):\n"
+                    f"        take_global_evidence(\n"
+                    f"            context.driver,\n"
+                    f"            'then',\n"
+                    f"            'estado_final_pantalla',\n"
+                    f"            context.generate_evidence,\n"
+                    f"            screenshot_step='{step_id_then}',\n"
+                    f"        )\n"
                     f"    assert True\n"
                 )
 
@@ -1077,11 +1086,11 @@ class WebCaptureBehaveBuilder:
                                 rendered = self._feature_text_from_ai_steps(base_name, ai_steps)
                             if not rendered:
                                 rendered = self._generate_bdd_feature_heuristic_business(
-                                    unique_actions, base_name
+                                    unique_actions, base_name, platform=platform
                                 )
                         else:
                             rendered = last_rendered or self._generate_bdd_feature_heuristic_business(
-                                unique_actions, base_name
+                                unique_actions, base_name, platform=platform
                             )
 
                         last_rendered = rendered
@@ -1108,7 +1117,9 @@ class WebCaptureBehaveBuilder:
                                 break
                             continue
                         if action == "use_heuristic":
-                            return self._generate_bdd_feature_heuristic_business(unique_actions, base_name)
+                            return self._generate_bdd_feature_heuristic_business(
+                                unique_actions, base_name, platform=platform
+                            )
 
             except BDDUserCancelled:
                 raise
@@ -1120,8 +1131,9 @@ class WebCaptureBehaveBuilder:
         )
 
     def _bdd_parse_actions(self, unique_actions: List[Tuple[str, str]]) -> Dict[str, Any]:
-        """Extrae URL, tokens de clic, textos de relleno y selecciones desde descripciones heurísticas."""
+        """Extrae URL, ventana legacy, tokens de clic, textos de relleno y selecciones."""
         start_url: Optional[str] = None
+        window_name: Optional[str] = None
         click_tokens: List[str] = []
         fills: List[str] = []
         selects: List[str] = []
@@ -1130,7 +1142,13 @@ class WebCaptureBehaveBuilder:
             if action_type == "given":
                 m = re.search(r'"([^"]+)"', description)
                 if m:
-                    start_url = m.group(1)
+                    desc_lower = description.lower()
+                    if desc_lower.startswith("abrir ventana"):
+                        window_name = m.group(1)
+                    elif "móvil" in desc_lower or "movil" in desc_lower:
+                        window_name = m.group(1)
+                    else:
+                        start_url = m.group(1)
             elif action_type == "click":
                 m = re.search(r'"([^"]+)"', description)
                 if m:
@@ -1150,6 +1168,7 @@ class WebCaptureBehaveBuilder:
         blob = " ".join(click_tokens).lower()
         return {
             "start_url": start_url,
+            "window_name": window_name,
             "click_tokens": click_tokens,
             "fills": fills,
             "selects": selects,
@@ -1234,7 +1253,11 @@ class WebCaptureBehaveBuilder:
         if platform == "mobile":
             given_line = "    Given el usuario tiene la aplicación móvil abierta y lista para usar\n"
         elif platform == "legacy":
-            given_line = "    Given el usuario tiene abierta la aplicación de escritorio bajo prueba\n"
+            win = (ctx.get("window_name") or "").strip()
+            if win:
+                given_line = f'    Given el usuario tiene abierta la ventana "{win}"\n'
+            else:
+                given_line = "    Given el usuario tiene abierta la aplicación de escritorio bajo prueba\n"
         elif ctx["start_url"]:
             try:
                 netloc = urlparse(ctx["start_url"]).netloc or ctx["start_url"]
@@ -1505,7 +1528,7 @@ class WebCaptureBehaveBuilder:
         """
         imports = f"""from behave import *
 from pages.{base_name}_page import {class_name}
-from utils.button_functions import ui_navigate
+from utils.button_functions import ui_navigate, take_global_evidence
 from environment import *
 """
 
@@ -1633,6 +1656,13 @@ def {method_name}(context):
 @{eff}('{esc}')
 def {method_name}(context):
     context.page = {class_name}(context.driver)
+    take_global_evidence(
+        context.driver,
+        "then",
+        "estado_final_pantalla",
+        context.generate_evidence,
+        screenshot_step='{step_id}',
+    )
     assert True
 """)
 
@@ -2218,12 +2248,18 @@ class {class_name}:
             # Shadow DOM: generar par host+inner en lugar del locator normal
             shadow = self._shadow_info_for_selector(selector)
             if shadow:
-                host_sel   = shadow.get("host_selector") or ""
-                inner_sel  = shadow.get("inner_selector") or use_sel
-                host_xpath = shadow.get("host_xpath")    or ""
-                locator_lines.append(f'        # Shadow DOM — host: {host_sel}')
-                locator_lines.append(f'        self.shadow_host_{name} = "{self._escape_xpath_for_python_string(host_xpath or host_sel)}"')
-                locator_lines.append(f'        self.shadow_inner_{name} = "{self._escape_xpath_for_python_string(inner_sel)}"')
+                chain_css = shadow.get("chain_css") or ""
+                if chain_css:
+                    # Cadena `>>` para atravesar N niveles de Shadow DOM.
+                    locator_lines.append(f'        # Shadow DOM (cadena >>): {chain_css}')
+                    locator_lines.append(f'        self.shadow_chain_{name} = {chain_css!r}')
+                else:
+                    host_sel   = shadow.get("host_selector") or ""
+                    inner_sel  = shadow.get("inner_selector") or use_sel
+                    host_xpath = shadow.get("host_xpath")    or ""
+                    locator_lines.append(f'        # Shadow DOM — host: {host_sel}')
+                    locator_lines.append(f'        self.shadow_host_{name} = "{self._escape_xpath_for_python_string(host_xpath or host_sel)}"')
+                    locator_lines.append(f'        self.shadow_inner_{name} = "{self._escape_xpath_for_python_string(inner_sel)}"')
             else:
                 xpath_escaped = self._escape_xpath_for_python_string(xpath)
                 locator_lines.append(f'        self.{locator_type}_{name} = "{xpath_escaped}"')
@@ -2262,7 +2298,19 @@ class {class_name}:
 
             if method_key not in generated_methods:
                 shadow = self._shadow_info_for_selector(selector)
-                if shadow:
+                if shadow and shadow.get("chain_css"):
+                    method_lines.append(f"""
+    def {method_key}(self, tomar_evidencia=False, step=None):
+        \"\"\"Click en Shadow DOM (cadena): {shadow.get('chain_css')}\"\"\"
+        ui_click_shadow(
+            driver=self.driver,
+            css_selector_final=self.shadow_chain_{name},
+            nombre_elemento="{method_key}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step,
+        )
+                    """)
+                elif shadow:
                     inner_sel = shadow.get("inner_selector") or selector
                     method_lines.append(f"""
     def {method_key}(self, tomar_evidencia=False, step=None):
@@ -2306,7 +2354,20 @@ class {class_name}:
 
             if method_key not in generated_methods:
                 shadow = self._shadow_info_for_selector(selector)
-                if shadow:
+                if shadow and shadow.get("chain_css"):
+                    method_lines.append(f"""
+    def {method_key}(self, text, tomar_evidencia=False, step=None):
+        \"\"\"Escribe texto en Shadow DOM (cadena): {shadow.get('chain_css')}\"\"\"
+        ui_set_value_shadow(
+            driver=self.driver,
+            css_selector_final=self.shadow_chain_{name},
+            valor=str(text),
+            nombre_elemento="{method_key}",
+            usar_create_screenshot=tomar_evidencia,
+            screenshot_step=step,
+        )
+                    """)
+                elif shadow:
                     inner_sel = shadow.get("inner_selector") or selector
                     method_lines.append(f"""
     def {method_key}(self, text, tomar_evidencia=False, step=None):

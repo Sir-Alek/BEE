@@ -442,17 +442,30 @@ class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
             step_n += 1
             esc_when = when_text.replace("\\", "\\\\").replace("'", "\\'")
             esc_then = then_text.replace("\\", "\\\\").replace("'", "\\'")
-            body = [f"    context.page = {data['class_name']}(context.driver)"]
+            body = [f"    context.page = {data['class_name']}(None)" if self.platform == "legacy" else f"    context.page = {data['class_name']}(context.driver)"]
+            when_id = f"{step_n:02d}_when"
+            then_id = f"{step_n:02d}_then"
             for mn in method_names:
-                body.append(f"    context.page.{mn}()")
+                if self.platform == "legacy" and not mn.startswith("wait_"):
+                    body.append(
+                        f"    context.page.{mn}(step='{when_id}', tomar_evidencia=context.generate_evidence)"
+                    )
+                else:
+                    body.append(f"    context.page.{mn}()")
             parts.append(
                 f"\n@when('{esc_when}')\ndef step_{step_n:02d}_when(context):\n"
                 + "\n".join(body)
                 + "\n"
             )
+            then_body = ""
+            if self.platform == "legacy":
+                then_body = (
+                    f"    context.page.capturar_estado(step='{then_id}', tomar_evidencia=context.generate_evidence)\n"
+                )
             parts.append(
                 f"\n@then('{esc_then}')\ndef step_{step_n:02d}_then(context):\n"
-                f"    assert True\n"
+                + then_body
+                + "    assert True\n"
             )
         return "".join(parts)
 
@@ -707,17 +720,22 @@ class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
             safe = re.sub(r"[^\w]", "_", str(ctrl))[:40].strip("_") or f"click_{click_idx}"
             methods.append(
                 f"""
-    def click_{safe}(self):
-        import pyautogui
-        pyautogui.click({x}, {y})
+    def click_{safe}(self, step=None, tomar_evidencia=False):
+        legacy_click({x}, {y}, nombre_elemento={ctrl!r}, step=step, usar_create_screenshot=tomar_evidencia)
 """
             )
         if not methods:
-            methods.append("\n    def interact_default(self):\n        pass\n")
+            methods.append(
+                "\n    def interact_default(self, step=None, tomar_evidencia=False):\n        pass\n"
+            )
+        methods.append(
+            "\n    def capturar_estado(self, step=None, tomar_evidencia=False):\n"
+            "        legacy_capture_screen(step=step, nombre_elemento='estado_final', usar_create_screenshot=tomar_evidencia)\n"
+        )
         win = meta.get("window_name") or ""
         win_line = f"    # Ventana: {win}\n" if win else ""
         return (
-            "import pyautogui\n"
+            "from utils.button_functions import legacy_click, legacy_capture_screen\n"
             f"\n\nclass {class_name}:\n"
             f"    def __init__(self, driver):\n"
             f"        self.driver = driver\n{win_line}\n"
@@ -770,9 +788,14 @@ class RecordingToBehaveConverter(WebCaptureBehaveBuilder):
 from pages.{base_name}_page import {class_name}
 from environment import *
 """
+            given_desc = next(
+                (d for t, d in feature_steps if t.lower() == "given"),
+                "el usuario tiene la aplicación móvil abierta y lista para usar",
+            )
+            esc_given = given_desc.replace("\\", "\\\\").replace("'", "\\'")
             body = [
                 f"""
-@given('el usuario tiene la aplicación móvil abierta y lista para usar')
+@given('{esc_given}')
 def step_mobile_given(context):
     context.page = {class_name}(context.driver)
 """
@@ -784,12 +807,20 @@ from utils.button_functions import activate_window_by_title_contains
 from environment import *
 """
             win = data.get("window_name") or "aplicación"
+            given_desc = next((d for t, d in feature_steps if t.lower() == "given"), None)
+            if given_desc:
+                m = re.search(r'"([^"]+)"', given_desc)
+                if m:
+                    win = m.group(1)
+                esc_given = given_desc.replace("\\", "\\\\").replace("'", "\\'")
+            else:
+                esc_given = "el usuario tiene abierta la aplicación de escritorio bajo prueba"
             body = [
                 f"""
-@given('el usuario tiene abierta la aplicación de escritorio bajo prueba')
+@given('{esc_given}')
 def step_legacy_given(context):
     activate_window_by_title_contains({json.dumps(str(win))}, timeout=10.0)
-    context.page = {class_name}(context.driver)
+    context.page = {class_name}(None)
 """
             ]
 
@@ -806,16 +837,23 @@ def step_legacy_given(context):
             esc = description.replace("\\", "\\\\").replace("'", "\\'")
             mname = f"step_{method_idx:02d}_{st}"
             calls: List[str] = []
+            step_id = f"{method_idx:02d}_{st}"
             if st in ("when", "and") and event_methods:
                 chunk_size = max(1, len(event_methods) // n_main)
                 chunk = event_methods[ev_pos : ev_pos + chunk_size]
                 ev_pos += len(chunk)
                 for em in chunk:
-                    if em.startswith("wait_"):
-                        calls.append(f"    context.page.{em}()")
+                    if self.platform == "legacy" and not em.startswith("wait_"):
+                        calls.append(
+                            f"    context.page.{em}(step='{step_id}', tomar_evidencia=context.generate_evidence)"
+                        )
                     else:
                         calls.append(f"    context.page.{em}()")
             if st == "then":
+                if self.platform == "legacy":
+                    calls.append(
+                        f"    context.page.capturar_estado(step='{step_id}', tomar_evidencia=context.generate_evidence)"
+                    )
                 calls.append(
                     '    assert True, "Verificar resultado esperado según el escenario de negocio"'
                 )
@@ -823,12 +861,13 @@ def step_legacy_given(context):
                 calls.append("    context.page.interact_default()")
 
             dec = "And" if st == "and" else st.capitalize()
+            page_ctor = "None" if self.platform == "legacy" else "context.driver"
             body.append(
                 f"""
 @{dec}('{esc}')
 def {mname}(context):
     if not hasattr(context, 'page') or context.page is None:
-        context.page = {class_name}(context.driver)
+        context.page = {class_name}({page_ctor})
 """
                 + "\n".join(calls)
                 + "\n"

@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ELIA"
-#define MyAppVersion "0.9.68"
+#define MyAppVersion "0.9.75"
 #define MyAppPublisher "</Sir_Alek>"
 #define MyAppURL ""
 #define MyAppExeName "ELIA.exe"

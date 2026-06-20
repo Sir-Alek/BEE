@@ -19,6 +19,7 @@ EXECUTION_LOGGER_NAME = "elia.execution"
 _DEFAULT_MAX_MB = 5
 _DEFAULT_BACKUPS = 3
 _DEFAULT_ERROR_REPORTS_MAX = 50
+_DEFAULT_LOG_LEVEL = logging.INFO
 
 # Patrones de redacción (Infosec / local-first). Orden importa.
 _REDACTIONS: list[tuple[re.Pattern[str], str]] = [
@@ -73,6 +74,32 @@ def execution_log_about_hint() -> str:
     )
 
 
+def _execution_log_level() -> int:
+    raw = (os.environ.get("ELIA_EXEC_LOG_LEVEL") or "INFO").strip().upper()
+    level = getattr(logging, raw, None)
+    if isinstance(level, int):
+        return level
+    return _DEFAULT_LOG_LEVEL
+
+
+def log_execution(event: str, level: int = logging.INFO, **fields: Any) -> None:
+    """Registro estructurado en elia_execution.log (sanitizado, sin secretos)."""
+    configure_execution_logging()
+    logger = get_execution_logger()
+    if not logger.isEnabledFor(level):
+        return
+    parts = [f"[{event}]"]
+    for key in sorted(fields):
+        value = fields[key]
+        if value is None or value == "":
+            continue
+        safe = sanitize_text(str(value))
+        if len(safe) > 500:
+            safe = safe[:497] + "..."
+        parts.append(f"{key}={safe}")
+    logger.log(level, " ".join(parts))
+
+
 def get_execution_logger() -> logging.Logger:
     """Logger dedicado a ELIA; no captura uvicorn/fastapi en el archivo."""
     configure_execution_logging()
@@ -84,7 +111,7 @@ def configure_execution_logging() -> Path:
     global _CONFIGURED
     log_path = execution_log_path()
     logger = logging.getLogger(EXECUTION_LOGGER_NAME)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(_execution_log_level())
     logger.propagate = False
 
     logs_dir().mkdir(parents=True, exist_ok=True)
@@ -219,11 +246,33 @@ def persist_job_error_snapshot(
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{job_id}.txt"
     out_path.write_text(content, encoding="utf-8")
-    get_execution_logger().error(
-        "Job %s failed (%s): %s", job_id[:8], mode, sanitize_text(error_msg)[:200]
+    log_execution(
+        "job_error",
+        level=logging.ERROR,
+        job_id=job_id,
+        mode=mode,
+        message=error_msg,
     )
     prune_error_reports()
     return out_path
+
+
+def open_logs_folder_in_os() -> Path:
+    """Abre la carpeta de logs ELIA en el explorador del sistema."""
+    import subprocess
+    import sys
+
+    configure_execution_logging()
+    folder = logs_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    path = str(folder.resolve())
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
+    return folder
 
 
 def load_job_error_report(job_id: str) -> Optional[str]:

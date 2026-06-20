@@ -117,18 +117,98 @@ def heal_recording_meta(
 # Capa 1 — Algorítmica (sin LLM)
 # ---------------------------------------------------------------------------
 
+# def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+#     """
+#     Intenta generar locators estables a partir del fingerprint sin invocar al modelo.
+#     Devuelve None si no puede producir nada mejor que el selector original.
+#     """
+#     fp: Dict[str, Any] = record.get("fingerprint") or {}
+#     tag: str = str(record.get("tag") or "*")
+#     rid: str = str(record.get("id") or "")
+#     shadow: Dict[str, Any] = record.get("shadow") or {}
+#     ancestors: List[Dict[str, Any]] = record.get("ancestors") or []
+
+#     candidates: List[tuple[str, float, str]] = []  # (selector, score, strategy)
+
+#     # --- data-* y aria-label (más estables) ---
+#     data_attrs: Dict[str, str] = fp.get("data_attrs") or {}
+#     for attr in _STABLE_ATTR_PRIORITY:
+#         val = data_attrs.get(attr) or fp.get(attr.replace("-", "_")) or ""
+#         if not val and attr == "aria-label":
+#             val = fp.get("aria_label") or ""
+#         if val:
+#             css = f'[{attr}="{_css_escape_attr_value(val)}"]'
+#             score = 0.95 if attr.startswith("data-") else 0.88
+#             candidates.append((css, score, attr))
+#             # Versión con tag para mayor especificidad
+#             candidates.append((f'{tag}[{attr}="{_css_escape_attr_value(val)}"]', score - 0.01, attr))
+
+#     # --- id estable (sin generados por frameworks) ---
+#     if rid and not re.search(r'\d{4,}|:[a-z0-9]{6,}|ng-|ember|__', rid):
+#         candidates.append((f"#{_css_escape_identifier(rid)}", 0.93, "id"))
+
+#     # --- name attribute ---
+#     name_val = fp.get("name_attr") or ""
+#     if name_val:
+#         candidates.append((f'{tag}[name="{_css_escape_identifier(name_val)}"]', 0.80, "name"))
+
+#     # --- texto visible corto + tag (solo para botones/links) ---
+#     text = (fp.get("text_content") or "").strip()
+#     role = (fp.get("role") or "").lower()
+#     if text and len(text) <= 40 and role in ("button", "link", "a", "button", "submit"):
+#         xpath_text = f'//{tag}[normalize-space(text())="{_xpath_escape(text)}"]'
+#         candidates.append((xpath_text, 0.75, "text"))
+
+#     # --- Anclaje en ancestro con id/data-testid estable ---
+#     for anc in ancestors[:2]:
+#         anc_id = anc.get("id") or ""
+#         anc_dt = anc.get("data_testid") or ""
+#         if anc_id and not re.search(r'\d{4,}', anc_id):
+#             anchor = f'#{_css_escape_attr_value(anc_id)}'
+#             if candidates:
+#                 best_inner, best_score, best_strat = candidates[0]
+#                 if not best_inner.startswith("#"):
+#                     anchored = f'{anchor} {best_inner}'
+#                     candidates.insert(0, (anchored, min(best_score + 0.03, 0.99), best_strat))
+#         elif anc_dt:
+#             anchor = f'[data-testid="{_css_escape_attr_value(anc_dt)}"]'
+#             if candidates:
+#                 best_inner, best_score, best_strat = candidates[0]
+#                 anchored = f'{anchor} {best_inner}'
+#                 candidates.insert(0, (anchored, min(best_score + 0.02, 0.99), best_strat))
+
+#     if not candidates:
+#         return None
+
+#     # Ordenar por score desc
+#     candidates.sort(key=lambda x: x[1], reverse=True)
+#     primary, score, strategy = candidates[0]
+#     fallbacks = [c[0] for c in candidates[1:5]]
+
+#     # Agregar xpath original como último fallback
+#     original_xpath = str(record.get("xpath") or "")
+#     if original_xpath and original_xpath not in fallbacks:
+#         fallbacks.append(original_xpath)
+
+#     # Shadow DOM: anotar la estrategia
+#     if shadow.get("is_shadow_child"):
+#         strategy = f"shadow:{strategy}"
+
+#     return {
+#         "primary":         primary,
+#         "fallbacks":       fallbacks,
+#         "strategies":      _strategies_from_candidates(candidates[:3]),
+#         "strategy":        strategy,
+#         "stability_score": round(score, 3),
+#     }
+
 def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Intenta generar locators estables a partir del fingerprint sin invocar al modelo.
-    Devuelve None si no puede producir nada mejor que el selector original.
-    """
     fp: Dict[str, Any] = record.get("fingerprint") or {}
     tag: str = str(record.get("tag") or "*")
     rid: str = str(record.get("id") or "")
     shadow: Dict[str, Any] = record.get("shadow") or {}
     ancestors: List[Dict[str, Any]] = record.get("ancestors") or []
-
-    candidates: List[tuple[str, float, str]] = []  # (selector, score, strategy)
+    candidates: List[tuple[str, float, str]] = []
 
     # --- data-* y aria-label (más estables) ---
     data_attrs: Dict[str, str] = fp.get("data_attrs") or {}
@@ -137,20 +217,43 @@ def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not val and attr == "aria-label":
             val = fp.get("aria_label") or ""
         if val:
-            css = f'[{attr}="{_css_escape(val)}"]'
-            score = 0.95 if attr.startswith("data-") else 0.88
+            score = 0.97 if attr.startswith("data-") else 0.88
+
+            # El Page Object Generator siempre trabaja en XPath (//*[...]).
+            # Devolver XPath directamente evita cualquier paso de conversión CSS→XPath
+            # que pueda fallar con valores complejos (puntos, paréntesis, guiones).
+            if attr in ("data-testid", "data-test", "data-qa", "data-cy"):
+                # XPath con comillas simples: el valor no contiene ' (los data-test ids no lo hacen)
+                # Si por algún caso contuviera ', _xpath_escape ya lo maneja.
+                safe_val = _xpath_escape(val)
+                xpath_primary  = f"//*[@{attr}='{safe_val}']"
+                xpath_with_tag = f"//{tag}[@{attr}='{safe_val}']"
+                return {
+                    "primary":         xpath_primary,
+                    "fallbacks":       [xpath_with_tag],
+                    "strategies": [
+                        {"type": attr, "value": xpath_primary},
+                        {"type": attr, "value": xpath_with_tag},
+                    ],
+                    "strategy":        attr,
+                    "stability_score": score,
+                }
+
+            # Para otros atributos estables (aria-label, data-id, etc.) mantener CSS
+            css = f'[{attr}="{_css_escape_attr_value(val)}"]'
             candidates.append((css, score, attr))
-            # Versión con tag para mayor especificidad
-            candidates.append((f'{tag}[{attr}="{_css_escape(val)}"]', score - 0.01, attr))
+            candidates.append((f'{tag}[{attr}="{_css_escape_attr_value(val)}"]', score - 0.01, attr))
 
     # --- id estable (sin generados por frameworks) ---
     if rid and not re.search(r'\d{4,}|:[a-z0-9]{6,}|ng-|ember|__', rid):
-        candidates.append((f"#{_css_escape(rid)}", 0.93, "id"))
+        # ✅ _css_escape_identifier porque el ID va FUERA de comillas (#id)
+        candidates.append((f"#{_css_escape_identifier(rid)}", 0.93, "id"))
 
     # --- name attribute ---
     name_val = fp.get("name_attr") or ""
     if name_val:
-        candidates.append((f'{tag}[name="{_css_escape(name_val)}"]', 0.80, "name"))
+        # ✅ _css_escape_attr_value porque el name va ENTRE comillas
+        candidates.append((f'{tag}[name="{_css_escape_attr_value(name_val)}"]', 0.80, "name"))
 
     # --- texto visible corto + tag (solo para botones/links) ---
     text = (fp.get("text_content") or "").strip()
@@ -164,14 +267,16 @@ def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         anc_id = anc.get("id") or ""
         anc_dt = anc.get("data_testid") or ""
         if anc_id and not re.search(r'\d{4,}', anc_id):
-            anchor = f'#{_css_escape(anc_id)}'
+            # ✅ _css_escape_identifier porque es un ID CSS
+            anchor = f'#{_css_escape_identifier(anc_id)}'
             if candidates:
                 best_inner, best_score, best_strat = candidates[0]
                 if not best_inner.startswith("#"):
                     anchored = f'{anchor} {best_inner}'
                     candidates.insert(0, (anchored, min(best_score + 0.03, 0.99), best_strat))
         elif anc_dt:
-            anchor = f'[data-testid="{_css_escape(anc_dt)}"]'
+            # ✅ _css_escape_attr_value porque va entre comillas
+            anchor = f'[data-testid="{_css_escape_attr_value(anc_dt)}"]'
             if candidates:
                 best_inner, best_score, best_strat = candidates[0]
                 anchored = f'{anchor} {best_inner}'
@@ -180,17 +285,14 @@ def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not candidates:
         return None
 
-    # Ordenar por score desc
     candidates.sort(key=lambda x: x[1], reverse=True)
     primary, score, strategy = candidates[0]
     fallbacks = [c[0] for c in candidates[1:5]]
 
-    # Agregar xpath original como último fallback
     original_xpath = str(record.get("xpath") or "")
     if original_xpath and original_xpath not in fallbacks:
         fallbacks.append(original_xpath)
 
-    # Shadow DOM: anotar la estrategia
     if shadow.get("is_shadow_child"):
         strategy = f"shadow:{strategy}"
 
@@ -201,7 +303,6 @@ def _algorithmic_heal(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "strategy":        strategy,
         "stability_score": round(score, 3),
     }
-
 
 # ---------------------------------------------------------------------------
 # Capa 2 — Gemma 4 (LLM)
@@ -252,6 +353,11 @@ def _gemma_heal(
         "- Provide 2-3 strategies when possible (id/data-testid, stable css, semantic xpath).\n"
         "- Prefer interactables index over raw HTML when choosing anchors.\n"
         "- Avoid nth-child and auto-generated ids.\n"
+        "- NEVER invent classes. Only use classes explicitly listed in 'classes_stable'.\n"
+        "- For XPath, prefer simple attribute matches like [@data-test='value'] over complex class contains.\n"
+        "- If data_attrs contains 'data-test' or 'data-testid', ALWAYS use that as the PRIMARY strategy.\n"
+        "  Example: [@data-test='add-to-cart-test.allthethings()-t-shirt-(red)'] — use the value EXACTLY as-is.\n"
+        "- NEVER use class-based XPath (contains(@class,...)) when a data-test/data-testid is available.\n"
     )
 
     try:
@@ -343,6 +449,9 @@ def _strategies_from_values(values: List[str]) -> List[Dict[str, str]]:
 def _score_for_strategy(strat_type: str) -> float:
     scores = {
         "data-testid": 0.98,
+        "data-test":   0.97,
+        "data-qa":     0.97,
+        "data-cy":     0.97,
         "id": 0.93,
         "aria": 0.88,
         "name": 0.82,
@@ -406,15 +515,39 @@ def _parse_gemma_locator_response(
 # Utilidades internas
 # ---------------------------------------------------------------------------
 
+# def _css_escape(value: str) -> str:
+#     """Escapa caracteres problemáticos para valores en selectores CSS."""
+#     return (value or "").replace('"', '\\"').replace("'", "\\'")
+
+import re
+
+# ============================================================================
+# Utilidades internas
+# ============================================================================
 def _css_escape(value: str) -> str:
-    """Escapa caracteres problemáticos para valores en selectores CSS."""
+    """Escapa caracteres problemáticos para valores en selectores CSS (legacy)."""
     return (value or "").replace('"', '\\"').replace("'", "\\'")
 
+def _css_escape_identifier(value: str) -> str:
+    """Escapa caracteres especiales para IDs y clases en CSS (fuera de comillas)."""
+    if not value:
+        return ""
+    # Escapar todo carácter que no sea alfanumérico, guion o guion bajo
+    escaped = re.sub(r'([^\w-])', r'\\\1', value)
+    # Si empieza con dígito, también debe escaparse
+    if escaped and escaped[0].isdigit():
+        escaped = '\\' + escaped
+    return escaped
+
+def _css_escape_attr_value(value: str) -> str:
+    """Escapa valores para atributos CSS entre comillas."""
+    if not value:
+        return ""
+    return value.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
 
 def _xpath_escape(value: str) -> str:
     """Escapa texto para expresiones XPath."""
-    return (value or "").replace('"', "&quot;").replace("'", "\\'")
-
+    return (value or "").replace('"', "'")
 
 def _compact_json(obj: Any) -> str:
     """Serialización JSON compacta (sin espacios extra)."""

@@ -4,6 +4,7 @@ import logging
 import shutil
 import glob
 from datetime import datetime
+from httpx import options
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -79,6 +80,8 @@ class BrowserSessionFactory:
         options.add_argument("--disable-webgl2")
         options.add_argument("--disable-features=WebGPU")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-popup-blocking")
         
         # Medios y Angle
         options.add_argument("--use-fake-ui-for-media-stream")
@@ -95,6 +98,19 @@ class BrowserSessionFactory:
             "profile.default_content_setting_values.media_stream_mic": 1,
             "profile.managed_default_content_settings.popups": 1,
             "profile.default_content_settings.popups": 1,
+            
+            # DESHABILITAR POPUPS DE CONTRASEÑA
+            "profile.password_manager_enabled": False,
+            "profile.password_manager_leak_detection": False,
+            "credentials_enable_service": False,
+            # DESHABILITAR NOTIFICACIONES
+            "profile.default_content_setting_values.notifications": 2,  # 2 = block
+            # DESHABILITAR OTROS POPUPS
+            "profile.default_content_setting_values.geolocation": 2,
+            "profile.default_content_setting_values.media_stream_camera": 2,
+            "profile.default_content_setting_values.media_stream_mic": 2,
+            "profile.default_content_setting_values.automatic_downloads": 2,
+            
             "credentials_enable_service": False,
             "profile.password_manager_enabled": False,
             "download.default_directory": download_dir,
@@ -324,7 +340,7 @@ class FeatureDatasetLoader:
             with open(json_path, 'r', encoding='utf-8') as file:
                 context.dataset = json.load(file)
                 context.personas = context.dataset.get('personas', [])
-                print(f"Datos de personas cargados correctamente para la característica {context.feature.name}:", context.personas)
+                # print(f"Datos de personas cargados correctamente para la característica {context.feature.name}:", context.personas)
         except FileNotFoundError:
             raise Exception(f"Archivo JSON no encontrado: {json_path}")
         except json.JSONDecodeError:

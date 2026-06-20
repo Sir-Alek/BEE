@@ -70,6 +70,27 @@ class ApiLoadTestRequest(BaseModel):
     scenario_weights: Optional[Dict[str, int]] = None
     collect_metrics: bool = True
     csv_prefix: str = "elia_load"
+    # Fase 0: think-time, ramp por etapas, multi-core local
+    think_time: Optional[Dict[str, Any]] = None  # {kind, min/max | value | mean/stddev}
+    stages: Optional[List[Dict[str, Any]]] = None  # [{duration, users, spawn_rate}] acumulado
+    processes: int = Field(default=0, ge=-1, le=64)  # -1 = todos los núcleos
+    sla: Optional[Dict[str, Any]] = None  # {max_p95_ms, max_error_pct, min_rps, ...}
+    # Fase 1: carga basada en flujo con controladores
+    flow_id: Optional[str] = None
+    # Fase 4: carga distribuida multi-máquina
+    mode: str = "standalone"  # standalone | master | worker
+    master_host: str = ""
+    master_port: int = Field(default=0, ge=0, le=65535)
+    expect_workers: int = Field(default=0, ge=0, le=1000)
+    # Setup SQL antes de Locust (nodos sql del flujo, una sola vez)
+    run_setup_flow: bool = False
+    environment: Optional[str] = None
+
+
+class ApiSqlPreflightRequest(BaseModel):
+    project: str
+    environment: Optional[str] = None
+    sql: Dict[str, Any]
 
 
 class ApiRunSuiteRequest(BaseModel):
@@ -77,6 +98,9 @@ class ApiRunSuiteRequest(BaseModel):
     environment: Optional[str] = None
     scenario_ids: Optional[List[str]] = None
     flow_id: Optional[str] = None
+    # Flujo inline con árbol de nodos (controladores if/loop/while + sql/grpc).
+    # Tiene prioridad sobre flow_id/scenario_ids cuando trae `nodes`.
+    flow: Optional[Dict[str, Any]] = None
     continue_on_failure: bool = False
     data_file: Optional[str] = None
 
@@ -382,13 +406,26 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 detail=f"Máximo {limits['max_suite_scenarios']} escenarios por suite",
             )
         flow = None
-        if body.flow_id:
+        if body.flow and (body.flow.get("nodes") or body.flow.get("steps")):
+            from core.api_automation.models import ApiFlow
+
+            flow = ApiFlow.from_dict(body.flow)
+        elif body.flow_id:
             try:
                 flow = load_flow(body.project, body.flow_id)
             except FileNotFoundError as e:
                 raise HTTPException(status_code=404, detail=str(e)) from e
         try:
-            return run_suite(
+            from webui.error_reporting import log_execution
+
+            log_execution(
+                "api_run_suite",
+                project=body.project,
+                environment=body.environment or "dev",
+                flow_id=body.flow_id,
+                scenario_count=len(scenario_ids),
+            )
+            result = run_suite(
                 body.project,
                 scenario_ids=body.scenario_ids,
                 flow=flow,
@@ -396,6 +433,14 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 continue_on_failure=body.continue_on_failure,
                 data_file=body.data_file,
             )
+            log_execution(
+                "api_run_suite_done",
+                project=body.project,
+                ok=result.get("ok"),
+                passed=result.get("passed_steps"),
+                failed=result.get("failed_steps"),
+            )
+            return result
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except FileNotFoundError as e:
@@ -437,6 +482,30 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         flow = ApiFlow.from_dict(body.flow)
         fid = save_flow(body.project, flow, flow_id=body.flow_id)
         return {"ok": True, "flow_id": fid}
+
+    @app.get("/api/api/capabilities/drivers")
+    def api_driver_capabilities(
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.driver_capabilities import get_driver_capabilities
+
+        _require_api_module()
+        return get_driver_capabilities()
+
+    @app.post("/api/api/sql/preflight")
+    def api_sql_preflight(
+        body: ApiSqlPreflightRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.runtime.sql_step import sql_preflight
+
+        _require_api_module()
+        _require_api_postman()
+        ctx = resolve_runtime_context(body.project, body.environment)
+        result = sql_preflight(body.sql, variables=ctx["variables"])
+        return {"ok": bool(result.get("ok")), "result": result, "environment": ctx["environment"]}
 
     @app.get("/api/api/projects/{project_name}/data-files")
     def api_list_data_files(
@@ -486,10 +555,17 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
         csv_prefix = str((run.meta or {}).get("csv_prefix") or "elia_load")
         metrics = resolve_metrics(run.project_path or run.cwd, list(run.lines), csv_prefix=csv_prefix)
+        sla = (run.meta or {}).get("sla") or {}
+        sla_result = None
+        if sla:
+            from core.api_automation.locust_metrics import evaluate_load_sla
+
+            sla_result = evaluate_load_sla(metrics, sla)
         return {
             "run_id": run_id,
             "state": run.state,
             "metrics": metrics,
+            "sla": sla_result,
         }
 
     @app.post("/api/api/import/postman")
@@ -562,20 +638,75 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
     ) -> Dict[str, Any]:
         _require_api_module()
         _require_api_locust()
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution(
+                "api_load_test",
+                project=body.project,
+                users=body.users,
+                run_time=body.run_time,
+                flow_id=body.flow_id,
+                run_setup_flow=body.run_setup_flow,
+            )
+        except Exception:
+            pass
         project_path = prepare_project("api", body.project)
-        scenarios = _load_scenarios_for_project(body.project, body.scenario_ids)
-        if not scenarios:
-            raise HTTPException(status_code=400, detail="Sin escenarios para generar Locust")
+
+        flow_nodes = None
+        flow_raw_nodes: List[Dict[str, Any]] = []
+        scenarios: List[ApiRequest] = []
+        setup_vars: Dict[str, str] = {}
+        node_counts: Dict[str, int] = {}
+
+        if body.flow_id:
+            from core.api_automation.locust_generator import inline_flow_requests
+            from core.api_automation.flow_utils import build_sql_setup_flow, count_node_types
+
+            try:
+                flow = load_flow(body.project, body.flow_id)
+            except FileNotFoundError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+            if flow.nodes:
+                flow_raw_nodes = flow.nodes
+                node_counts = count_node_types(flow_raw_nodes)
+                if body.run_setup_flow and node_counts.get("sql", 0) > 0:
+                    setup_flow = build_sql_setup_flow(flow_raw_nodes)
+                    setup_result = run_suite(
+                        body.project,
+                        flow=setup_flow,
+                        environment=body.environment,
+                        continue_on_failure=False,
+                    )
+                    if not setup_result.get("ok"):
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Setup SQL pre-carga falló; revise credenciales y consultas.",
+                        )
+                    setup_vars = dict(setup_result.get("final_variables") or {})
+                flow_nodes = inline_flow_requests(body.project, flow.nodes)
+        if not flow_nodes:
+            scenarios = _load_scenarios_for_project(body.project, body.scenario_ids)
+            if not scenarios:
+                raise HTTPException(status_code=400, detail="Sin escenarios para generar carga")
+
         weights = body.scenario_weights or {}
         locust_path = write_locustfile(
-            project_path, scenarios, host=body.host, weights=weights
+            project_path,
+            scenarios,
+            host=body.host,
+            weights=weights,
+            think_time=body.think_time,
+            stages=body.stages,
+            flow_nodes=flow_nodes,
+            initial_vars=setup_vars,
         )
         try:
             import locust  # noqa: F401
         except ImportError as e:
             raise HTTPException(
                 status_code=503,
-                detail="Locust no instalado. pip install locust",
+                detail="Motor de carga (Locust) no instalado. pip install locust",
             ) from e
         csv_prefix = body.csv_prefix if body.collect_metrics else ""
         cmd = build_locust_command(
@@ -585,6 +716,11 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             run_time=body.run_time,
             host=body.host,
             csv_prefix=csv_prefix,
+            processes=body.processes,
+            mode=body.mode,
+            master_host=body.master_host,
+            master_port=body.master_port,
+            expect_workers=body.expect_workers,
         )
         run_id = test_runner_service.start(
             kind="locust",
@@ -594,12 +730,22 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             platform="api",
             project=body.project,
             project_path=project_path,
-            meta={"csv_prefix": csv_prefix or "elia_load", "collect_metrics": body.collect_metrics},
+            meta={
+                "csv_prefix": csv_prefix or "elia_load",
+                "collect_metrics": body.collect_metrics,
+                "sla": body.sla or {},
+                "mode": body.mode,
+                "flow_node_counts": node_counts,
+                "setup_sql": bool(body.run_setup_flow and node_counts.get("sql")),
+            },
         )
         return {
             "run_id": run_id,
             "locustfile": locust_path,
             "scenario_count": len(scenarios),
+            "flow": bool(flow_nodes),
+            "flow_node_counts": node_counts,
+            "setup_sql": bool(body.run_setup_flow and node_counts.get("sql")),
             "collect_metrics": body.collect_metrics,
         }
 

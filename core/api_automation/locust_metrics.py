@@ -93,11 +93,83 @@ def parse_locust_stats_csv(path: str) -> Dict[str, Any]:
     }
 
 
+def parse_locust_failures_csv(path: str) -> List[Dict[str, Any]]:
+    """Desglose de errores por endpoint desde `<prefix>_failures.csv`."""
+    p = Path(path)
+    if not p.is_file():
+        return []
+    failures: List[Dict[str, Any]] = []
+    with open(p, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = (row.get("Name") or row.get("name") or "").strip()
+            if not name:
+                continue
+            failures.append(
+                {
+                    "method": (row.get("Method") or "").strip(),
+                    "name": name,
+                    "error": (row.get("Error") or row.get("error") or "").strip(),
+                    "occurrences": _int(row.get("Occurrences") or row.get("Occurrence")),
+                }
+            )
+    return failures
+
+
+def evaluate_load_sla(metrics: Dict[str, Any], sla: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Evalúa umbrales de SLA contra las métricas resueltas.
+
+    `sla` admite: max_p95_ms, max_p99_ms, max_avg_ms, max_error_pct, min_rps.
+    Devuelve {ok, checks:[{metric, threshold, actual, passed}]}.
+    """
+    if not sla:
+        return {"ok": True, "checks": []}
+    summary = (metrics.get("csv") or {}).get("summary") or {}
+    live = metrics.get("live") or {}
+
+    def _val(key_csv: str, key_live: str) -> float:
+        if summary.get(key_csv) is not None:
+            return _float(summary.get(key_csv))
+        return _float(live.get(key_live))
+
+    error_pct = _float(live.get("error_rate_pct"))
+    checks: List[Dict[str, Any]] = []
+
+    def _add(metric, threshold, actual, passed):
+        checks.append(
+            {"metric": metric, "threshold": threshold, "actual": actual, "passed": passed}
+        )
+
+    if "max_p95_ms" in sla:
+        a = _val("p95_ms", "p95_ms")
+        _add("p95_ms", sla["max_p95_ms"], a, a <= _float(sla["max_p95_ms"]))
+    if "max_p99_ms" in sla:
+        a = _val("p99_ms", "p99_ms")
+        _add("p99_ms", sla["max_p99_ms"], a, a <= _float(sla["max_p99_ms"]))
+    if "max_avg_ms" in sla:
+        a = _val("avg_ms", "avg_ms")
+        _add("avg_ms", sla["max_avg_ms"], a, a <= _float(sla["max_avg_ms"]))
+    if "max_error_pct" in sla:
+        _add("error_pct", sla["max_error_pct"], error_pct, error_pct <= _float(sla["max_error_pct"]))
+    if "min_rps" in sla:
+        a = _val("rps", "current_rps")
+        _add("rps", sla["min_rps"], a, a >= _float(sla["min_rps"]))
+
+    return {"ok": all(c["passed"] for c in checks), "checks": checks}
+
+
 def resolve_metrics(project_path: str, lines: List[str], csv_prefix: str = "elia_load") -> Dict[str, Any]:
     live = accumulate_from_lines(lines)
     stats_path = Path(project_path) / f"{csv_prefix}_stats.csv"
+    failures_path = Path(project_path) / f"{csv_prefix}_failures.csv"
     csv_data = parse_locust_stats_csv(str(stats_path)) if stats_path.is_file() else {}
-    return {"live": live, "csv": csv_data, "csv_path": str(stats_path) if stats_path.is_file() else None}
+    failures = parse_locust_failures_csv(str(failures_path)) if failures_path.is_file() else []
+    return {
+        "live": live,
+        "csv": csv_data,
+        "csv_path": str(stats_path) if stats_path.is_file() else None,
+        "failures": failures,
+    }
 
 
 def _int(value: Any) -> int:

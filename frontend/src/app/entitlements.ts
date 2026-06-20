@@ -36,7 +36,7 @@ export function upsellBenefits(tier: string): string[] {
     return [
       "Inteligencia de Requerimientos (Doc-to-BDD)",
       "Automatización Móvil (Appium)",
-      "Pruebas API en cadena (Postman / suites)",
+      "Pruebas API en cadena (cliente y suites)",
       "Publishers Git y Jira Vanilla",
     ];
   }

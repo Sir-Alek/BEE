@@ -74,6 +74,12 @@ class JobManager:
         job.events.append({"type": "job_started", "ts": time.time()})
         with self._global_lock:
             self._jobs[job_id] = job
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution("job_started", job_id=job_id, mode=mode)
+        except Exception:
+            pass
         return job_id
 
     def get_job(self, job_id: str) -> JobState:
@@ -94,6 +100,12 @@ class JobManager:
             job.cond.notify_all()
 
         self._emit_event(job_id, {"type": "job_cancelled"})
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution("job_cancelled", job_id=job_id, mode=job.mode)
+        except Exception:
+            pass
 
     def _emit_event(self, job_id: str, event: Dict[str, Any]) -> None:
         with self._global_lock:
@@ -208,6 +220,13 @@ class JobManager:
                 job.active_prompt.answer = job.active_prompt.answer
             job.cond.notify_all()
         self._emit_event(job_id, {"type": "job_done"})
+
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution("job_done", job_id=job_id, mode=job.mode)
+        except Exception:
+            pass
 
     def mark_error(self, job_id: str, *, message: str, details: Optional[str] = None) -> None:
         with self._global_lock:

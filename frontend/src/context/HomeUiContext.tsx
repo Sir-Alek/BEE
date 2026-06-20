@@ -19,6 +19,7 @@ export type HomeUiContextValue = {
   setLicenseActivateMsg: (msg: string | null) => void;
   canRunJobs: boolean;
   modules: ModulesStatus | null;
+  modulesLoading: boolean;
   showLockModal: string | null;
   setShowLockModal: (v: string | null) => void;
   showHomeError: (msg: string, opts?: { mobileInline?: boolean }) => void;

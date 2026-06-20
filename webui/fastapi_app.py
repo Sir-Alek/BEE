@@ -266,6 +266,14 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         exit_flag["value"] = False
         return {"ok": True, "session_id": elia_session_id}
 
+    @app.post("/api/app/open-logs-folder")
+    def app_open_logs_folder(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
+        """Abre Documents/ELIA/logs (elia_execution.log) en el explorador del sistema."""
+        from webui.error_reporting import open_logs_folder_in_os
+
+        folder = open_logs_folder_in_os()
+        return {"ok": True, "path": str(folder.resolve())}
+
     @app.post("/api/app/exit")
     def app_exit(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         """

@@ -834,12 +834,20 @@ export async function getPlatformProjects(platform: string): Promise<{ projects:
   return res.json();
 }
 
+export async function openEliaLogsFolder(): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch("/api/app/open-logs-folder", { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to open logs folder: ${res.status}`);
+  return res.json();
+}
+
 export async function listProjectFiles(
   platform: string,
   project: string,
+  advanced = false,
 ): Promise<{ files: { path: string; name: string; size: number }[] }> {
+  const params = advanced ? "?advanced=true" : "";
   const res = await fetch(
-    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/files`,
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/files${params}`,
   );
   if (res.status === 404) return { files: [] };
   if (!res.ok) throw new Error(`Failed to list files: ${res.status}`);
@@ -933,7 +941,22 @@ export async function runLoadTest(body: {
   scenario_ids?: string[];
   scenario_weights?: Record<string, number>;
   collect_metrics?: boolean;
-}): Promise<{ run_id: string; locustfile: string; scenario_count?: number }> {
+  flow_id?: string;
+  run_setup_flow?: boolean;
+  environment?: string;
+  think_time?: Record<string, unknown>;
+  stages?: Array<Record<string, unknown>>;
+  processes?: number;
+  sla?: Record<string, unknown>;
+  mode?: string;
+}): Promise<{
+  run_id: string;
+  locustfile: string;
+  scenario_count?: number;
+  flow?: boolean;
+  flow_node_counts?: Record<string, number>;
+  setup_sql?: boolean;
+}> {
   const res = await fetch("/api/api/load-test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -947,6 +970,8 @@ export async function runApiSuite(body: {
   project: string;
   environment?: string;
   scenario_ids?: string[];
+  flow_id?: string;
+  flow?: Record<string, unknown>;
   continue_on_failure?: boolean;
   data_file?: string;
 }): Promise<{
@@ -954,7 +979,7 @@ export async function runApiSuite(body: {
   passed_steps: number;
   failed_steps: number;
   iterations: number;
-  runs: Array<{ ok: boolean; steps: Array<{ name: string; ok: boolean }> }>;
+  runs: Array<{ ok: boolean; steps: Array<{ name: string; ok: boolean; type?: string; branch?: string }> }>;
 }> {
   const res = await fetch("/api/api/run-suite", {
     method: "POST",
@@ -1173,6 +1198,63 @@ export async function exportApiSuiteEvidence(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to export suite evidence: ${res.status}`);
+  return res.json();
+}
+
+export type ApiDriverCapabilities = {
+  sql: Record<string, boolean>;
+  grpc: { available: boolean; missing: string[] };
+  install_hint: string;
+};
+
+export async function getApiDriverCapabilities(): Promise<ApiDriverCapabilities> {
+  const res = await fetch("/api/api/capabilities/drivers");
+  if (!res.ok) throw new Error(`Failed to fetch driver capabilities: ${res.status}`);
+  return res.json();
+}
+
+export async function listApiFlows(project: string): Promise<{ flows: { id: string; name: string; path: string }[] }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/flows`);
+  if (!res.ok) throw new Error(`Failed to list flows: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiFlow(
+  project: string,
+  flowId: string,
+): Promise<{ flow: Record<string, unknown> }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/flows/${encodeURIComponent(flowId)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to load flow: ${res.status}`);
+  return res.json();
+}
+
+export async function saveApiFlow(body: {
+  project: string;
+  flow: Record<string, unknown>;
+  flow_id?: string;
+}): Promise<{ ok: boolean; flow_id: string }> {
+  const res = await fetch("/api/api/flows", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to save flow: ${res.status}`);
+  return res.json();
+}
+
+export async function sqlPreflight(body: {
+  project: string;
+  environment?: string;
+  sql: Record<string, unknown>;
+}): Promise<{ ok: boolean; result: Record<string, unknown>; environment: string }> {
+  const res = await fetch("/api/api/sql/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed SQL preflight: ${res.status}`);
   return res.json();
 }
 

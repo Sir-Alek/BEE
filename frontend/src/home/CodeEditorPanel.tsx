@@ -5,8 +5,9 @@ import { python } from "@codemirror/lang-python";
 import { StreamLanguage } from "@codemirror/language";
 import { gherkin } from "@codemirror/legacy-modes/mode/gherkin";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView } from "@codemirror/view";
+import { EditorView, hoverTooltip } from "@codemirror/view";
 import { createEliaCompletionSource, ProjectAutocompleteContext } from "./editorAutocomplete";
+import { catalogByName } from "./pageFunctionsCatalog";
 
 type Props = {
   value: string;
@@ -27,6 +28,33 @@ function languageExtension(path: string) {
   return [];
 }
 
+const pageFunctionHover = hoverTooltip((view, pos) => {
+  const { from, to } = view.state.doc.lineAt(pos);
+  const line = view.state.doc.sliceString(from, to);
+  const offset = pos - from;
+  const before = line.slice(0, offset);
+  const wordMatch = before.match(/([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (!wordMatch) return null;
+  const name = wordMatch[1];
+  const meta = catalogByName(name);
+  if (!meta) return null;
+  const start = offset - name.length;
+  return {
+    pos: from + start,
+    end: from + offset,
+    above: true,
+    create() {
+      const dom = document.createElement("div");
+      dom.style.maxWidth = "420px";
+      dom.style.padding = "8px 10px";
+      dom.style.fontSize = "12px";
+      dom.style.lineHeight = "1.45";
+      dom.innerHTML = `<strong>${meta.name}</strong><br/><code style="font-size:11px">${meta.signature}</code><br/><span>${meta.summary}</span>`;
+      return { dom };
+    },
+  };
+});
+
 export function CodeEditorPanel(props: Props) {
   const {
     value,
@@ -40,6 +68,8 @@ export function CodeEditorPanel(props: Props) {
     toolbar,
   } = props;
 
+  const isPython = filePath.toLowerCase().endsWith(".py");
+
   const extensions = useMemo(() => {
     const base = [
       languageExtension(filePath),
@@ -50,6 +80,9 @@ export function CodeEditorPanel(props: Props) {
         ".cm-gutters": { border: "none" },
       }),
     ];
+    if (isPython) {
+      base.push(pageFunctionHover);
+    }
     if (completionContext && filePath) {
       base.push(
         autocompletion({
@@ -60,7 +93,7 @@ export function CodeEditorPanel(props: Props) {
       );
     }
     return base;
-  }, [filePath, completionContext]);
+  }, [filePath, completionContext, isPython]);
 
   return (
     <div

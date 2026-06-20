@@ -10,6 +10,7 @@ from unittest.mock import patch
 from webui.error_reporting import (
     beta_feedback_url,
     build_error_report,
+    log_execution,
     persist_job_error_snapshot,
     prune_error_reports,
     sanitize_text,
@@ -40,6 +41,28 @@ class TestErrorReporting(unittest.TestCase):
         self.assertIn("Sin documentos", report)
         self.assertIn("AVISO DE PRIVACIDAD", report)
         self.assertIn("sanitizado localmente", report)
+
+    def test_log_execution_sanitizes_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log_path = root / "elia_execution.log"
+            with patch("webui.error_reporting.logs_dir", return_value=root), patch(
+                "webui.error_reporting.execution_log_path",
+                return_value=log_path,
+            ):
+                log_execution("test_event", job_id="abc", token="Bearer secret123")
+                self.assertTrue(log_path.is_file())
+                text = log_path.read_text(encoding="utf-8")
+                self.assertIn("[test_event]", text)
+                self.assertIn("job_id=abc", text)
+                self.assertNotIn("secret123", text)
+                import logging
+                from webui.error_reporting import EXECUTION_LOGGER_NAME
+
+                logger = logging.getLogger(EXECUTION_LOGGER_NAME)
+                for handler in logger.handlers[:]:
+                    handler.close()
+                    logger.removeHandler(handler)
 
     def test_persist_job_error_snapshot_writes_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

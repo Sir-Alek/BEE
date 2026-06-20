@@ -4,6 +4,104 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.75] - 2026-06-19
+
+### Añadido
+
+- Guía interactiva de funciones de automatización: El explorador del área de desarrollo ahora muestra de forma destacada un manual interactivo integrado que documenta el uso correcto y ejemplos prácticos de las funciones de automatización para páginas y elementos de interfaz (Web, Escritorio y captura de evidencias), manteniendo la edición de scripts avanzados accesible en una sección secundaria.
+- Autocompletado contextual avanzado: El editor de código ahora ofrece sugerencias de escritura enriquecidas que incluyen resúmenes informativos y la estructura exacta de tus funciones personalizadas, ayudas flotantes al pasar el cursor sobre los archivos y atajos predictivos al importar componentes compartidos.
+
+### Cambiado
+
+- Actualización automática de proyectos: Todos tus proyectos existentes recibirán e de forma transparente este nuevo manual de asistencia técnica al momento de explorar sus archivos.
+
+## [0.9.74] - 2026-06-19
+
+### Añadido
+
+- Trazabilidad avanzada de operaciones: Se implementó un registro estructurado y centralizado para documentar el inicio y fin de todas las tareas del sistema (secuencias de servicios, ejecuciones de rendimiento y flujos de carga masiva), aplicando filtros automáticos para sanitizar y omitir cualquier dato confidencial corporativo.
+- Acceso inmediato a registros de soporte: Se añadieron botones directos dentro de los paneles de tareas interrumpidas o consolas fallidas para abrir la carpeta de diagnósticos o inspeccionar el archivo de eventos del sistema al instante.
+- Exploración de diagnósticos nativa: Nueva función interna que abre de forma directa el directorio local de registros de ejecución en el explorador de archivos de tu sistema operativo.
+
+### Cambiado
+
+-Ajuste de profundidad en diagnósticos: El nivel de detalle de las alertas y registros de eventos ahora se puede configurar de manera flexible para alternar entre resúmenes generales o seguimientos técnicos exhaustivos.
+
+## [0.9.73] - 2026-06-19
+
+### Añadido
+
+- Inyección dinámica de datos en pruebas de rendimiento: Ahora es posible configurar secuencias de consultas a bases de datos para que se ejecuten automáticamente justo antes de iniciar una prueba de carga. El sistema procesa los datos iniciales e inyecta los resultados en vivo dentro de la simulación de rendimiento.
+- Pruebas de carga para servicios de alta velocidad (Plan Enterprise): Las capacidades de simulación de rendimiento masivo se extendieron para dar soporte nativo a protocolos empresariales avanzados de comunicación rápida, interpretando sus estructuras de mensajería y extrayendo variables bajo demanda.
+- Selector de flujos integrados en rendimiento: El panel de pruebas de carga permite asociar flujos secuenciales y lógicos completos guardados en lugar de peticiones individuales, desplegando avisos informativos si se detectan pasos avanzados de datos.
+- Catálogo de complementos opcionales: Se incluyó un manual de requisitos de soporte técnico para instalar de forma sencilla y bajo demanda los controladores de bases de datos y protocolos de comunicación específicos según las necesidades de tu proyecto.
+
+## [0.9.72] - 2026-06-19
+
+### Añadido
+
+- Guardado y organización de flujos interactivos: Las secuencias diseñadas en el panel de flujos ahora se pueden almacenar y recuperar por proyecto, incorporando alertas de confirmación inteligente para evitar sobrescrituras accidentales.
+- Extracción múltiple de variables: Los pasos de bases de datos y servicios avanzados ahora permiten capturar múltiples datos en una sola acción, asociando columnas o respuestas específicas directamente hacia variables reutilizables dentro del flujo.
+- Validación previa de complementos: Se añadieron indicadores visuales de estado que confirman si tu entorno local está listo para operar, junto con un botón para realizar comprobaciones rápidas de credenciales de bases de datos sin necesidad de ejecutar toda la suite de pruebas.
+- Integración segura con perfiles de entorno: Los formularios de bases de datos ahora sugieren y vinculan automáticamente los usuarios y claves definidos en tus perfiles de entorno activos, previniendo la exposición de contraseñas en el flujo de trabajo.
+
+### Cambiado
+
+- Ejecución eficiente de secuencias guardadas: El sistema optimiza el uso de recursos locales detectando si un flujo permanente se lanza sin modificaciones para procesarlo directamente a través de su identificador en el motor interno.
+
+## [0.9.71] - 2026-06-19
+
+### Añadido
+
+- Bloques visuales de datos y servicios en el editor: El constructor interactivo de flujos ahora incluye módulos específicos para añadir consultas a bases de datos y peticiones de mensajería empresarial, proporcionando formularios dedicados para configurar conexiones, parámetros, aserciones y variables de destino.
+
+### Cambiado
+
+- Conversión optimizada de flujos dinámicos: Al iniciar una secuencia desde la interfaz, el editor traduce de forma transparente la estructura visual (incluyendo ramas anidadas de condiciones y bucles en cualquier nivel de profundidad) en instrucciones legibles para el motor de ejecución.
+
+## [0.9.70] - 2026-06-19
+
+### Añadido
+
+- Simulación de comportamiento humano real (Tiempos de espera): El módulo de rendimiento ahora permite configurar intervalos de espera realistas entre acciones de usuarios virtuales, emulando con precisión el comportamiento humano y evitando ráfagas artificiales que distorsionen los resultados.
+- Escalones y rampas de carga personalizadas: Diseña pruebas avanzadas de pico, estrés y resistencia definiendo etapas progresivas (por ejemplo, incrementar usuarios paulatinamente, mantener el tope de carga y de-escalar al final) en una sola corrida automatizada.
+- Generación local de alto rendimiento: Las simulaciones de carga pesada ahora pueden distribuirse automáticamente entre todos los núcleos del procesador de tu equipo, multiplicando la capacidad local de generación de tráfico.
+- Arquitectura de carga distribuida en red: Se habilitaron los modos de operación Coordinador y Agente, permitiendo enlazar múltiples computadoras en red para alcanzar volúmenes de tráfico masivo distribuidos desde diferentes frentes.
+- Evaluación automatizada de niveles de servicio (SLA): Define los objetivos de calidad esperados (tiempos máximos de respuesta, porcentajes de error tolerados o transacciones mínimas). El sistema contrastará los resultados reales e indicará de inmediato si la prueba aprobó o falló los criterios empresariales.
+- Análisis detallado de fallos bajo presión: El reporte de rendimiento ahora agrupa y desglosa los errores específicos detectados por cada servicio afectado, facilitando la identificación exacta del cuello de botella bajo escenarios de estrés.
+- Flujos de prueba con lógica inteligente: Las secuencias de validación evolucionaron de listas lineales a flujos dinámicos. Ahora es posible incorporar condiciones lógicas avanzadas (ejecutar pasos si se cumple una regla, repetir acciones un número de veces o iterar mientras una condición sea verdadera), incluyendo topes de seguridad contra bucles infinitos.
+- Editor visual de flujos lógicos: Se incorporó un constructor interactivo arrastrable y anidable directamente en la interfaz. Permite modelar, ordenar y enlazar bloques de peticiones, condicionales y bucles visualmente sin escribir líneas de código complejas.
+- Pasos integrados de bases de datos: Las secuencias de validación ahora pueden intercalar consultas directas a bases de datos corporativas para preparar o certificar datos en caliente, extrayendo valores de forma segura a través de variables del sistema.
+- Integración nativa con servicios de mensajería empresarial: Soporte integrado para invocar servicios de comunicación unaria basados en alto rendimiento, descubriendo automáticamente sus métodos disponibles a partir del servidor y estructurando los mensajes de forma visual.
+
+### Cambiado
+
+- Nomenclatura neutral e intuitiva: Se optimizaron los textos, títulos y etiquetas del panel de servicios para utilizar un vocabulario propio del producto, descriptivo y neutral, conservando una compatibilidad clara para importar formatos comunes del mercado.
+- Carga modular y tolerante de componentes: Las conexiones avanzadas de bases de datos y mensajería se activan únicamente bajo demanda, asegurando que la falta de un complemento local no afecte en absoluto al arranque ni a las demás funciones de la herramienta.
+
+### Corregido
+
+- Estabilización visual en el inicio de licencias: Se eliminó el parpadeo temporal que mostraba candados o insignias de bloqueo durante los primeros segundos del arranque. La aplicación ahora recuerda de inmediato tu último plan válido, garantizando un inicio de sesión limpio, fluido y libre de alertas confusas.
+
+## [0.9.69] - 2026-06-04
+
+### Añadido
+
+- Evidencias automáticas en pasos de verificación: En los escenarios de prueba donde el paso de validación (Then) consista únicamente en comprobar un estado lógico o un elemento de la interfaz, el sistema ahora tomará de forma automática una captura de pantalla de respaldo y la incrustará en el reporte PDF final para certificar el resultado visual.
+- Soporte avanzado para arquitecturas web modernas (Componentes encapsulados): El motor de grabación y el generador de pruebas ahora detectan de forma automática elementos alojados dentro de estructuras web complejas o anidadas (como portales empresariales de última generación o librerías modernas). El sistema es capaz de atravesar múltiples capas de encapsulamiento para construir selectores altamente fiables, permitiendo automatizar botones, campos y menús que antes eran inaccesibles, tanto en flujos step by step como BDD (Behave).
+- Interacción visual y evidencias enriquecidas en aplicaciones de escritorio (Legacy): Durante la ejecución de pruebas en software de escritorio (Legacy), la aplicación ahora desplaza el cursor de forma fluida y visible hacia cada control, resaltándolo con un recuadro dinámico para que la interacción sea claramente observable en pantalla en tiempo real. Adicionalmente, captura de forma automática una evidencia enmarcada de cada elemento interactuado junto al estado final de la ventana, adjuntándolas directamente al reporte PDF final. Los tiempos de transición y las pausas entre pasos son completamente personalizables mediante parámetros de configuración del sistema para adaptarse con precisión al ritmo y velocidad de respuesta de cada aplicación.
+
+### Cambiado
+
+- Navegación automatizada más limpia: Se optimizó el comportamiento de Chrome durante las ejecuciones de prueba, desactivando por completo las alertas y ventanas emergentes (popups) nativas del navegador que sugieren guardar o actualizar contraseñas personales, evitando así bloqueos visuales en los flujos de automatización.
+- Captura mejorada de campos de credenciales: El motor de grabación web fue ajustado para interpretar de forma correcta las interacciones dentro de campos de contraseña protegidos, asegurando que las acciones de entrada queden registradas fielmente en el flujo de la prueba.
+- Mayor estabilidad en la autoreparación por IA: Se refinaron los criterios del motor de captura y del asistente de recuperación avanzada (potenciado por el modelo local de IA). Esta actualización permite construir selectores de interfaz significativamente más estables, minimizando las sugerencias inadecuadas en aplicaciones complejas.
+
+### Corregido
+
+- Registro inteligente de cuadros de texto: Se corrigió la forma en que el motor de captura interpreta cuando un usuario borra o sobrescribe el contenido de un campo de entrada. El sistema ahora descarta los pasos intermedios y procesa únicamente el texto final, previniendo la duplicación innecesaria de acciones en el script Gherkin.
+- Integridad total en reportes PDF: Se solucionó un inconveniente en la estructura de los proyectos de prueba que provocaba la omisión ocasional de imágenes de evidencia. El generador ahora garantiza que las capturas de pantalla tomadas se adjunten de manera ordenada y correcta en el reporte de ejecución por cada scenario.
+
 ## [0.9.68] - 2026-06-01
 
 ### Añadido
@@ -14,7 +112,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 ### Cambiado
 
 - Inicio optimizado de la aplicación: Lanzar el acceso directo de ELIA en Windows por segunda vez ahora te redirigirá automáticamente a la interfaz que ya tengas abierta en lugar de abrir ventanas duplicadas. Además, las sesiones de grabación web se iniciarán siempre de manera completamente limpia, evitando la restauración involuntaria de páginas web de sesiones anteriores del navegador.
-- Navegador dedicado para ELIA: La interfaz web se abre ahora con un perfil Chromium aislado (`%LOCALAPPDATA%\\ELIA\\browser-profile`), independiente del historial y de la opción «continuar donde lo dejé» del navegador personal. Cada arranque muestra solo ELIA, sin pestañas ajenas del perfil principal.
+- Entorno de navegación dedicado y aislado: A partir de ahora, la interfaz de la aplicación se abre de forma automática utilizando un perfil de navegación completamente independiente y exclusivo para ELIA. Esto garantiza que tus sesiones de automatización y trabajo queden totalmente separadas de tu navegador personal, protegiendo tu historial, contraseñas y datos habituales.
+- Inicio limpio y libre de distracciones: Cada vez que arranques la aplicación, la ventana mostrará única y exclusivamente el panel de control de ELIA. Se eliminó por completo la restauración automática de pestañas antiguas, páginas ajenas o sesiones previas de tu navegador principal, asegurando un espacio de trabajo despejado desde el primer segundo.
 - Rediseño estético del Tema Oscuro: Se mejoró visualmente toda la interfaz para ofrecer una experiencia mucho más integrada y cómoda para la vista. Las casillas de verificación, cuadros de texto, barras de desplazamiento y campos de filtrado de pruebas BDD ahora adaptan sus colores nativos y contornos al modo oscuro de forma homogénea.
 
 ### Corregido
@@ -24,6 +123,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Corrección en la persistencia de tareas: Cerrar pestañas secundarias o de descarte ya no provocará el apagado accidental del software. Asimismo, aquellas tareas que hayan sido canceladas o interrumpidas en segundo plano dejarán de mostrar el indicador visual indefinido de «Cargando...», liberando la pantalla de inmediato.
 - Fluidez en la navegación de proyectos: Al finalizar con éxito una conversión automatizada, el panel de inicio refrescará al instante tu catálogo de proyectos disponibles. Además, ahora puedes recargar la interfaz de forma segura (presionando F5) sin temor a perder tu sesión activa ni interrumpir la comunicación con la aplicación.
 - Persistencia visual: Se garantizó que tu preferencia de tema (claro u oscuro) se mantenga guardada de forma correcta y se aplique de manera inmediata desde el primer instante en que vuelves a arrancar la aplicación.
+- Reporte PDF de evidencias Behave: El emparejamiento de capturas con cada paso Gherkin usa la misma numeración secuencial que la generación de imágenes (`02_when`, `03_and`, etc.), de modo que todas las evidencias del escenario se incluyen en el PDF y no solo la del Given.
+- Paso Then en conversión web: Al ejecutar el Then de validación se captura el estado final de la pantalla y se adjunta al PDF como el resto de pasos.
 
 ## [0.9.67] - 2026-05-31
 

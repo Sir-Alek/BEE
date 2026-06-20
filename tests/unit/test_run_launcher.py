@@ -74,6 +74,7 @@ class TestProjectFiles(unittest.TestCase):
                 "features/steps/test1_steps.py": "pass",
                 "pages/test1_page.py": "pass",
                 "resources/data/test1.json": "{}",
+                "utils/GUIA_FUNCIONES_PAGE.md": "# guia",
                 "utils/button_functions.py": "# bf",
                 "utils/gen_reporTest.py": "# other",
             }
@@ -85,8 +86,12 @@ class TestProjectFiles(unittest.TestCase):
             listed = {f["path"] for f in project_files.list_runner_workspace_files(root)}
             self.assertNotIn("features/environment.py", listed)
             self.assertNotIn("utils/gen_reporTest.py", listed)
+            self.assertNotIn("utils/button_functions.py", listed)
             self.assertIn("features/test1.feature", listed)
             self.assertIn("features/steps/test1_steps.py", listed)
             self.assertIn("pages/test1_page.py", listed)
             self.assertIn("resources/data/test1.json", listed)
-            self.assertIn("utils/button_functions.py", listed)
+            self.assertIn("utils/GUIA_FUNCIONES_PAGE.md", listed)
+
+            advanced = {f["path"] for f in project_files.list_runner_workspace_files(root, include_advanced=True)}
+            self.assertIn("utils/button_functions.py", advanced)

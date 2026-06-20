@@ -135,6 +135,18 @@ class ApiFlow:
     steps: List[ApiFlowStep] = field(default_factory=list)
     continue_on_failure: bool = False
     data_file: Optional[str] = None
+    # Árbol de nodos con controladores lógicos (if / loop / while), pasos SQL y gRPC.
+    # Si `nodes` está presente, el motor usa el intérprete de árbol; si no, ejecuta
+    # `steps` de forma lineal (retrocompatibilidad total).
+    #
+    # Cada nodo es un dict con la forma:
+    #   {"type": "request", "scenario_id": "...", "request": {...}, "extractors": [...]}
+    #   {"type": "if",   "condition": {...}, "then": [nodos], "else": [nodos]}
+    #   {"type": "loop", "mode": "count"|"while", "count": int|"{{var}}",
+    #                    "condition": {...}, "max_iterations": int, "body": [nodos]}
+    #   {"type": "sql",  "sql": {...}}     # ver runtime/sql_step.py
+    #   {"type": "grpc", "grpc": {...}}    # ver runtime/grpc_step.py
+    nodes: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -142,16 +154,19 @@ class ApiFlow:
             "steps": [s.to_dict() for s in self.steps],
             "continue_on_failure": self.continue_on_failure,
             "data_file": self.data_file,
+            "nodes": self.nodes,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ApiFlow":
         steps = [ApiFlowStep.from_dict(s) for s in (data.get("steps") or []) if isinstance(s, dict)]
+        nodes = [n for n in (data.get("nodes") or []) if isinstance(n, dict)]
         return cls(
             name=str(data.get("name") or "Flujo API"),
             steps=steps,
             continue_on_failure=bool(data.get("continue_on_failure")),
             data_file=data.get("data_file"),
+            nodes=nodes,
         )
 
 

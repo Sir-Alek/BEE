@@ -3,13 +3,26 @@ import {
   compareApiLoadRuns,
   exportApiSuiteEvidence,
   getApiDataFiles,
+  getApiDriverCapabilities,
+  getApiFlow,
   getApiLoadHistory,
   getLoadTestMetrics,
   getProjectReportUrl,
   getTestRun,
+  listApiFlows,
   runApiSuite,
   saveApiDataFile,
+  saveApiFlow,
+  sqlPreflight,
 } from "../api";
+import {
+  NodeListEditor,
+  deserializeFlowNodes,
+  serializeFlowNodes,
+  type DriverCapabilities,
+  type FlowNode,
+  type SqlConfig,
+} from "./api/FlowControllerEditor";
 
 export type KVRow = { key: string; value: string };
 export type AssertionRow = { kind: string; expression: string; expected: string };
@@ -144,15 +157,24 @@ export function SuiteRunnerPanel(props: {
   project: string;
   environment: string;
   scenarioIds: string[];
+  scenarios: { id: string; name: string }[];
+  envVarNames?: string[];
   canRun: boolean;
   busy: boolean;
   onError: (msg: string) => void;
   onHint: (msg: string) => void;
 }) {
-  const { c, project, environment, scenarioIds, canRun, busy, onError, onHint } = props;
+  const { c, project, environment, scenarioIds, scenarios, envVarNames = [], canRun, busy, onError, onHint } = props;
   const [continueOnFail, setContinueOnFail] = useState(false);
   const [dataFile, setDataFile] = useState("");
   const [dataFiles, setDataFiles] = useState<string[]>([]);
+  const [mode, setMode] = useState<"simple" | "flow">("simple");
+  const [flowNodes, setFlowNodes] = useState<FlowNode[]>([]);
+  const [flowName, setFlowName] = useState("Mi flujo");
+  const [savedFlows, setSavedFlows] = useState<{ id: string; name: string }[]>([]);
+  const [loadedFlowId, setLoadedFlowId] = useState<string | null>(null);
+  const [driverCaps, setDriverCaps] = useState<DriverCapabilities | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
   const [suiteResult, setSuiteResult] = useState<Awaited<ReturnType<typeof runApiSuite>> | null>(null);
 
   useEffect(() => {
@@ -162,7 +184,125 @@ export function SuiteRunnerPanel(props: {
       .catch(() => setDataFiles([]));
   }, [project]);
 
+  useEffect(() => {
+    if (!project || mode !== "flow") return;
+    void listApiFlows(project)
+      .then((r) => setSavedFlows(r.flows.map((f) => ({ id: f.id, name: f.name }))))
+      .catch(() => setSavedFlows([]));
+    void getApiDriverCapabilities()
+      .then(setDriverCaps)
+      .catch(() => setDriverCaps(null));
+  }, [project, mode]);
+
+  const refreshFlows = () => {
+    if (!project) return;
+    void listApiFlows(project)
+      .then((r) => setSavedFlows(r.flows.map((f) => ({ id: f.id, name: f.name }))))
+      .catch(() => setSavedFlows([]));
+  };
+
+  const handleSaveFlow = () => {
+    const name = flowName.trim();
+    if (!name) {
+      onError("Indica un nombre para el flujo.");
+      return;
+    }
+    if (!flowNodes.length) {
+      onError("Añade al menos un paso antes de guardar.");
+      return;
+    }
+    const existing = savedFlows.find((f) => f.id === loadedFlowId || f.name.toLowerCase() === name.toLowerCase());
+    if (existing && !window.confirm(`El flujo «${existing.name}» ya existe. ¿Sobrescribir?`)) {
+      return;
+    }
+    const flowId = existing?.id ?? loadedFlowId ?? undefined;
+    void saveApiFlow({
+      project,
+      flow_id: flowId,
+      flow: {
+        name,
+        nodes: serializeFlowNodes(flowNodes),
+        continue_on_failure: continueOnFail,
+      },
+    })
+      .then((r) => {
+        setLoadedFlowId(r.flow_id);
+        refreshFlows();
+        onHint(`Flujo guardado: ${name}`);
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+  };
+
+  const handleLoadFlow = (flowId: string) => {
+    if (!flowId) return;
+    void getApiFlow(project, flowId)
+      .then((r) => {
+        const flow = r.flow as Record<string, unknown>;
+        const nodes = deserializeFlowNodes((flow.nodes as Record<string, unknown>[]) ?? []);
+        setFlowNodes(nodes);
+        setFlowName(String(flow.name || flowId));
+        setLoadedFlowId(flowId);
+        if (typeof flow.continue_on_failure === "boolean") {
+          setContinueOnFail(flow.continue_on_failure);
+        }
+        onHint(`Flujo cargado: ${flow.name ?? flowId}`);
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+  };
+
+  const handleNewFlow = () => {
+    if (flowNodes.length && !window.confirm("¿Descartar el flujo actual y empezar uno nuevo?")) {
+      return;
+    }
+    setFlowNodes([]);
+    setFlowName("Mi flujo");
+    setLoadedFlowId(null);
+  };
+
+  const handleSqlPreflight = (sql: SqlConfig) => {
+    setPreflightBusy(true);
+    void sqlPreflight({
+      project,
+      environment,
+      sql: serializeFlowNodes([{ type: "sql", sql }])[0].sql as Record<string, unknown>,
+    })
+      .then((r) => {
+        const res = r.result as Record<string, unknown>;
+        onHint(res.ok ? "Preflight SQL OK" : `Preflight SQL: ${String(res.error ?? "fallo")}`);
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)))
+      .finally(() => setPreflightBusy(false));
+  };
+
   const handleRun = () => {
+    if (mode === "flow") {
+      if (!flowNodes.length) {
+        onError("Añade al menos un paso al flujo con controladores.");
+        return;
+      }
+      const payload: Parameters<typeof runApiSuite>[0] = {
+        project,
+        environment,
+        continue_on_failure: continueOnFail,
+        data_file: dataFile.trim() || undefined,
+      };
+      if (loadedFlowId) {
+        payload.flow_id = loadedFlowId;
+      } else {
+        payload.flow = {
+          name: flowName.trim() || "Flujo con controladores",
+          nodes: serializeFlowNodes(flowNodes),
+          continue_on_failure: continueOnFail,
+        };
+      }
+      void runApiSuite(payload)
+        .then((r) => {
+          setSuiteResult(r);
+          onHint(`Flujo: ${r.passed_steps} OK, ${r.failed_steps} fallos (${r.iterations} iteración/es).`);
+        })
+        .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+      return;
+    }
     if (!scenarioIds.length) {
       onError("Selecciona escenarios para la suite.");
       return;
@@ -183,6 +323,78 @@ export function SuiteRunnerPanel(props: {
 
   return (
     <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => setMode("simple")}
+          style={btn(c, false, mode === "simple")}
+        >
+          Lista simple
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("flow")}
+          style={btn(c, false, mode === "flow")}
+        >
+          Flujo con controladores
+        </button>
+      </div>
+
+      {mode === "flow" ? (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
+            Construye un flujo con peticiones HTTP, consultas SQL, llamadas gRPC, condiciones (If) y bucles
+            (Loop/While). Las condiciones se evalúan sobre la respuesta del paso anterior y las variables de sesión.
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+            <input
+              value={flowName}
+              onChange={(e) => setFlowName(e.target.value)}
+              placeholder="Nombre del flujo"
+              style={inputStyle(c, { minWidth: 180 })}
+            />
+            <select
+              value={loadedFlowId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id) handleLoadFlow(id);
+              }}
+              style={inputStyle(c, { minWidth: 160 })}
+            >
+              <option value="">— cargar flujo guardado —</option>
+              {savedFlows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={handleSaveFlow} style={btn(c, true)}>
+              Guardar flujo
+            </button>
+            <button type="button" onClick={handleNewFlow} style={btn(c, true)}>
+              Nuevo
+            </button>
+            {loadedFlowId ? (
+              <span style={{ fontSize: 11, color: c.muted }}>ID: {loadedFlowId}</span>
+            ) : null}
+          </div>
+          <NodeListEditor
+            c={c}
+            scenarios={scenarios}
+            nodes={flowNodes}
+            depth={0}
+            onChange={(nodes) => {
+              setFlowNodes(nodes);
+              setLoadedFlowId(null);
+            }}
+            envVarNames={envVarNames}
+            driverCaps={driverCaps}
+            onSqlPreflight={handleSqlPreflight}
+            preflightBusy={preflightBusy}
+          />
+        </div>
+      ) : null}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
           <input type="checkbox" checked={continueOnFail} onChange={(e) => setContinueOnFail(e.target.checked)} />
@@ -197,7 +409,7 @@ export function SuiteRunnerPanel(props: {
           ))}
         </select>
         <button type="button" disabled={!canRun || busy} onClick={handleRun} style={btn(c)}>
-          Ejecutar suite
+          {mode === "flow" ? "Ejecutar flujo" : "Ejecutar suite"}
         </button>
       </div>
       {suiteResult ? (
@@ -209,11 +421,25 @@ export function SuiteRunnerPanel(props: {
             <div key={i} style={{ marginBottom: 8 }}>
               <div style={{ color: c.muted }}>Iteración {i + 1}</div>
               <ul style={{ margin: "4px 0 0 0", paddingLeft: 18 }}>
-                {run.steps.map((step, j) => (
-                  <li key={j} style={{ color: step.ok ? c.text : "#c0392b" }}>
-                    {step.name} — {step.ok ? "OK" : "FAIL"}
-                  </li>
-                ))}
+                {run.steps.map((step, j) => {
+                  const label =
+                    step.type === "if"
+                      ? `Si → rama "${step.branch ?? "?"}"`
+                      : step.type === "loop"
+                        ? "Bucle"
+                        : step.type === "sql"
+                          ? "SQL"
+                          : step.type === "grpc"
+                            ? "gRPC"
+                            : step.name;
+                  const isControl = step.type === "if" || step.type === "loop";
+                  return (
+                    <li key={j} style={{ color: isControl ? c.muted : step.ok ? c.text : "#c0392b" }}>
+                      {label}
+                      {isControl ? "" : ` — ${step.ok ? "OK" : "FAIL"}`}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}

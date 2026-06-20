@@ -33,6 +33,32 @@ class TestResolveAndroidSdk(unittest.TestCase):
             self.assertEqual(src, "elia_android_home")
 
 
+class TestCanonicalEmulatorExe(unittest.TestCase):
+    def test_maps_qemu_binary_to_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as sdk:
+            emulator_dir = os.path.join(sdk, "emulator")
+            qemu_dir = os.path.join(emulator_dir, "qemu", "windows-x86_64")
+            os.makedirs(qemu_dir, exist_ok=True)
+            wrapper = os.path.join(emulator_dir, "emulator.exe")
+            qemu = os.path.join(qemu_dir, "qemu-system-x86_64.exe")
+            open(wrapper, "wb").close()
+            open(qemu, "wb").close()
+            got = ma._canonical_emulator_exe(qemu)
+            self.assertEqual(got, wrapper)
+
+    def test_accepts_wrapper_path(self) -> None:
+        with tempfile.TemporaryDirectory() as emulator_dir:
+            wrapper = os.path.join(emulator_dir, "emulator.exe")
+            open(wrapper, "wb").close()
+            self.assertEqual(ma._canonical_emulator_exe(wrapper), wrapper)
+
+    def test_rejects_unknown_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            other = os.path.join(tmp, "foo.exe")
+            open(other, "wb").close()
+            self.assertIsNone(ma._canonical_emulator_exe(other))
+
+
 class TestAssertDeviceOnline(unittest.TestCase):
     @patch.object(ma, "device_boot_completed", return_value=True)
     @patch.object(ma, "list_devices")

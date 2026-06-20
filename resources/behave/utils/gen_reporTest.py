@@ -320,8 +320,6 @@ class PdfReportDocument(FPDF):
             pdf.multi_cell(0, 5, f"ADVERTENCIA: No se encontraron pasos para el escenario '{testName}'", align='C')
             pdf.set_text_color(0, 0, 0)
 
-        step_occurrence = defaultdict(int)
-
         for step_index, paso_text in enumerate(steps):
             txtHeader = 'STEP'
             step_type = ''
@@ -345,9 +343,9 @@ class PdfReportDocument(FPDF):
 
             paso_text = real_steps.get(step_index, paso_text)
 
+            # Misma numeración secuencial que la captura (01_given, 02_when, 03_and, …).
             if step_type:
-                step_occurrence[step_type] += 1
-                step_key = f"{step_occurrence[step_type]:02d}_{step_type}"
+                step_key = f"{step_index + 1:02d}_{step_type}"
             else:
                 step_key = None
 

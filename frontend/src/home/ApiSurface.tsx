@@ -23,6 +23,8 @@ import {
   saveApiProjectConfig,
   saveApiScenario,
   syncApiEnvironmentFromWeb,
+  listApiFlows,
+  getApiFlow,
 } from "../api";
 import {
   DataCsvPanel,
@@ -36,6 +38,7 @@ import { RunConsolePanel } from "./RunConsolePanel";
 import { ApiPostmanSidebar } from "./api/ApiPostmanSidebar";
 import { ApiPostmanWorkspace, type PostmanPane } from "./api/ApiPostmanWorkspace";
 import { ApiSection, apiBtn, apiInputStyle } from "./api/apiUi";
+import { analyzeFlowNodeCounts, deserializeFlowNodes } from "./api/FlowControllerEditor";
 import { featureFromModules } from "../app/entitlements";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import type { ModulesStatus } from "../types";
@@ -43,6 +46,7 @@ import type { ModulesStatus } from "../types";
 type Props = {
   c: Record<string, string>;
   modules: ModulesStatus | null;
+  modulesLoading?: boolean;
   canRunJobs: boolean;
   onShowError: (msg: string) => void;
   setHomeHint: (msg: string | null) => void;
@@ -55,7 +59,7 @@ type ApiSubTab = "postman" | "load";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
 export function ApiSurface(props: Props) {
-  const { c, modules, canRunJobs, onShowError, setHomeHint } = props;
+  const { c, modules, modulesLoading, canRunJobs, onShowError, setHomeHint } = props;
   const [projects, setProjects] = useState<string[]>([]);
   const [project, setProject] = useState("DefaultApi");
   const [newProject, setNewProject] = useState("");
@@ -83,6 +87,10 @@ export function ApiSurface(props: Props) {
   const [generateLoadReport, setGenerateLoadReport] = useState(false);
   const [loadRunFinished, setLoadRunFinished] = useState(false);
   const [loadReportFilename, setLoadReportFilename] = useState<string | null>(null);
+  const [loadFlowId, setLoadFlowId] = useState("");
+  const [loadFlowCounts, setLoadFlowCounts] = useState<Record<string, number>>({});
+  const [runSetupFlow, setRunSetupFlow] = useState(false);
+  const [savedLoadFlows, setSavedLoadFlows] = useState<{ id: string; name: string }[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [execResult, setExecResult] = useState<ExecResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,6 +102,20 @@ export function ApiSurface(props: Props) {
   const [webOriginAvailable, setWebOriginAvailable] = useState(false);
   const [upsell, setUpsell] = useState<null | "api_postman" | "api_locust">(null);
   const features = useMemo(() => featureFromModules(modules), [modules]);
+  // Evita mostrar candados/upsell mientras se verifica la licencia por primera vez.
+  const entitlementsReady = modules !== null || !modulesLoading;
+
+  const envVarNames = useMemo(() => {
+    try {
+      const parsed = JSON.parse(envVarsText) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return Object.keys(parsed as Record<string, unknown>);
+      }
+    } catch {
+      /* ignore invalid JSON while typing */
+    }
+    return [];
+  }, [envVarsText]);
 
   const refreshProjects = () => {
     void getApiProjects()
@@ -164,6 +186,33 @@ export function ApiSurface(props: Props) {
       .then((r) => setWebOriginAvailable(r.available))
       .catch(() => setWebOriginAvailable(false));
   }, [project, environment]);
+
+  useEffect(() => {
+    if (!project.trim()) return;
+    void listApiFlows(project)
+      .then((r) => setSavedLoadFlows(r.flows.map((f) => ({ id: f.id, name: f.name }))))
+      .catch(() => setSavedLoadFlows([]));
+    setLoadFlowId("");
+    setLoadFlowCounts({});
+    setRunSetupFlow(false);
+  }, [project]);
+
+  useEffect(() => {
+    if (!project.trim() || !loadFlowId) {
+      setLoadFlowCounts({});
+      setRunSetupFlow(false);
+      return;
+    }
+    void getApiFlow(project, loadFlowId)
+      .then((r) => {
+        const flow = r.flow as Record<string, unknown>;
+        const nodes = deserializeFlowNodes((flow.nodes as Record<string, unknown>[]) ?? []);
+        const counts = analyzeFlowNodeCounts(nodes);
+        setLoadFlowCounts(counts);
+        setRunSetupFlow((counts.sql ?? 0) > 0);
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
+  }, [project, loadFlowId]);
 
   useEffect(() => {
     if (!runId) {
@@ -454,8 +503,8 @@ export function ApiSurface(props: Props) {
 
   const handleRunLocust = () => {
     const ids = scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id);
-    if (!ids.length) {
-      onShowError("Selecciona al menos un escenario para Locust.");
+    if (!loadFlowId && !ids.length) {
+      onShowError("Selecciona escenarios o un flujo guardado para Locust.");
       return;
     }
     setBusy(true);
@@ -467,13 +516,24 @@ export function ApiSurface(props: Props) {
       spawn_rate: Number(loadSpawn) || 1,
       run_time: loadRunTime.trim() || "1m",
       host: loadHost.trim(),
-      scenario_ids: ids,
-      scenario_weights: Object.fromEntries(
-        ids.map((id) => [id, Number(scenarioWeights[id]) || 1]),
-      ),
+      scenario_ids: ids.length ? ids : undefined,
+      scenario_weights: ids.length
+        ? Object.fromEntries(ids.map((id) => [id, Number(scenarioWeights[id]) || 1]))
+        : undefined,
       collect_metrics: true,
+      flow_id: loadFlowId || undefined,
+      run_setup_flow: runSetupFlow && !!loadFlowId,
+      environment,
     })
-      .then((r) => setRunId(r.run_id))
+      .then((r) => {
+        setRunId(r.run_id);
+        if (r.flow_node_counts) {
+          setLoadFlowCounts(r.flow_node_counts);
+        }
+        if (r.setup_sql) {
+          setHomeHint("Pre-carga SQL ejecutada; variables inyectadas en Locust.");
+        }
+      })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
   };
@@ -482,7 +542,7 @@ export function ApiSurface(props: Props) {
     <div data-testid="elia-api-panel">
       {upsell ? <UpsellModal c={c} requiredTier={upsell} onClose={() => setUpsell(null)} /> : null}
       <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
-        Pruebas API: constructor estilo Postman y pruebas de carga JMeter-lite con Locust.
+        Pruebas API: cliente de peticiones, suites encadenadas y pruebas de carga (motor Locust).
         {modules?.tier_label ? (
           <span style={{ marginLeft: 8 }}>
             <TierBadge c={c} label={modules.tier_label} />
@@ -540,12 +600,12 @@ export function ApiSurface(props: Props) {
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {(
           [
-            { id: "postman" as const, label: "Postman" },
-            { id: "load" as const, label: "JMeter-lite / Locust" },
+            { id: "postman" as const, label: "Cliente API" },
+            { id: "load" as const, label: "Pruebas de carga" },
           ] as const
         ).map(({ id, label }) => {
           const active = apiTab === id;
-          const locked = id === "load" && !features.api_locust;
+          const locked = entitlementsReady && id === "load" && !features.api_locust;
           return (
             <button
               key={id}
@@ -586,12 +646,13 @@ export function ApiSurface(props: Props) {
           data-testid="elia-api-postman-layout"
           style={{
             display: "grid",
-            gridTemplateColumns: features.api_postman_suites ? "minmax(220px, 28%) 1fr" : "1fr",
+            gridTemplateColumns:
+              features.api_postman_suites || !entitlementsReady ? "minmax(220px, 28%) 1fr" : "1fr",
             gap: 14,
             alignItems: "start",
           }}
         >
-          {features.api_postman_suites ? (
+          {features.api_postman_suites || !entitlementsReady ? (
             <ApiPostmanSidebar
               c={c}
               busy={busy}
@@ -608,7 +669,7 @@ export function ApiSurface(props: Props) {
             lockOverlay(
               true,
               "api_postman",
-              "Desbloquea importación Postman con Plan Professional",
+              "Desbloquea la importación de colecciones con Plan Professional",
               <ApiPostmanSidebar
                 c={c}
                 busy={busy}
@@ -719,6 +780,8 @@ export function ApiSurface(props: Props) {
           project={project}
           environment={environment}
           scenarioIds={scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id)}
+          scenarios={scenarios}
+          envVarNames={envVarNames}
           canRun={canRunJobs}
           busy={busy}
           onError={onShowError}
@@ -733,6 +796,61 @@ export function ApiSurface(props: Props) {
             <> Límite licencia: {modules.api_limits.max_load_users} usuarios.</>
           ) : null}
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+          <div style={{ flex: "1 1 220px" }}>
+            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>
+              Flujo guardado (opcional)
+            </label>
+            <select
+              value={loadFlowId}
+              onChange={(e) => setLoadFlowId(e.target.value)}
+              style={apiInputStyle(c, { width: "100%" })}
+            >
+              <option value="">— solo escenarios seleccionados —</option>
+              {savedLoadFlows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {loadFlowId && (loadFlowCounts.sql ?? 0) > 0 ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={runSetupFlow}
+                onChange={(e) => setRunSetupFlow(e.target.checked)}
+              />
+              Ejecutar SQL de pre-carga antes de Locust
+            </label>
+          ) : null}
+        </div>
+        {loadFlowId && ((loadFlowCounts.sql ?? 0) > 0 || (loadFlowCounts.grpc ?? 0) > 0) ? (
+          <div
+            style={{
+              fontSize: 12,
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: `1px solid ${c.border}`,
+              background: c.neutralBg,
+              marginBottom: 10,
+            }}
+          >
+            {(loadFlowCounts.sql ?? 0) > 0 ? (
+              <div>
+                Este flujo incluye {(loadFlowCounts.sql ?? 0)} paso(s) SQL.
+                {runSetupFlow
+                  ? " Se ejecutarán como pre-carga; las variables resultantes alimentan la carga."
+                  : " En Locust se omiten (solo HTTP/gRPC en la fase de carga)."}
+              </div>
+            ) : null}
+            {(loadFlowCounts.grpc ?? 0) > 0 ? (
+              <div style={{ marginTop: (loadFlowCounts.sql ?? 0) > 0 ? 4 : 0 }}>
+                Incluye {(loadFlowCounts.grpc ?? 0)} paso(s) gRPC — disponible en carga (Plan Enterprise).
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
           <div>
             <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Usuarios</label>

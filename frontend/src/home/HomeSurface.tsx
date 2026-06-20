@@ -23,7 +23,7 @@ import { useRecordingContext } from "../context/RecordingContext";
 export function HomeSurface() {
   const {
     c, dark, initialChecked, homeTab, setHomeTab, homeHint, license,
-    setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules,
+    setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules, modulesLoading,
     showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
     setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
@@ -50,6 +50,10 @@ export function HomeSurface() {
   const [runProject, setRunProject] = useState("");
   const runProjects = usePlatformProjects(platform, homeDataRefresh);
   const features = useMemo(() => featureFromModules(modules), [modules]);
+  // Mientras se verifica la licencia por primera vez (sin caché previa), evitamos
+  // mostrar candados/insignias de "bloqueado" para no confundir al usuario; los
+  // bloqueos reales se aplican en cuanto hay un resultado de verificación.
+  const entitlementsReady = modules !== null || !modulesLoading;
 
   useEffect(() => {
     setRunProject("");
@@ -116,7 +120,7 @@ export function HomeSurface() {
                 data-testid="elia-home-tab-req"
                 onClick={() => {
                   if (!features.doc_to_bdd) {
-                    setShowLockModal("doc_to_bdd");
+                    if (entitlementsReady) setShowLockModal("doc_to_bdd");
                     return;
                   }
                   setHomeTab("req");
@@ -134,9 +138,9 @@ export function HomeSurface() {
                   gap: 6,
                 }}
               >
-                {!features.doc_to_bdd ? <span style={{ fontSize: 12 }}>🔒</span> : null}
+                {entitlementsReady && !features.doc_to_bdd ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
-                {!features.doc_to_bdd ? <TierBadge c={c} label="Pro" /> : null}
+                {entitlementsReady && !features.doc_to_bdd ? <TierBadge c={c} label="Pro" /> : null}
               </button>
               <button
                 type="button"
@@ -267,7 +271,9 @@ export function HomeSurface() {
                 <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                   {(["web", "mobile", "legacy"] as const).map((p) => {
                     const labels = { web: "Web", mobile: "Móvil", legacy: "Legacy" };
-                    const locked = (p === "mobile" && !features.mobile_recording) || (p === "legacy" && !features.legacy_recording);
+                    const locked =
+                      entitlementsReady &&
+                      ((p === "mobile" && !features.mobile_recording) || (p === "legacy" && !features.legacy_recording));
                     const badge = p === "mobile" ? "Pro" : p === "legacy" ? "Enterprise" : null;
                     const active = platform === p;
                     return (
@@ -838,6 +844,7 @@ export function HomeSurface() {
               <ApiSurface
                 c={c}
                 modules={modules}
+                modulesLoading={modulesLoading}
                 canRunJobs={canRunJobs}
                 onShowError={showHomeError}
                 setHomeHint={setHomeHint}

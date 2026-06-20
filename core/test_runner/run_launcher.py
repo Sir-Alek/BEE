@@ -66,7 +66,22 @@ def build_locust_command(
     run_time: str = "1m",
     host: str = "",
     csv_prefix: str = "",
+    processes: int = 0,
+    mode: str = "standalone",
+    master_host: str = "",
+    master_port: int = 0,
+    expect_workers: int = 0,
 ) -> List[str]:
+    """Construye el comando de Locust.
+
+    Carga distribuida:
+    - ``processes``: multi-core local. Locust 2.x auto-lanza N workers en la misma
+      máquina con ``--processes N`` (aprovecha todos los núcleos pese al GIL).
+      Usa -1 para "todos los núcleos".
+    - ``mode``: 'standalone' (defecto) | 'master' | 'worker' para carga
+      distribuida entre varias máquinas. El 'master' coordina; cada 'worker' se
+      conecta a ``master_host:master_port``.
+    """
     cmd = [
         sys.executable,
         "-m",
@@ -74,13 +89,31 @@ def build_locust_command(
         "-f",
         os.path.basename(locustfile),
         "--headless",
-        "-u",
-        str(users),
-        "-r",
-        str(spawn_rate),
-        "-t",
-        run_time,
     ]
+
+    mode = (mode or "standalone").lower()
+    if mode == "worker":
+        cmd.append("--worker")
+        if master_host:
+            cmd.extend(["--master-host", str(master_host)])
+        if master_port:
+            cmd.extend(["--master-port", str(master_port)])
+        # En modo worker, los parámetros de carga (-u/-r/-t) los fija el master.
+        return cmd
+
+    if mode == "master":
+        cmd.append("--master")
+        if master_port:
+            cmd.extend(["--master-bind-port", str(master_port)])
+        if expect_workers > 0:
+            cmd.extend(["--expect-workers", str(expect_workers)])
+
+    cmd.extend(["-u", str(users), "-r", str(spawn_rate), "-t", run_time])
+
+    # Multi-core local (solo si no estamos ya en modo master/worker explícito).
+    if processes and mode == "standalone":
+        cmd.extend(["--processes", str(processes)])
+
     if host:
         cmd.extend(["--host", host])
     if csv_prefix:

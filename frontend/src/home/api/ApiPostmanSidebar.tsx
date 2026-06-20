@@ -53,7 +53,7 @@ export function ApiPostmanSidebar(props: Props) {
             onChange={(e) => onImportKindChange(e.target.value as "postman" | "openapi")}
             style={apiInputStyle(c)}
           >
-            <option value="postman">Postman v2.1</option>
+            <option value="postman">Colección v2.1 (compatible Postman)</option>
             <option value="openapi">OpenAPI 3</option>
           </select>
           <input

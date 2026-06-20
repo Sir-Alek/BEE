@@ -499,6 +499,39 @@ from utils.browser import BrowserLauncher
 from utils.test_logger import CaseRunLogger
 from utils.gen_reporTest import PdfReportDocument
 
+
+def _find_deep(driver, css, timeout=15):
+    """Busca un elemento por CSS atravesando Shadow DOM (light DOM + todos los shadowRoots).
+
+    Selenium no cruza fronteras de Shadow DOM con By.CSS_SELECTOR, por lo que este
+    fallback recorre recursivamente cada shadowRoot del documento. Devuelve el
+    WebElement o None si no aparece dentro del timeout.
+    """
+    script = (
+        "const sel = arguments[0];"
+        "function deep(root){"
+        "  let e = root.querySelector(sel); if (e) return e;"
+        "  const ns = root.querySelectorAll('*');"
+        "  for (const n of ns){ if (n.shadowRoot){ const f = deep(n.shadowRoot); if (f) return f; } }"
+        "  return null;"
+        "}"
+        "return deep(document);"
+    )
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            el = driver.execute_script(script, css)
+        except Exception:
+            el = None
+        if el is not None:
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            except Exception:
+                pass
+            return el
+        time.sleep(0.3)
+    return None
+
 '''
         class_def = f'''class Test{base_name.capitalize()}(unittest.TestCase):
 
@@ -637,7 +670,12 @@ if __name__ == "__main__":
             selector = action[1]
             return f'''            # Paso {step_number}: Click en elemento
             self.test_logger.info('Paso {step_number}: Click en {selector}')
-            element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
+            try:
+                element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
+            except TimeoutException:
+                element = _find_deep(self.wd, "{selector}")
+                if element is None:
+                    raise
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
             RunEvidenceStore.create_screenshot('{step_number:02d}', 'click_en_elemento', self.test_dir, self.wd)
@@ -649,7 +687,12 @@ if __name__ == "__main__":
             selector, value = action[1], action[2]
             return f'''            # Paso {step_number}: Rellenar campo
             self.test_logger.info('Paso {step_number}: Rellenando campo {selector} con {value}')
-            element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
+            try:
+                element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
+            except TimeoutException:
+                element = _find_deep(self.wd, "{selector}")
+                if element is None:
+                    raise
             without_outline = self.wd.execute_script('return arguments[0].style.outline', element)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', element)
             RunEvidenceStore.create_screenshot('{step_number:02d}', 'rellenar_campo', self.test_dir, self.wd)
@@ -662,7 +705,12 @@ if __name__ == "__main__":
             selector, option = action[1], action[2]
             return f'''            # Paso {step_number}: Seleccionar opción
             self.test_logger.info('Paso {step_number}: Seleccionando {option} en {selector}')
-            dropdown = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
+            try:
+                dropdown = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "{selector}")))
+            except TimeoutException:
+                dropdown = _find_deep(self.wd, "{selector}")
+                if dropdown is None:
+                    raise
             without_outline = self.wd.execute_script('return arguments[0].style.outline', dropdown)
             self.wd.execute_script('arguments[0].style.outline= "#00FF00 solid 4px";', dropdown)
             dropdown.click()
@@ -678,7 +726,11 @@ if __name__ == "__main__":
             selector = action[1]
             return f'''            # Paso {step_number}: Esperar elemento
             self.test_logger.info('Paso {step_number}: Esperando elemento {selector}')
-            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
+            try:
+                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "{selector}")))
+            except TimeoutException:
+                if _find_deep(self.wd, "{selector}") is None:
+                    raise
             RunEvidenceStore.create_screenshot('{step_number:02d}', 'esperar_elemento', self.test_dir, self.wd)
             time.sleep(1)
 '''

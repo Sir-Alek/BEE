@@ -251,55 +251,92 @@ class ActionRecorder extends Writable {
         this._processAction(line, callback);
     }
 
-    _processAction(action, callback) {
-        if (action.startsWith('await page.type(')) {
-            const currentSelector = action.split("'")[1];
-            const currentValue = action.split("'")[3];
+    // _processAction(action, callback) {
+    //     if (action.startsWith('await page.type(')) {
+    //         const currentSelector = action.split("'")[1];
+    //         const currentValue = action.split("'")[3];
             
-            if (this.lastInputAction && currentSelector === this.lastInputAction.selector) {
-                function normalizeValue(value) {
-                    return value.replace(/[^a-zA-Z0-9]/g, '');
-                }
+    //         if (this.lastInputAction && currentSelector === this.lastInputAction.selector) {
+    //             function normalizeValue(value) {
+    //                 return value.replace(/[^a-zA-Z0-9]/g, '');
+    //             }
                 
-                const normalizedCurrent = normalizeValue(currentValue);
-                const normalizedLast = normalizeValue(this.lastInputAction.value);
+    //             const normalizedCurrent = normalizeValue(currentValue);
+    //             const normalizedLast = normalizeValue(this.lastInputAction.value);
                 
-                if (normalizedCurrent.startsWith(normalizedLast) || normalizedLast.startsWith(normalizedCurrent)) {
-                    this.lastInputAction.action = action;
-                    this.lastInputAction.value = currentValue;
-                    clearTimeout(this.inputTimeout);
+    //             if (normalizedCurrent.startsWith(normalizedLast) || normalizedLast.startsWith(normalizedCurrent)) {
+    //                 this.lastInputAction.action = action;
+    //                 this.lastInputAction.value = currentValue;
+    //                 clearTimeout(this.inputTimeout);
                     
-                    this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2000);
-                    callback();
-                    return;
-                } else {
-                    this._flushPendingActions();
-                    this.lastInputAction = { 
-                        selector: currentSelector, 
-                        action: action,
-                        value: currentValue
-                    };
-                }
-            } else {
-                this._flushPendingActions();
-                this.lastInputAction = { 
-                    selector: currentSelector, 
-                    action: action,
-                    value: currentValue
-                };
-            }
+    //                 this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2000);
+    //                 callback();
+    //                 return;
+    //             } else {
+    //                 this._flushPendingActions();
+    //                 this.lastInputAction = { 
+    //                     selector: currentSelector, 
+    //                     action: action,
+    //                     value: currentValue
+    //                 };
+    //             }
+    //         } else {
+    //             this._flushPendingActions();
+    //             this.lastInputAction = { 
+    //                 selector: currentSelector, 
+    //                 action: action,
+    //                 value: currentValue
+    //             };
+    //         }
             
-            this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2000);
+    //         this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2000);
+    //     } else {
+    //         this._flushPendingActions();
+    //         this.pendingActions.push(action);
+    //     }
+        
+    //     // Aumentar umbral para sesiones largas
+    //     if (this.pendingActions.length >= Math.min(50, this.maxBufferSize)) {
+    //         this._flushPendingActions(true);
+    //     }
+        
+    //     callback();
+    // }
+
+    // Reemplaza _processAction completo
+
+    _processAction(action, callback) {
+        const isFill = action.startsWith('await page.fill(');
+        const isType = action.startsWith('await page.type('); // compatibilidad con acciones antiguas
+
+        if (isFill || isType) {
+            // Extraer selector de forma robusta (primer argumento entre comillas)
+            const selectorMatch = action.match(/\('([^']+)'/);
+            const currentSelector = selectorMatch ? selectorMatch[1] : null;
+
+            if (currentSelector && this.lastInputAction?.selector === currentSelector) {
+                // Mismo campo → reemplazar sin flush (el valor nuevo es el definitivo)
+                this.lastInputAction.action = action;
+                clearTimeout(this.inputTimeout);
+                this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2500);
+                callback();
+                return;
+            }
+
+            // Campo distinto → vaciar lo anterior y registrar el nuevo
+            this._flushPendingActions();
+            this.lastInputAction = { selector: currentSelector, action };
+            this.inputTimeout = setTimeout(() => this._flushPendingActions(), 2500);
+
         } else {
             this._flushPendingActions();
             this.pendingActions.push(action);
         }
-        
-        // Aumentar umbral para sesiones largas
+
         if (this.pendingActions.length >= Math.min(50, this.maxBufferSize)) {
             this._flushPendingActions(true);
         }
-        
+
         callback();
     }
 
@@ -550,6 +587,11 @@ let actionRecorder = null;
     });
 
     await page.evaluateOnNewDocument(() => {
+      function escapeAttrValue(val) {
+          if (!val) return '';
+          return val.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+      }
+
       function getXPathForElement(el) {
         if (!el || el.nodeType !== Node.ELEMENT_NODE) return '';
         if (el.id) {
@@ -646,47 +688,107 @@ let actionRecorder = null;
       // ── Self-Healing: Detección de Shadow DOM (Angular ShadowDom mode) ────────
       function detectShadow(composedPath) {
         composedPath = composedPath || [];
+
+        // Selector CSS estable, con comillas SIMPLES en los atributos para que
+        // la cadena pueda incrustarse sin romper strings Python de comillas dobles.
+        function shadowCssFor(el, includeState) {
+          if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
+          const tag = el.tagName ? el.tagName.toLowerCase() : '';
+          if (el.id) return tag + '#' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id);
+          const testid = el.getAttribute && el.getAttribute('data-testid');
+          if (testid) return tag + "[data-testid='" + testid + "']";
+          const attrs = [];
+          if (el.getAttribute) {
+            const val  = el.getAttribute('value');
+            const aria = el.getAttribute('aria-label');
+            const name = el.getAttribute('name');
+            const type = el.getAttribute('type');
+            if (val !== null && val !== '')        attrs.push("[value='" + val + "']");
+            else if (aria)                          attrs.push("[aria-label='" + aria + "']");
+            if (includeState && el.hasAttribute && el.hasAttribute('checked')) attrs.push('[checked]');
+            if (!attrs.length && type)              attrs.push("[type='" + type + "']");
+            if (!attrs.length && name)              attrs.push("[name='" + name + "']");
+          }
+          return tag + attrs.join('');
+        }
+
+        // Un selector es "globalmente discriminante" si por sí solo basta para
+        // una búsqueda profunda (deep search) sin necesidad de la cadena de hosts.
+        function isUniqueish(sel) {
+          if (!sel) return false;
+          return sel.indexOf('#') !== -1 ||
+                 sel.indexOf('[value=') !== -1 ||
+                 sel.indexOf('[data-testid=') !== -1 ||
+                 sel.indexOf('[aria-label=') !== -1;
+        }
+
         let shadowDepth = 0;
-        let hostSelector = null;
+        let hostSelector = null;   // host directo (shadowRoot que contiene al target)
         let hostXPath    = null;
-        let innerSelector = null;
+        const hosts      = [];     // cadena de hosts (interno -> externo) para diagnóstico
+
+        // Selector del elemento objetivo real (primer nodo del composedPath).
+        const target = composedPath[0];
+        let innerSelector = shadowCssFor(target, true);
+
         for (let i = 0; i < composedPath.length; i++) {
           const node = composedPath[i];
           if (node && node.nodeType === 11) { // nodeType 11 = ShadowRoot
             shadowDepth++;
-            if (!hostSelector) {
-              const host = node.host;
-              if (host) {
-                if (host.id) {
-                  hostSelector = '#' + CSS.escape(host.id);
-                } else if (host.getAttribute('data-testid')) {
-                  hostSelector = '[data-testid="' + host.getAttribute('data-testid') + '"]';
-                } else if (host.getAttribute('aria-label')) {
-                  hostSelector = host.tagName.toLowerCase() + '[aria-label="' + host.getAttribute('aria-label') + '"]';
-                } else {
-                  hostSelector = host.tagName.toLowerCase();
-                }
-                hostXPath = getXPathForElement(host);
+            const host = node.host;
+            if (host) {
+              const hsel = shadowCssFor(host, true);
+              hosts.push(hsel);
+              if (!hostSelector) {
+                hostSelector = hsel;
+                hostXPath    = getXPathForElement(host);
               }
             }
           }
-          // Capturar selector del elemento justo antes del primer ShadowRoot
-          if (shadowDepth > 0 && node && node.nodeType === Node.ELEMENT_NODE && !innerSelector) {
-            if (node.id) {
-              innerSelector = '#' + CSS.escape(node.id);
-            } else if (node.getAttribute('data-testid')) {
-              innerSelector = '[data-testid="' + node.getAttribute('data-testid') + '"]';
-            } else if (node.getAttribute('aria-label')) {
-              innerSelector = node.tagName.toLowerCase() + '[aria-label="' + node.getAttribute('aria-label') + '"]';
-            }
+          // Respaldo: si no hubo target válido, usar el primer elemento dentro de shadow.
+          if (shadowDepth > 0 && !innerSelector &&
+              node && node.nodeType === Node.ELEMENT_NODE) {
+            innerSelector = shadowCssFor(node, true);
           }
         }
+
+        if (shadowDepth === 0) {
+          return {
+            is_shadow_child: false,
+            host_selector:   null,
+            host_xpath:      null,
+            inner_selector:  null,
+            depth:           0,
+            chain_css:       null,
+            hosts:           [],
+          };
+        }
+
+        // Cadena `>>` robusta (1–2 segmentos). El motor de ejecución
+        // (ui_click_shadow / ui_set_value_shadow) hace búsqueda profunda
+        // recursiva por cada segmento, por lo que:
+        //  - si el inner ya es único, basta un único segmento;
+        //  - si no, anteponemos el host directo como punto de anclaje.
+        // Evitamos añadir hosts externos (p.ej. el diálogo contenedor) porque
+        // suelen alojar el contenido vía <slot> (light DOM) y romperían el
+        // descenso por shadowRoot.
+        let chain_css;
+        if (isUniqueish(innerSelector)) {
+          chain_css = innerSelector;
+        } else if (hostSelector) {
+          chain_css = hostSelector + ' >> ' + innerSelector;
+        } else {
+          chain_css = innerSelector;
+        }
+
         return {
-          is_shadow_child: shadowDepth > 0,
+          is_shadow_child: true,
           host_selector:   hostSelector,
           host_xpath:      hostXPath,
           inner_selector:  innerSelector,
           depth:           shadowDepth,
+          chain_css:       chain_css,
+          hosts:           hosts.reverse(), // externo -> interno
         };
       }
 
@@ -820,19 +922,32 @@ let actionRecorder = null;
         if (!el || el.nodeType !== Node.ELEMENT_NODE) return '';
         
         if (el.id) {
-          const idSelector = '#' + CSS.escape(el.id);
-          try {
-            if (document.querySelectorAll(idSelector).length === 1) {
-              return idSelector;
-            }
-          } catch (_) {}
+          const isStableId = el.id.length < 40 && !/[.()\[\]{}@]/.test(el.id);
+          if (isStableId) {
+            const idSelector = '#' + CSS.escape(el.id);
+            try {
+              if (document.querySelectorAll(idSelector).length === 1) {
+                return idSelector;
+              }
+            } catch (_) {}
+          }
         }
 
         const specialAttributes = ['data-testid', 'aria-label', 'data-qa', 'data-cy', 'data-test'];
+        // Atributos de test (data-testid, data-test, data-qa, data-cy): por convención son únicos
+        // en el DOM. NO usamos querySelectorAll porque en SPAs (React 17+ con event delegation
+        // capture:true) el DOM puede haberse actualizado antes de que este listener de bubbling
+        // se ejecute, haciendo que querySelectorAll devuelva 0 aunque el selector sea correcto.
+        const TEST_ATTRS = new Set(['data-testid', 'data-test', 'data-qa', 'data-cy']);
         for (const attr of specialAttributes) {
           const value = el.getAttribute(attr);
           if (value) {
-            const selector = `[${attr}="${CSS.escape(value)}"]`;
+            const selector = `[${attr}="${escapeAttrValue(value)}"]`;
+            if (TEST_ATTRS.has(attr)) {
+              // Confiar directamente: los test IDs son únicos por diseño.
+              return selector;
+            }
+            // Para otros atributos (aria-label, etc.) sí validar unicidad en el DOM actual.
             try {
               if (document.querySelectorAll(selector).length === 1) {
                 return selector;
@@ -846,7 +961,8 @@ let actionRecorder = null;
         for (const attr of standardAttributes) {
           const value = el.getAttribute(attr);
           if (value) {
-            const selector = `${tag}[${attr}="${CSS.escape(value)}"]`;
+            // const selector = `${tag}[${attr}="${CSS.escape(value)}"]`;
+            const selector = `${tag}[${attr}="${escapeAttrValue(value)}"]`;
             try {
               if (document.querySelectorAll(selector).length === 1) {
                 return selector;
@@ -934,6 +1050,7 @@ let actionRecorder = null;
       }
 
       document.addEventListener('click', (e) => {
+        flushAllPendingInputs();
         const el = e.target;
         const selector = getSelector(el);
         if (selector) {
@@ -946,42 +1063,175 @@ let actionRecorder = null;
         }
       });
 
-      // Optimización extrema para input events
-      let inputTimer = null;
-      let lastInputElement = null;
-      let lastInputComposedPath = [];
-      let inputActionCount = 0;
+      // // Optimización extrema para input events
+      // let inputTimer = null;
+      // let lastInputElement = null;
+      // let lastInputComposedPath = [];
+      // let inputActionCount = 0;
       
-      document.addEventListener('input', (e) => {
-        const el = e.target;
-        // composedPath() capturado sincrónicamente en el evento
-        const path = e.composedPath ? e.composedPath() : [];
-        if (el.tagName === 'INPUT' && el.type === 'text') {
-          lastInputElement = el;
-          lastInputComposedPath = path;
-          inputActionCount++;
+      // document.addEventListener('input', (e) => {
+      //   const el = e.target;
+      //   // composedPath() capturado sincrónicamente en el evento
+      //   const path = e.composedPath ? e.composedPath() : [];
+      //   if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'password')) {
+      //     lastInputElement = el;
+      //     lastInputComposedPath = path;
+      //     inputActionCount++;
           
-          if (inputTimer) {
-            clearTimeout(inputTimer);
-          }
+      //     if (inputTimer) {
+      //       clearTimeout(inputTimer);
+      //     }
           
-          // Delay adaptivo basado en cantidad de acciones
-          const delay = inputActionCount > 100 ? 500 : 200;
+      //     // Delay adaptivo basado en cantidad de acciones
+      //     const delay = inputActionCount > 100 ? 500 : 200;
           
-          inputTimer = setTimeout(() => {
-            const inputEl  = lastInputElement;
-            const inputPath = lastInputComposedPath;
-            const selector = getSelector(inputEl);
-            const val = (inputEl.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            const line = `await page.type('${selector}', '${val}');`;
-            window.logAction({ line, meta: metaForAction(inputEl, selector, 'type', inputPath) });
-            inputTimer = null;
-          }, delay);
+      //     inputTimer = setTimeout(() => {
+      //       const inputEl  = lastInputElement;
+      //       const inputPath = lastInputComposedPath;
+      //       const selector = getSelector(inputEl);
+      //       const val = (inputEl.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      //       const line = `await page.type('${selector}', '${val}');`;
+      //       window.logAction({ line, meta: metaForAction(inputEl, selector, 'type', inputPath) });
+      //       inputTimer = null;
+      //     }, delay);
+      //   }
+      // });
+
+      // ─── Grabación de inputs: Sistema híbrido con detección de autocompletado ─
+      const CAPTURABLE_INPUTS = new Set(['text', 'password', 'email', 'search', 'tel', 'url', 'number']);
+      
+      // Inputs que han sido modificados pero aún no han sido grabados
+      const pendingInputs = new Map(); // selector -> { el, path }
+      
+      // Set de selectores que YA fueron grabados (para evitar duplicados)
+      const recordedInputs = new Set();
+
+      function flushInput(selector) {
+        const state = pendingInputs.get(selector);
+        if (!state) return;
+        
+        const el = state.el;
+        const path = state.path;
+        const val = (el.value || '').trim();
+        
+        // Si está vacío o ya fue grabado, no hacer nada
+        if (!val || recordedInputs.has(selector)) {
+          pendingInputs.delete(selector);
+          return;
         }
-      });
+        
+        const isPassword = el.type === 'password';
+        const escapedVal = val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const line = `await page.fill('${selector}', '${val}');${isPassword ? ' // password' : ''}`;
+        
+        window.logAction({ line, meta: metaForAction(el, selector, isPassword ? 'fill_password' : 'fill', path) });
+        
+        recordedInputs.add(selector);
+        pendingInputs.delete(selector);
+      }
+
+      function flushAllPendingInputs() {
+        // Flush de inputs normales
+        for (const selector of pendingInputs.keys()) {
+          flushInput(selector);
+        }
+        
+        // ESCANEO DE EMERGENCIA: Buscar inputs password que fueron autocompletados silenciosamente
+        const passwordInputs = document.querySelectorAll('input[type="password"]');
+        passwordInputs.forEach(el => {
+          const selector = getSelector(el);
+          if (!selector || recordedInputs.has(selector)) return;
+          
+          const val = (el.value || '').trim();
+          if (val) {
+            // Este input tiene valor pero nunca fue registrado (autocompletado silencioso)
+            const path = [];
+            const escapedVal = val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const line = `await page.fill('${selector}', process.env.TEST_PASSWORD || '${escapedVal}'); // password (autocompletado)`;
+            window.logAction({ line, meta: metaForAction(el, selector, 'fill_password', path) });
+            recordedInputs.add(selector);
+          }
+        });
+      }
+
+      function trackInput(el, path) {
+        if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+        if (el.tagName === 'INPUT' && !CAPTURABLE_INPUTS.has(el.type)) return;
+        
+        const selector = getSelector(el);
+        if (!selector) return;
+        
+        // Si ya fue grabado y el usuario vuelve a escribir, permitir re-grabación
+        // (útil si el usuario borra y reescribe)
+        if (recordedInputs.has(selector)) {
+          recordedInputs.delete(selector);
+        }
+        
+        pendingInputs.set(selector, { el, path });
+      }
+
+      // Capturar eventos input y change (change es vital para autocompletado)
+      const handleInputOrChange = (e) => {
+        trackInput(e.target, e.composedPath ? e.composedPath() : []);
+      };
+      
+      document.addEventListener('input', handleInputOrChange, true);
+      document.addEventListener('change', handleInputOrChange, true);
+
+      // Flush cuando el campo pierde el foco
+      document.addEventListener('focusout', (e) => {
+        const el = e.target;
+        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+        const selector = getSelector(el);
+        if (pendingInputs.has(selector)) {
+          flushInput(selector);
+        }
+      }, true);
+
+      // Flush cuando se presiona Enter
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const el = e.target;
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            const selector = getSelector(el);
+            if (pendingInputs.has(selector)) {
+              flushInput(selector);
+            }
+          }
+        }
+      }, true);
+
+      // Flush al cerrar la ventana
+      window.addEventListener('beforeunload', flushAllPendingInputs);
+      
+      // POLLING para detectar autocompletado silencioso (cada 500ms)
+      // Esto captura casos donde el navegador inyecta la contraseña sin eventos
+      setInterval(() => {
+        const passwordInputs = document.querySelectorAll('input[type="password"]');
+        passwordInputs.forEach(el => {
+          const selector = getSelector(el);
+          if (!selector || recordedInputs.has(selector)) return;
+          
+          const val = (el.value || '').trim();
+          if (val && document.activeElement !== el) {
+            // Solo grabar si el campo NO tiene el foco (evita grabar mientras el usuario aún escribe)
+            const path = [];
+            const escapedVal = val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const line = `await page.fill('${selector}', process.env.TEST_PASSWORD || '${escapedVal}'); // password (detectado)`;
+            window.logAction({ line, meta: metaForAction(el, selector, 'fill_password', path) });
+            recordedInputs.add(selector);
+          }
+        });
+      }, 500);
+      // ───────────────────────────────────────────────────────────────────────────
 
       document.addEventListener('change', (e) => {
         const el = e.target;
+        // Ignoramos inputs de texto/password aquí porque ya los maneja handleInputOrChange
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return; 
+        
+        flushAllPendingInputs();
+        
         const path = e.composedPath ? e.composedPath() : [];
         const selector = getSelector(el);
         if (el.tagName === 'SELECT') {

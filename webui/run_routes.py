@@ -115,6 +115,7 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
     def list_project_files(
         platform: str,
         project_name: str,
+        advanced: bool = False,
         _: None = Depends(require_localhost),
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
@@ -122,7 +123,10 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
         root = behave_projects_dir(plat) / project_name
         if not root.is_dir():
             raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-        return {"files": project_files.list_runner_workspace_files(root)}
+        from core.test_runner.behave_support import ensure_page_functions_guide
+
+        ensure_page_functions_guide(root)
+        return {"files": project_files.list_runner_workspace_files(root, include_advanced=advanced)}
 
     @app.get("/api/projects/{platform}/{project_name}/file")
     def read_project_file_route(
@@ -255,6 +259,18 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
                 run_time=body.locust_run_time,
                 host=body.locust_host,
             )
+            try:
+                from webui.error_reporting import log_execution
+
+                log_execution(
+                    "unified_run",
+                    platform=plat,
+                    project=body.project.strip(),
+                    kind="locust",
+                    users=body.locust_users,
+                )
+            except Exception:
+                pass
             run_id = test_runner_service.start(
                 kind="locust",
                 command=cmd,
@@ -271,6 +287,19 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
 
         feature = body.feature_file or "features"
         cmd = build_behave_command(feature)
+        try:
+            from webui.error_reporting import log_execution
+
+            log_execution(
+                "unified_run",
+                platform=plat,
+                project=body.project.strip(),
+                kind=kind,
+                feature=feature,
+                headless=body.headless,
+            )
+        except Exception:
+            pass
         run_id = test_runner_service.start(
             kind=kind,
             command=cmd,

@@ -36,6 +36,7 @@ export function RunWorkspacePanel(props: Props) {
   const [showBrowser, setShowBrowser] = useState(false);
   const [loadUsers, setLoadUsers] = useState("5");
   const [fullscreen, setFullscreen] = useState(false);
+  const [showAdvancedFiles, setShowAdvancedFiles] = useState(false);
   const [acRefresh, setAcRefresh] = useState(0);
   const autocompleteContext = useProjectAutocomplete(platform, project, files, acRefresh);
   const liveAutocomplete = useMemo(
@@ -49,11 +50,16 @@ export function RunWorkspacePanel(props: Props) {
     setEditor("");
     setDirty(false);
     setRunId(null);
+  }, [platform, project]);
 
-    if (!project.trim()) return;
+  useEffect(() => {
+    if (!project.trim()) {
+      setFiles([]);
+      return;
+    }
 
     let cancelled = false;
-    void listProjectFiles(platform, project)
+    void listProjectFiles(platform, project, showAdvancedFiles)
       .then((r) => {
         if (!cancelled) setFiles(r.files);
       })
@@ -69,14 +75,14 @@ export function RunWorkspacePanel(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [platform, project, onShowError]);
+  }, [platform, project, showAdvancedFiles, onShowError]);
 
   const refreshFiles = () => {
     if (!project.trim()) {
       setFiles([]);
       return;
     }
-    void listProjectFiles(platform, project)
+    void listProjectFiles(platform, project, showAdvancedFiles)
       .then((r) => setFiles(r.files))
       .catch((e: unknown) => {
         setFiles([]);
@@ -267,13 +273,36 @@ export function RunWorkspacePanel(props: Props) {
             overflow: "auto",
             fontSize: 12,
             background: c.surface,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {files.length === 0 ? (
-            <div style={{ padding: 10, color: c.muted }}>Sin archivos editables</div>
-          ) : (
-            <FileTree c={c} files={files} selectedPath={selected} onSelectFile={loadFile} />
-          )}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 10px",
+              borderBottom: `1px solid ${c.border}`,
+              fontSize: 11,
+              color: c.muted,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showAdvancedFiles}
+              onChange={(e) => setShowAdvancedFiles(e.target.checked)}
+            />
+            Código avanzado (button_functions.py)
+          </label>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            {files.length === 0 ? (
+              <div style={{ padding: 10, color: c.muted }}>Sin archivos editables</div>
+            ) : (
+              <FileTree c={c} files={files} selectedPath={selected} onSelectFile={loadFile} />
+            )}
+          </div>
         </div>
         <div style={{ minHeight: "inherit", display: "flex", flexDirection: "column" }}>
           {selected ? (

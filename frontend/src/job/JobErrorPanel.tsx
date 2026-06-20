@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { downloadJobErrorReport } from "../api";
+import { downloadJobErrorReport, openEliaLogsFolder } from "../api";
 import { returnToHomeFromJobTab } from "../app/homeNavigation";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 // Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
@@ -44,7 +44,8 @@ export function JobErrorPanel(props: Props) {
         <div style={{ color: c.errorBody, marginTop: 6, whiteSpace: "pre-wrap" }}>{errorMessage}</div>
         <div style={{ marginTop: 12, fontSize: 13, color: c.muted, lineHeight: 1.5 }}>
           Revisa el archivo de reporte antes de compartirlo fuera de tu organización. No incluye credenciales ni
-          telemetría en la nube.
+          telemetría en la nube. El registro global <code>elia_execution.log</code> (Documents/ELIA/logs/) incluye
+          hitos recientes de ejecución y se adjunta parcialmente al reporte descargable.
         </div>
         <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
@@ -62,6 +63,25 @@ export function JobErrorPanel(props: Props) {
             }}
           >
             {downloading ? "Generando…" : "Descargar reporte de error"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void openEliaLogsFolder().catch((e: unknown) =>
+                onDownloadError?.(String((e as Error)?.message ?? e)),
+              );
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: `1px solid ${c.btnGhostBorder}`,
+              background: c.btnGhostBg,
+              color: c.text,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Abrir carpeta de logs
           </button>
           {betaFeedbackUrl ? (
             <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />

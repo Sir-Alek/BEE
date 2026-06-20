@@ -1,0 +1,10 @@
+# ELIA — dependencias opcionales para suites API avanzadas (SQL + gRPC).
+# No forman parte del instalador delgado por defecto.
+#   pip install -r requirements-api-extras.txt
+#
+psycopg2-binary>=2.9.9
+mysql-connector-python>=9.0.0
+pyodbc>=5.1.0
+grpcio>=1.62.0
+grpcio-reflection>=1.62.0
+protobuf>=4.25.0

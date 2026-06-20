@@ -1,4 +1,5 @@
 import { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { catalogByName, PAGE_FUNCTIONS_CATALOG } from "./pageFunctionsCatalog";
 
 export type StepDefinition = {
   keyword: "given" | "when" | "then" | "step";
@@ -124,6 +125,35 @@ export function pageBaseName(pagePath: string): string {
   return file.replace(/_page\.py$/i, "");
 }
 
+function buttonFunctionCompletions(prefix: string): Completion[] {
+  const names = new Set<string>([
+    ...PAGE_FUNCTIONS_CATALOG.map((e) => e.name),
+  ]);
+  const lower = prefix.toLowerCase();
+  return [...names]
+    .filter((n) => !lower || n.toLowerCase().includes(lower) || n.toLowerCase().startsWith(lower))
+    .sort()
+    .map((name) => {
+      const meta = catalogByName(name);
+      return {
+        label: name,
+        type: "function" as const,
+        detail: meta?.summary?.slice(0, 80) ?? "button_functions",
+        info: meta ? `${meta.signature}\n\n${meta.summary}${meta.example ? `\n\nEj: ${meta.example}` : ""}` : undefined,
+      };
+    });
+}
+
+function bfDotCompletions(context: CompletionContext): CompletionResult | null {
+  const line = context.state.doc.lineAt(context.pos);
+  const textBefore = line.text.slice(0, context.pos - line.from);
+  const match = textBefore.match(/\bbf\.([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (!match) return null;
+  const prefix = match[1];
+  const from = context.pos - prefix.length;
+  return completionResult(from, buttonFunctionCompletions(prefix));
+}
+
 function filterCompletions(items: Completion[], prefix: string): Completion[] {
   const lower = prefix.toLowerCase();
   return items.filter((item) => String(item.label).toLowerCase().startsWith(lower));
@@ -224,12 +254,11 @@ function stepsCompletions(
 
   if (/^\s*(from utils\.button_functions import|from utils\.button_functions import \*)$/i.test(textBefore)) {
     const from = context.pos;
-    return completionResult(from, project.buttonFunctions.slice(0, 40).map((fn) => ({
-      label: fn,
-      type: "function",
-      detail: "button_functions",
-    })));
+    return completionResult(from, buttonFunctionCompletions(""));
   }
+
+  const bfResult = bfDotCompletions(context);
+  if (bfResult) return bfResult;
 
   return null;
 }
@@ -237,6 +266,23 @@ function stepsCompletions(
 function pageCompletions(context: CompletionContext, project: ProjectAutocompleteContext): CompletionResult | null {
   const line = context.state.doc.lineAt(context.pos);
   const textBefore = line.text.slice(0, context.pos - line.from);
+
+  const bfResult = bfDotCompletions(context);
+  if (bfResult) return bfResult;
+
+  const fnCall = textBefore.match(/\b([A-Za-z_][A-Za-z0-9_]*)\($/);
+  if (fnCall) {
+    const meta = catalogByName(fnCall[1]);
+    if (meta) {
+      return completionResult(context.pos, [
+        {
+          label: meta.example ?? meta.signature,
+          type: "text",
+          detail: meta.summary.slice(0, 60),
+        },
+      ]);
+    }
+  }
 
   if (/^\s*def\s+[A-Za-z_][A-Za-z0-9_]*/.test(textBefore)) {
     return null;
@@ -285,6 +331,10 @@ export function createEliaCompletionSource(project: ProjectAutocompleteContext, 
     if (lower.includes("/steps/") && lower.endsWith(".py")) return stepsCompletions(context, project, filePath);
     if (lower.startsWith("pages/") && lower.endsWith(".py")) return pageCompletions(context, project);
     if (lower.endsWith(".json")) return jsonCompletions(context, project);
+    if (lower.endsWith(".py")) {
+      const bfResult = bfDotCompletions(context);
+      if (bfResult) return bfResult;
+    }
     return null;
   };
 }
