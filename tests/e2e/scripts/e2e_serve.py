@@ -24,6 +24,7 @@ os.environ.setdefault("TEMP", str(RUNTIME / "Temp"))
 os.environ.setdefault("TMP", str(RUNTIME / "Temp"))
 os.environ.setdefault("ELIA_USER_DATA", str(RUNTIME / "UserData"))
 os.environ["ELIA_SKIP_LICENSE"] = ""
+os.environ.setdefault("ELIA_PARALLEL_EMIT_OVERRIDE", "immediate")
 
 Path(os.environ["LOCALAPPDATA"]).mkdir(parents=True, exist_ok=True)
 Path(os.environ["TEMP"]).mkdir(parents=True, exist_ok=True)

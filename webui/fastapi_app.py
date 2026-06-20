@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import os
+import sys
+
+from core.toolchain_emit_policy import assert_parallel_emit_ready_or_exit
+
+assert_parallel_emit_ready_or_exit()
+
 import threading
 import time
 import traceback
-import sys
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 

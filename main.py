@@ -2,9 +2,9 @@ import sys
 import os
 
 if __name__ == "__main__":
-    from core.compile_profile_loader import assert_repository_gate_open_or_exit
+    from core.toolchain_emit_policy import assert_parallel_emit_ready_or_exit
 
-    assert_repository_gate_open_or_exit()
+    assert_parallel_emit_ready_or_exit()
 
 # Detectar si estamos en modo empaquetado
 IS_FROZEN = getattr(sys, 'frozen', False)
