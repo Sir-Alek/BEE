@@ -23,7 +23,10 @@ node_modules/
 # Modelos de IA (Gemma / GGUF): no versionar; colocar el archivo localmente antes del build PyInstaller
 resources/models/**/*.gguf
 
-# Build release: JS ofuscado y extensiones Cython locales (no obligatorio en git)
+# Perfiles locales de compilación / emisión (solo máquina de desarrollo)
+core/cpython_toolchain.local.json
+core/local_compile_profile.json
+
 core/ui_automation/web_capture_engine.obfuscated.js
 core/web_capture_engine.test.js
 core/*.pyd

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from core import elia_license as lic
 from core import modules_config as mods
+from core.entitlements import TIER_ARCHITECT, TIER_TESTER
 
 
 class TestModulesConfig(unittest.TestCase):
@@ -30,9 +31,12 @@ class TestModulesConfig(unittest.TestCase):
         self._key_pro = lic.build_activation_key(
             self._fp, lic.DURATION_365D, tier="professional", issue_ts=self._issue_ts
         )
+        self._key_tester = lic.build_activation_key(
+            self._fp, lic.DURATION_365D, tier="tester", issue_ts=self._issue_ts
+        )
         self._key_ml = lic.build_activation_key_v2(
             self._fp,
-            lic.DURATION_PERM,
+            lic.DURATION_365D,
             mobile=True,
             legacy=True,
             issue_ts=self._issue_ts,
@@ -55,27 +59,37 @@ class TestModulesConfig(unittest.TestCase):
         self.assertFalse(status["mobile_recording"])
         self.assertFalse(status["legacy_recording"])
 
-    def test_basic_tier_modules(self) -> None:
+    def test_legacy_basic_key_gets_tester_modules(self) -> None:
         with self._patch_state(), self._patch_fp():
             lic.activate_with_key(self._key_basic)
             status = mods.list_modules()
-        self.assertTrue(status["api_http_single"])
-        self.assertFalse(status["doc_to_bdd"])
-        self.assertFalse(status["mobile_recording"])
+        self.assertEqual(status.get("tier"), TIER_TESTER)
+        self.assertTrue(status["doc_to_bdd"])
+        self.assertTrue(status["mobile_recording"])
         self.assertFalse(status["legacy_recording"])
 
-    def test_professional_tier_modules(self) -> None:
+    def test_legacy_pro_key_gets_tester_modules(self) -> None:
         with self._patch_state(), self._patch_fp():
             lic.activate_with_key(self._key_pro)
+            status = mods.list_modules()
+        self.assertEqual(status.get("tier"), TIER_TESTER)
+        self.assertTrue(status["doc_to_bdd"])
+        self.assertTrue(status["mobile_recording"])
+        self.assertFalse(status["legacy_recording"])
+
+    def test_tester_tier_modules(self) -> None:
+        with self._patch_state(), self._patch_fp():
+            lic.activate_with_key(self._key_tester)
             status = mods.list_modules()
         self.assertTrue(status["doc_to_bdd"])
         self.assertTrue(status["mobile_recording"])
         self.assertFalse(status["legacy_recording"])
 
-    def test_v2_ml_maps_to_enterprise(self) -> None:
+    def test_v2_ml_maps_to_architect(self) -> None:
         with self._patch_state(), self._patch_fp():
             lic.activate_with_key(self._key_ml)
             status = mods.list_modules()
+        self.assertEqual(status.get("tier"), TIER_ARCHITECT)
         self.assertTrue(status["doc_to_bdd"])
         self.assertTrue(status["mobile_recording"])
         self.assertTrue(status["legacy_recording"])

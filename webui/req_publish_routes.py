@@ -34,7 +34,7 @@ def _require_doc_module() -> None:
     from core.modules_config import is_module_enabled
 
     if not is_module_enabled("doc_to_bdd"):
-        raise HTTPException(status_code=403, detail="Inteligencia de Requerimientos requiere Plan Professional")
+        raise HTTPException(status_code=403, detail="Inteligencia de Requerimientos requiere ELIA Tester")
 
 
 def _require_publisher_target(target: PublishTarget) -> None:
@@ -46,14 +46,14 @@ def _require_publisher_target(target: PublishTarget) -> None:
         if target != "local_file" and not is_feature_enabled("publishers_standard"):
             raise HTTPException(
                 status_code=403,
-                detail="Publishers Git/Jira requieren Plan Professional",
+                detail="Publishers Git/Jira requieren ELIA Tester",
             )
         return
     if target in enterprise:
         if not is_feature_enabled("publishers_enterprise"):
             raise HTTPException(
                 status_code=403,
-                detail="Publishers Xray/Value Edge/Azure DevOps requieren Plan Enterprise",
+                detail="Publishers Xray/Value Edge/Azure DevOps requieren ELIA Architect",
             )
         return
     raise HTTPException(status_code=400, detail=f"Destino de publicación no soportado: {target}")

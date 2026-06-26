@@ -11,6 +11,7 @@ from core.test_runner.run_launcher import (
     build_locust_command,
     normalize_kind,
     prepare_project,
+    validate_distributed_load_options,
 )
 
 
@@ -24,6 +25,42 @@ class TestRunLauncher(unittest.TestCase):
         self.assertIn("-u", cmd)
         self.assertIn("10", cmd)
         self.assertIn("--host", cmd)
+
+    def test_build_locust_command_master(self) -> None:
+        cmd = build_locust_command(
+            "locustfile.py",
+            users=20,
+            mode="master",
+            master_port=5557,
+            expect_workers=2,
+        )
+        self.assertIn("--master", cmd)
+        self.assertIn("--master-bind-port", cmd)
+        self.assertIn("5557", cmd)
+        self.assertIn("--expect-workers", cmd)
+
+    def test_build_locust_command_worker(self) -> None:
+        cmd = build_locust_command(
+            "locustfile.py",
+            mode="worker",
+            master_host="192.168.1.10",
+            master_port=5557,
+        )
+        self.assertEqual(cmd[-4:], ["--master-host", "192.168.1.10", "--master-port", "5557"])
+        self.assertIn("--worker", cmd)
+        self.assertNotIn("-u", cmd)
+
+    def test_validate_distributed_load_options(self) -> None:
+        ok, _ = validate_distributed_load_options(mode="standalone")
+        self.assertTrue(ok)
+
+        ok, err = validate_distributed_load_options(mode="worker", master_host="", master_port=0)
+        self.assertFalse(ok)
+        self.assertIn("master", err.lower())
+
+        ok, err = validate_distributed_load_options(mode="master", processes=4)
+        self.assertFalse(ok)
+        self.assertIn("procesos", err.lower())
 
     def test_normalize_kind(self) -> None:
         self.assertEqual(normalize_kind("api", "behave"), "behave_api")

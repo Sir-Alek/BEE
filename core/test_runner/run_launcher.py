@@ -121,6 +121,30 @@ def build_locust_command(
     return cmd
 
 
+def validate_distributed_load_options(
+    *,
+    mode: str = "standalone",
+    master_host: str = "",
+    master_port: int = 0,
+    processes: int = 0,
+) -> tuple[bool, str]:
+    """Valida parámetros de carga distribuida antes de lanzar Locust."""
+    normalized = (mode or "standalone").lower()
+    if normalized not in ("standalone", "master", "worker"):
+        return False, "Modo de carga inválido: use standalone, master o worker."
+
+    if normalized == "worker":
+        if not (master_host or "").strip():
+            return False, "Modo worker requiere la IP o hostname del master."
+        if master_port <= 0:
+            return False, "Modo worker requiere master_port (por defecto 5557)."
+
+    if normalized != "standalone" and processes:
+        return False, "No combine procesos Locust (--processes) con modo master/worker en red."
+
+    return True, ""
+
+
 def normalize_kind(platform: str, kind: str) -> str:
     k = (kind or "behave").lower()
     if k == "behave":

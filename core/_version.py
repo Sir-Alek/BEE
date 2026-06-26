@@ -9,7 +9,7 @@ import calendar
 import os
 from datetime import datetime, timezone
 
-ELIA_VERSION = "0.9.75"
+ELIA_VERSION = "0.9.78"
 ELIA_DEVELOPER = "Alejandro Ramírez </Sir_Alek>"
 ELIA_CONTACT_EMAIL = "elia.qa.software+contacto@gmail.com"
 # Versión comercial (≥1.0):
@@ -24,7 +24,7 @@ ELIA_TAGLINE = "Evolving Learning & Intelligent Automation"
 ELIA_CHANNEL = (os.environ.get("ELIA_CHANNEL") or "beta").strip().lower()
 
 # Fecha límite fija de builds beta (UTC). No configurable por env para evitar bypass.
-ELIA_BETA_DEADLINE_ISO = "2026-06-30T23:59:59"
+ELIA_BETA_DEADLINE_ISO = "2026-07-31T23:59:59"
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
@@ -58,8 +58,13 @@ def elia_beta_deadline_ts() -> float:
         return float(calendar.timegm((parts[0], parts[1], parts[2], 23, 59, 59)))
 
 
+def elia_is_beta_build() -> bool:
+    """True mientras el build sea canal beta o versión menor a 1.0.0."""
+    return ELIA_CHANNEL == "beta" or _version_tuple(ELIA_VERSION) < (1, 0, 0)
+
+
 def elia_version_display() -> str:
     """Versión mostrada al usuario; incluye -beta hasta alcanzar 1.0.0."""
-    if ELIA_CHANNEL == "beta" or _version_tuple(ELIA_VERSION) < (1, 0, 0):
+    if elia_is_beta_build():
         return f"{ELIA_VERSION}-beta"
     return ELIA_VERSION

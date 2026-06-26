@@ -6,6 +6,8 @@ import {
   formatLicenseExpiryDate,
   licenseNeedsActivationBanner,
   licenseNeedsExpiryBanner,
+  licenseNeedsSoftExpiryBanner,
+  licenseSoftExpiryDismissKey,
   type LicenseState,
 } from "../app/licenseUtils";
 import { OutlinedButton, SecondaryToolbar } from "../components/ui";
@@ -50,10 +52,27 @@ export function HomeSurface() {
   const [runProject, setRunProject] = useState("");
   const runProjects = usePlatformProjects(platform, homeDataRefresh);
   const features = useMemo(() => featureFromModules(modules), [modules]);
+  const [softExpiryDismissed, setSoftExpiryDismissed] = useState(() => {
+    if (!license?.expires_at) return false;
+    try {
+      return localStorage.getItem(licenseSoftExpiryDismissKey(license.expires_at)) === "1";
+    } catch {
+      return false;
+    }
+  });
   // Mientras se verifica la licencia por primera vez (sin caché previa), evitamos
   // mostrar candados/insignias de "bloqueado" para no confundir al usuario; los
   // bloqueos reales se aplican en cuanto hay un resultado de verificación.
   const entitlementsReady = modules !== null || !modulesLoading;
+
+  useEffect(() => {
+    if (!license?.expires_at) return;
+    try {
+      setSoftExpiryDismissed(localStorage.getItem(licenseSoftExpiryDismissKey(license.expires_at)) === "1");
+    } catch {
+      setSoftExpiryDismissed(false);
+    }
+  }, [license?.expires_at]);
 
   useEffect(() => {
     setRunProject("");
@@ -140,7 +159,7 @@ export function HomeSurface() {
               >
                 {entitlementsReady && !features.doc_to_bdd ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
-                {entitlementsReady && !features.doc_to_bdd ? <TierBadge c={c} label="Pro" /> : null}
+                {entitlementsReady && !features.doc_to_bdd ? <TierBadge c={c} label="Tester" /> : null}
               </button>
               <button
                 type="button"
@@ -241,6 +260,60 @@ export function HomeSurface() {
               </div>
             )}
 
+            {license &&
+              licenseNeedsSoftExpiryBanner(license) &&
+              license.expires_at != null &&
+              !softExpiryDismissed && (
+                <div
+                  role="alert"
+                  data-testid="elia-license-soft-expiry-banner"
+                  style={{
+                    background: c.neutralBg,
+                    border: `1px solid ${c.border}`,
+                    color: c.text,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    marginBottom: 14,
+                    fontSize: 14,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>
+                    Tu licencia caduca el {formatLicenseExpiryDate(license.expires_at)} (
+                    {Math.max(0, Math.ceil((license.expires_at * 1000 - Date.now()) / 86400000))} día(s)). Renueva a
+                    tiempo para evitar interrupciones.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        localStorage.setItem(licenseSoftExpiryDismissKey(license.expires_at!), "1");
+                      } catch {
+                        /* ignore */
+                      }
+                      setSoftExpiryDismissed(true);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${c.btnGhostBorder}`,
+                      background: c.btnGhostBg,
+                      color: c.text,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Entendido
+                  </button>
+                </div>
+              )}
+
             {homeTab === "ui" && (
               <>
                 {/* Lock Modal */}
@@ -274,7 +347,7 @@ export function HomeSurface() {
                     const locked =
                       entitlementsReady &&
                       ((p === "mobile" && !features.mobile_recording) || (p === "legacy" && !features.legacy_recording));
-                    const badge = p === "mobile" ? "Pro" : p === "legacy" ? "Enterprise" : null;
+                    const badge = p === "mobile" ? "Tester" : p === "legacy" ? "Architect" : null;
                     const active = platform === p;
                     return (
                       <button

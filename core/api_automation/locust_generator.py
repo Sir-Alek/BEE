@@ -86,6 +86,61 @@ def _imports_block(think_time: Optional[Dict[str, Any]], stages: Optional[List[D
 # --------------------------------------------------------------------------- #
 # Modo simple: una @task por escenario (con pesos)
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Helpers variables + extractores (modo escenario simple)
+# --------------------------------------------------------------------------- #
+_VARS_HELPERS = textwrap.dedent(
+    '''
+    import json as _json
+    import re as _re
+
+    def _interp(text, vars):
+        if text is None:
+            return None
+        out = str(text)
+        for k, v in (vars or {}).items():
+            out = out.replace("{{" + k + "}}", str(v))
+        return out
+
+    def _apply_extractors(extractors, response, vars):
+        if not extractors:
+            return
+        text = getattr(response, "text", "") or ""
+        headers = getattr(response, "headers", {}) or {}
+        try:
+            data = _json.loads(text) if text.strip().startswith(("{", "[")) else None
+        except Exception:
+            data = None
+        for ext in extractors or []:
+            kind = str(ext.get("kind") or "jsonpath").lower()
+            target = str(ext.get("target_var") or "").strip()
+            expr = str(ext.get("expression") or "")
+            if not target:
+                continue
+            if kind == "header":
+                val = headers.get(expr) or headers.get(expr.lower())
+                if val is not None:
+                    vars[target] = str(val)
+            elif kind == "regex":
+                m = _re.search(expr, text)
+                if m:
+                    vars[target] = m.group(1) if m.groups() else m.group(0)
+            elif kind == "jsonpath" and data is not None and expr.startswith("$."):
+                cur = data
+                for part in expr[2:].split("."):
+                    if isinstance(cur, dict):
+                        cur = cur.get(part)
+                    else:
+                        cur = None
+                        break
+                if cur is not None:
+                    vars[target] = str(cur)
+            elif kind == "status":
+                vars[target] = str(getattr(response, "status_code", 0))
+    '''
+).strip()
+
+
 def generate_locustfile(
     requests: List[ApiRequest],
     *,
@@ -93,6 +148,7 @@ def generate_locustfile(
     weights: Optional[Dict[str, int]] = None,
     think_time: Optional[Dict[str, Any]] = None,
     stages: Optional[List[Dict[str, Any]]] = None,
+    csv_rows: Optional[List[Dict[str, str]]] = None,
 ) -> str:
     base_host = host.rstrip("/") if host else ""
     tasks: List[str] = []
@@ -101,25 +157,33 @@ def generate_locustfile(
         if base_host and url.startswith("/"):
             url = base_host + url
         method = req.method.upper()
-        headers_repr = json.dumps(req.headers, ensure_ascii=False)
         body = req.body
         weight = max(1, int((weights or {}).get(req.id, req.weight or 1)))
-        body_block = ""
+        headers_json = json.dumps(req.headers, ensure_ascii=False)
+        url_expr = f"_interp({url!r}, self.vars)"
+        extractors_repr = json.dumps(req.extractors or [], ensure_ascii=False)
         if body and method not in ("GET", "HEAD"):
-            body_block = f"\n        payload = {json.dumps(body, ensure_ascii=False)!r}"
-            send = f'self.client.request("{method}", {url!r}, headers=headers, data=payload)'
+            body_block = (
+                f"\n        payload = _interp({json.dumps(body, ensure_ascii=False)!r}, self.vars)"
+                f"\n        if hasattr(self, '_next_csv_row'):\n            self._next_csv_row()"
+            )
+            send = f'self.client.request("{method}", {url_expr}, headers=headers, data=payload'
         else:
-            send = f'self.client.request("{method}", {url!r}, headers=headers)'
+            body_block = (
+                "\n        if hasattr(self, '_next_csv_row'):\n            self._next_csv_row()"
+            )
+            send = f'self.client.request("{method}", {url_expr}, headers=headers'
         task_name = req.id.replace("-", "_").replace(".", "_")
         tasks.append(
             textwrap.dedent(
                 f"""
                 @task({weight})
                 def task_{task_name}(self):
-                    headers = {headers_repr}{body_block}
-                    with {send} as response:
+                    headers = _json.loads(_interp({headers_json!r}, self.vars)){body_block}
+                    with {send}, catch_response=True) as response:
                         if response.status_code >= 400:
                             response.failure(f"HTTP {{response.status_code}}")
+                        _apply_extractors({extractors_repr}, response, self.vars)
                 """
             ).strip()
         )
@@ -132,13 +196,30 @@ def generate_locustfile(
     host_line = f"    host = {base_host!r}\n" if base_host else ""
     shape_block = _shape_block(stages)
     shape_src = f"\n\n{shape_block}\n" if shape_block else ""
+    csv_init = ""
+    on_start = "    def on_start(self):\n        self.vars = {}\n"
+    if csv_rows:
+        csv_repr = json.dumps(csv_rows[:500], ensure_ascii=False)
+        on_start = textwrap.dedent(
+            f"""
+            def on_start(self):
+                self._csv_rows = {csv_repr}
+                self._csv_idx = 0
+                self.vars = dict(self._csv_rows[0]) if self._csv_rows else {{}}
+            """
+        ).strip() + "\n"
+        csv_init = "\n    def _next_csv_row(self):\n        if not getattr(self, '_csv_rows', None):\n            return\n        self._csv_idx = (self._csv_idx + 1) % len(self._csv_rows)\n        self.vars.update(self._csv_rows[self._csv_idx])\n"
     return (
         _imports_block(think_time, stages)
+        + "\n\n"
+        + _VARS_HELPERS
         + "\n\n\n"
         + "class EliaApiUser(HttpUser):\n"
         + _wait_time_block(think_time)
         + "\n"
         + host_line
+        + on_start
+        + csv_init
         + "\n"
         + tasks_src
         + "\n"
@@ -426,6 +507,7 @@ def write_locustfile(
     stages: Optional[List[Dict[str, Any]]] = None,
     flow_nodes: Optional[List[Dict[str, Any]]] = None,
     initial_vars: Optional[Dict[str, str]] = None,
+    csv_rows: Optional[List[Dict[str, str]]] = None,
 ) -> str:
     path = Path(project_dir) / "locustfile.py"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -435,7 +517,12 @@ def write_locustfile(
         )
     else:
         content = generate_locustfile(
-            requests, host=host, weights=weights, think_time=think_time, stages=stages
+            requests,
+            host=host,
+            weights=weights,
+            think_time=think_time,
+            stages=stages,
+            csv_rows=csv_rows,
         )
     path.write_text(content, encoding="utf-8")
     return str(path)

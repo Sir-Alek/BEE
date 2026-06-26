@@ -33,7 +33,10 @@ def run_suite(
     environment: Optional[str] = None,
     continue_on_failure: bool = False,
     data_file: Optional[str] = None,
+    track_progress: bool = True,
 ) -> Dict[str, Any]:
+    from core.api_automation.suite_progress import clear_suite_progress, write_suite_progress
+
     ctx = resolve_runtime_context(project, environment)
     base_vars = dict(ctx["variables"])
     iterations: List[Dict[str, str]] = [{}]
@@ -48,46 +51,74 @@ def run_suite(
     if not use_tree and not steps:
         raise ValueError("Sin pasos para ejecutar")
 
+    total_linear = len(steps) * len(iterations) if not use_tree else 0
+    step_counter = {"n": 0}
+
+    def _progress(name: str, *, status: str = "running") -> None:
+        if not track_progress:
+            return
+        step_counter["n"] += 1 if status == "step_done" else 0
+        write_suite_progress(
+            project,
+            {
+                "status": status,
+                "current_step": step_counter["n"],
+                "total_steps": total_linear or step_counter["n"],
+                "step_name": name,
+            },
+        )
+
+    if track_progress:
+        clear_suite_progress(project)
+        _progress("Iniciando suite…", status="running")
+
     all_runs: List[Dict[str, Any]] = []
     state = _SuiteState()
 
-    for row_idx, row_vars in enumerate(iterations):
-        session_vars = {**base_vars, **row_vars}
-        iteration_results: List[Dict[str, Any]] = []
-        iteration_ok = True
+    try:
+        for row_idx, row_vars in enumerate(iterations):
+            session_vars = {**base_vars, **row_vars}
+            iteration_results: List[Dict[str, Any]] = []
+            iteration_ok = True
 
-        if use_tree:
-            executor = _TreeExecutor(
-                project=project,
-                ctx=ctx,
-                continue_on_failure=continue_on_failure,
-                state=state,
-            )
-            iteration_ok = executor.run(
-                flow.nodes, session_vars, iteration_results, row_idx
-            )
-        else:
-            iteration_ok = _run_linear(
-                project,
-                steps,
-                ctx,
-                session_vars,
-                iteration_results,
-                row_idx,
-                continue_on_failure,
-                state,
-            )
+            if use_tree:
+                executor = _TreeExecutor(
+                    project=project,
+                    ctx=ctx,
+                    continue_on_failure=continue_on_failure,
+                    state=state,
+                    progress=_progress,
+                )
+                iteration_ok = executor.run(
+                    flow.nodes, session_vars, iteration_results, row_idx
+                )
+            else:
+                iteration_ok = _run_linear(
+                    project,
+                    steps,
+                    ctx,
+                    session_vars,
+                    iteration_results,
+                    row_idx,
+                    continue_on_failure,
+                    state,
+                    progress=_progress,
+                )
 
-        all_runs.append(
-            {
-                "iteration": row_idx,
-                "data_row": row_vars,
-                "ok": iteration_ok,
-                "steps": iteration_results,
-            }
-        )
-        if not iteration_ok and not continue_on_failure:
-            break
+            all_runs.append(
+                {
+                    "iteration": row_idx,
+                    "data_row": row_vars,
+                    "ok": iteration_ok,
+                    "steps": iteration_results,
+                }
+            )
+            if not iteration_ok and not continue_on_failure:
+                break
+    finally:
+        if track_progress:
+            _progress("Finalizado", status="done")
+            clear_suite_progress(project)
 
     return _suite_summary(all_runs, state.passed, state.failed, session_vars)
 
@@ -102,11 +133,13 @@ class _SuiteState:
 # Modo lineal (retrocompatible)
 # --------------------------------------------------------------------------- #
 def _run_linear(
-    project, steps, ctx, session_vars, iteration_results, row_idx, continue_on_failure, state
+    project, steps, ctx, session_vars, iteration_results, row_idx, continue_on_failure, state, *, progress=None
 ) -> bool:
     iteration_ok = True
     for step_idx, step in enumerate(steps):
         req = _step_to_request(project, step)
+        if progress:
+            progress(req.name)
         step_extractors = list(req.extractors) + list(step.extractors)
         result = _safe_execute(req, ctx, session_vars)
         extractor_results = apply_extractors(
@@ -136,7 +169,11 @@ def _run_linear(
             state.failed += 1
             iteration_ok = False
             if not continue_on_failure:
+                if progress:
+                    progress(req.name, status="step_done")
                 return False
+        if progress:
+            progress(req.name, status="step_done")
     return iteration_ok
 
 
@@ -148,11 +185,12 @@ class _StopExecution(Exception):
 
 
 class _TreeExecutor:
-    def __init__(self, *, project, ctx, continue_on_failure, state: _SuiteState) -> None:
+    def __init__(self, *, project, ctx, continue_on_failure, state: _SuiteState, progress=None) -> None:
         self.project = project
         self.ctx = ctx
         self.continue_on_failure = continue_on_failure
         self.state = state
+        self.progress = progress
         self.last_result: Dict[str, Any] = {}
         self._counter = 0
 
@@ -235,10 +273,8 @@ class _TreeExecutor:
 
     def _exec_leaf(self, kind, node, session_vars, results, row_idx) -> bool:
         if kind == "sql":
-            result = run_sql_step(node.get("sql") or {}, variables=session_vars)
             entry_name = "SQL"
         elif kind == "grpc":
-            result = run_grpc_step(node.get("grpc") or {}, variables=session_vars)
             entry_name = f"{(node.get('grpc') or {}).get('service', 'gRPC')}"
         else:
             step = ApiFlowStep.from_dict(
@@ -249,6 +285,16 @@ class _TreeExecutor:
                 }
             )
             req = _step_to_request(self.project, step)
+            entry_name = req.name
+
+        if self.progress:
+            self.progress(entry_name)
+
+        if kind == "sql":
+            result = run_sql_step(node.get("sql") or {}, variables=session_vars)
+        elif kind == "grpc":
+            result = run_grpc_step(node.get("grpc") or {}, variables=session_vars)
+        else:
             result = _safe_execute(req, self.ctx, session_vars)
             self.last_result = result
             extractor_results = apply_extractors(
@@ -259,7 +305,6 @@ class _TreeExecutor:
                 variables=session_vars,
             )
             result = {**result, "extractor_results": extractor_results}
-            entry_name = req.name
 
         ok = bool(result.get("ok"))
         results.append(
@@ -278,7 +323,11 @@ class _TreeExecutor:
         else:
             self.state.failed += 1
             if not self.continue_on_failure:
+                if self.progress:
+                    self.progress(entry_name, status="step_done")
                 raise _StopExecution()
+        if self.progress:
+            self.progress(entry_name, status="step_done")
         return ok
 
     def _resolve_count(self, raw, session_vars) -> int:

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from core.entitlements import FEATURE_KEYS, TIER_BASIC, get_tier_flags, legacy_modules_from_features
+from core.entitlements import FEATURE_KEYS, get_tier_flags, legacy_modules_from_features, tier_display_name
 
 _LEGACY_MODULE_NAMES: Dict[str, bool] = {
     "mobile_recording": False,
@@ -71,16 +71,16 @@ def _features_from_license() -> Dict[str, bool]:
         from core.elia_license import get_active_license_features, get_license_status, is_license_operational
 
         if not is_license_operational():
-            return get_tier_flags(TIER_BASIC)
+            return get_tier_flags("")
         feats = get_active_license_features()
         if feats is None:
             st = get_license_status()
             if st.features:
                 return dict(st.features)
-            return get_tier_flags(TIER_BASIC)
+            return get_tier_flags("")
         return dict(feats)
     except Exception:
-        return get_tier_flags(TIER_BASIC)
+        return get_tier_flags("")
 
 
 def _resolved_features() -> Dict[str, bool]:
@@ -125,14 +125,14 @@ def list_modules() -> Dict[str, Any]:
         ent = get_entitlements()
     except Exception:
         ent = {
-            "tier": TIER_BASIC,
-            "tier_label": "Basic",
+            "tier": "",
+            "tier_label": "",
             "is_beta": False,
             "upgrade_email": "",
         }
     result: Dict[str, Any] = {
-        "tier": ent.get("tier", TIER_BASIC),
-        "tier_label": ent.get("tier_label", "Basic"),
+        "tier": ent.get("tier", ""),
+        "tier_label": ent.get("tier_label", tier_display_name(ent.get("tier", ""))),
         "is_beta": bool(ent.get("is_beta")),
         "upgrade_email": ent.get("upgrade_email", ""),
         "features": dict(features),

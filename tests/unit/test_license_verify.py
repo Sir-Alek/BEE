@@ -29,7 +29,7 @@ class TestLicenseVerifyV4(unittest.TestCase):
         verified = lv.verify_v4_key(key, self._fp)
         self.assertIsNotNone(verified)
         assert verified is not None
-        self.assertEqual(verified.tier, "professional")
+        self.assertEqual(verified.tier, "tester")
         self.assertEqual(verified.duration, "365D")
         parsed = lic.parse_activation_key(key, self._fp)
         self.assertIsNotNone(parsed)
@@ -85,7 +85,7 @@ class TestLicenseVerifyV4(unittest.TestCase):
             self.assertTrue(lic.activate_with_key(key))
             st = lic.get_license_status()
             self.assertTrue(st.ok)
-            self.assertEqual(st.tier_name, "basic")
+            self.assertEqual(st.tier_name, "tester")
         tmp.cleanup()
 
     def test_kid_rotation_unknown_kid_rejected(self) -> None:

@@ -1671,6 +1671,43 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       {aboutInfo.local_logs_hint}
                     </div>
                   ) : null}
+                  {aboutInfo.show_beta_disclaimer ? (
+                    <div
+                      style={{
+                        padding: "14px 16px",
+                        borderRadius: 10,
+                        border: `1px solid ${dark ? "rgba(160,160,160,0.45)" : "#5a5a5a"}`,
+                        background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 13,
+                          lineHeight: 1.45,
+                          marginBottom: 10,
+                          color: c.text,
+                        }}
+                      >
+                        ⚠️ Aviso Importante: Fase Beta y Resguardo de Información
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.65, color: c.text }}>
+                        ELIA se encuentra actualmente en fase de desarrollo activo y pruebas Beta. Aunque el
+                        software opera de forma estrictamente local en su equipo, al tratarse de una versión de
+                        evaluación, le recomendamos encarecidamente mantener copias de seguridad y respaldos
+                        actualizados de todos sus archivos de configuración, bases de datos y entornos de prueba
+                        antes y durante el uso de la aplicación.
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.65, color: c.text, marginTop: 10 }}>
+                        El uso de esta herramienta está sujeto a los términos de la Licencia de Autor Restringida
+                        (LAR) v1.1 que se detalla a continuación.
+                      </div>
+                    </div>
+                  ) : null}
+                  {/*
+                  Versión comercial (≥1.0): show_beta_disclaimer=false — solo queda la licencia LAR.
+                  */}
                   <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>Licencia de uso</div>
                   <div
                     style={{

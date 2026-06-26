@@ -4,6 +4,66 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.9.78] - 2026-06-26
+
+### Añadido
+
+- Historial con progreso en vivo de secuencias: Se incorporó un registro histórico detallado para las suites funcionales de servicios que muestra el avance en tiempo real a medida que se ejecutan los pasos de la prueba.
+- Generación retroactiva de informes de rendimiento: Ahora puedes exportar reportes analíticos estructurados en PDF y HTML a partir de simulaciones de carga guardadas en tu historial, lo que permite consultar los documentos de evidencias bajo demanda sin necesidad de volver a ejecutar la prueba de estrés.
+- Asistente de diagnóstico previo para carga distribuida: Añadimos una verificación de preparación rápida y orientativa para entornos masivos distribuidos en red, validando la estabilidad antes de lanzar la simulación de tráfico masiva.
+- Visualizador de respuestas estilizado: El visor del Cliente API ahora aplica un formato automático inteligente y resaltado de colores a los datos devueltos por el servidor, garantizando una inspección de resultados significativamente más rápida y cómoda.
+- Buscador integrado en colecciones: Nueva barra de filtrado rápido dentro de la barra de exploración lateral, facilitando la localización instantánea de carpetas, servicios y escenarios específicos en proyectos con altos volúmenes de pruebas.
+- Clonación rápida de escenarios: Se introdujo una función interactiva que permite duplicar escenarios de validación existentes con un solo clic, agilizando el diseño de variantes de prueba sobre la misma base.
+- Editor avanzado para scripts de servicios: El panel de configuración de interacciones ahora integra herramientas de edición profesional que facilitan la escritura y mejoran la legibilidad de tus scripts de validación.
+- Ventanas de confirmación integradas: Reemplazamos las ventanas de alerta nativas del sistema operativo por cuadros de diálogo personalizados que respetan estrictamente la estética y el tema visual activo de la aplicación.
+- Importación de servicios más compatible y fiable: Se optimizó drásticamente el motor de interpretación de especificaciones OpenAPI 3, resolviendo referencias internas complejas de esquemas y vinculando de forma transparente los mecanismos de autenticación (como tokens de portador o llaves de API) directamente hacia los encabezados de las peticiones.
+- Ampliación de aserciones lógicas: El asistente de scripts extendió sus capacidades de verificación predictiva, permitiendo evaluar inclusiones y equivalencias exactas sobre estructuras y campos de datos complejos.
+- Notificaciones preventivas de renovación: Introdujimos un banner visual sutil y descartable en la interfaz que te informará con antelación cuando tu suscripción se encuentre entre 8 y 14 días de concluir, reservando las alertas prioritarias de pantalla únicamente para la última semana de vigencia.
+- Persistencia de estado en el espacio de trabajo: Tus direcciones web escritas, códigos en edición y subpestañas activas dentro del Cliente API se mantendrán memorizadas si decides cambiar temporalmente entre los menús principales del panel de control, previniendo cualquier pérdida accidental de tu progreso.
+
+### Cambiado
+
+- Acceso unificado a herramientas de control: La pestaña de «Suites y carga» se mantiene siempre abierta y disponible para consulta. Los módulos de secuencias funcionales, vinculación de archivos de datos y ejecuciones base quedan plenamente habilitados desde el plan ELIA Tester, aplicando indicadores visuales de actualización únicamente sobre los módulos avanzados de simulación de estrés masivo exclusivos del plan ELIA Architect.
+- Diseño compacto para selección masiva de escenarios: El catálogo de pruebas para la suite y bloques de rendimiento se reorganizó en una sección colapsable con panel de desplazamiento optimizado. El control para «Seleccionar todos» permanece fijo en pantalla al navegar por la lista, evitando que las colecciones extensas distorsionen el orden o desplacen los botones de acción principales.
+- Gestión simplificada de colecciones: Se integró un botón compacto en la barra de exploración lateral para vaciar el catálogo general o remover colecciones importadas de forma directa, acompañado de descripciones de asistencia flotantes según la acción elegida.
+- Manual de secuencias de API al alcance: El Cliente API ahora incluye accesos directos para consultar la documentación de scripts desde el propio panel de trabajo, asegurando que cada proyecto guarde automáticamente una copia local del manual para su consulta desconectada.
+
+### Robustez del Sistema
+
+- Controles de calidad internos incrementados: Expandimos la cobertura de validaciones automatizadas internas sobre el motor de condiciones lógicas, el convertidor de esquemas de servicios, el sistema de progreso de históricos y la estabilidad en la gestión de carpetas de API para garantizar un entorno de software altamente confiable antes del despliegue.
+
+## [0.9.77] - 2026-06-21
+
+### Añadido
+
+- Validación de mensajería empresarial: Se incorporó un asistente de comprobación previa para servicios de comunicación rápidos dentro del constructor de flujos. El nuevo botón «Validar reflexión» permite certificar de forma visual que la estructura del servidor sea correcta y compatible antes de lanzar ejecuciones.
+- Control inteligente de carga distribuida: Implementamos reglas de validación avanzadas y una guía operativa integrada dentro del panel de rendimiento para configurar simulaciones masivas entre múltiples equipos (master/worker), incluyendo verificaciones automáticas de dependencias en flujos de tráfico mixtos.
+- Gestión avanzada de Colecciones de API: Ahora puedes crear y organizar tus escenarios en múltiples colecciones por proyecto. Al importar archivos estándar del mercado o esquemas de servicios, el sistema agrupará las pruebas automáticamente dentro de una carpeta con el nombre del archivo de origen. Incluye botón **Eliminar** en cada colección del sidebar: vacía **General** (borra todos sus escenarios pero la mantiene como contenedor por defecto) o elimina por completo las colecciones importadas. Migración transparente en segundo plano para proyectos existentes.
+
+### Cambiado
+
+- Diagnósticos enriquecidos en simulaciones masivas: La respuesta visual del panel de rendimiento ahora incluye detalles detallados sobre el modo de ejecución y comandos internos, facilitando la auditoría de despliegues distribuidos en red.
+- Barra lateral del Cliente API mejorada: Se actualizó el panel lateral organizándolo en un árbol de directorios colapsable por carpetas, con contadores de escenarios interactivos, un selector para elegir el destino al guardar nuevas pruebas y ventanas de confirmación de seguridad antes de remover una colección entera.
+- Interfaz nativa y estandarizada: Se optimizaron los textos y títulos de la sección de servicios para adoptar una terminología completamente propia del producto y neutral respecto a marcas de terceros. La compatibilidad total para importar e interpretar formatos estándar del mercado se mantiene intacta bajo el capó.
+- Manual de asistencia para scripts de API integrado: Incorporamos accesos rápidos directamente en el Cliente API (a través de los botones «Ver guía de scripts» y «Abrir guía completa») para consultar la documentación técnica de referencia integrada de forma nativa en la pantalla de trabajo, eliminando la necesidad de buscar manuales externos mientras editas tus pruebas.
+
+## [0.9.76] - 2026-06-20
+
+### Añadido
+
+- Plantillas profesionales de rendimiento: Se introdujeron perfiles preconfigurados para pruebas masivas (Carga, Estrés, Picos, Resistencia, Escalabilidad y Volumen). Estas plantillas calculan automáticamente las etapas de incremento de tráfico y configuran intervalos de espera realistas adaptados a cada escenario.
+- Panel centralizado de objetivos de calidad: Nueva sección visual en el menú de rendimiento para gestionar tus acuerdos de nivel de servicio (SLA) basados en tiempos de respuesta, porcentajes de error y transacciones por segundo. Centraliza también la asignación de variables vinculadas por archivos de datos y los procesos de simulación distribuida.
+- Remoción directa de escenarios: Se incluyeron botones interactivos de borrado rápido para escenarios de API tanto en la barra de exploración lateral como dentro de la pestaña de ejecución de rendimiento.
+- Reportes avanzados según perfil de prueba: Los informes analíticos en PDF y HTML ahora adaptan su diseño de forma inteligente al tipo de prueba realizada, incorporando un bloque destacado de aprobación o fallo de objetivos (SLA) y tablas detalladas de rendimiento para auditorías de escalabilidad.
+- Historial de simulación enriquecido: El registro histórico de ejecuciones ahora guarda de forma explícita el perfil de carga utilizado y el resultado del cumplimiento de calidad, manteniendo al día tu panel local de comparación de rendimiento.
+- Manual técnico de scripts de servicios: Se integró una guía técnica detallada dentro del catálogo de recursos de la aplicación para asistir en el diseño de scripts avanzados basados en lógica compatible con estándares de la industria.
+
+### Cambiado
+
+- Simplificación y evolución de Planes Comerciales: Optimizamos nuestra estructura de suscripciones para ofrecer un licenciamiento más claro y enfocado en roles profesionales. Las categorías anteriores se unifican bajo los nuevos planes ELIA Tester (diseñado para ingenieros de ejecución y automatización base) y ELIA Architect (destinado a arquitecturas empresariales y flujos distribuidos), aplicando una normalización automática y transparente para todas las claves vigentes.
+- Simulaciones de tráfico más realistas: El motor de carga masiva ahora permite interpolar variables de forma dinámica en flujos sencillos y realiza una rotación automatizada de las filas de tus archivos de datos durante el estrés, simulando un comportamiento de usuarios virtuales mucho más fiel a la realidad.
+- Sincronización ágil entre entornos: Se incrementó la visibilidad del puente de integración en la barra lateral, facilitando la sincronización inmediata de la dirección web base capturada durante tus grabaciones web hacia el entorno de pruebas de API.
+
 ## [0.9.75] - 2026-06-19
 
 ### Añadido

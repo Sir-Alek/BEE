@@ -1,7 +1,8 @@
 import React from "react";
 import {
-  TIER_ENTERPRISE,
-  TIER_PROFESSIONAL,
+  TIER_ARCHITECT,
+  TIER_TESTER,
+  tierAudience,
   tierDisplayName,
   upsellBenefits,
   UPGRADE_CONTACT_EMAIL,
@@ -9,15 +10,29 @@ import {
 
 type Props = {
   c: Record<string, string>;
-  requiredTier: typeof TIER_PROFESSIONAL | typeof TIER_ENTERPRISE | "mobile" | "legacy" | "doc_to_bdd" | "api_postman" | "api_locust" | "publishers_enterprise" | "team_memory";
+  requiredTier:
+    | typeof TIER_TESTER
+    | typeof TIER_ARCHITECT
+    | "mobile"
+    | "legacy"
+    | "doc_to_bdd"
+    | "api_postman"
+    | "api_locust"
+    | "publishers_enterprise"
+    | "team_memory";
   onClose: () => void;
 };
 
-function resolveTier(requiredTier: Props["requiredTier"]): typeof TIER_PROFESSIONAL | typeof TIER_ENTERPRISE {
-  if (requiredTier === TIER_PROFESSIONAL || requiredTier === "mobile" || requiredTier === "doc_to_bdd" || requiredTier === "api_postman") {
-    return TIER_PROFESSIONAL;
+function resolveTier(requiredTier: Props["requiredTier"]): typeof TIER_TESTER | typeof TIER_ARCHITECT {
+  if (
+    requiredTier === TIER_TESTER ||
+    requiredTier === "mobile" ||
+    requiredTier === "doc_to_bdd" ||
+    requiredTier === "api_postman"
+  ) {
+    return TIER_TESTER;
   }
-  return TIER_ENTERPRISE;
+  return TIER_ARCHITECT;
 }
 
 function featureTitle(requiredTier: Props["requiredTier"]): string {
@@ -29,8 +44,8 @@ function featureTitle(requiredTier: Props["requiredTier"]): string {
     api_locust: "Pruebas de carga (motor Locust)",
     publishers_enterprise: "Publishers ALM Enterprise",
     team_memory: "Team Memory Crypto",
-    [TIER_PROFESSIONAL]: "Plan Professional",
-    [TIER_ENTERPRISE]: "Plan Enterprise",
+    [TIER_TESTER]: "Plan ELIA Tester",
+    [TIER_ARCHITECT]: "Plan ELIA Architect",
   };
   return map[requiredTier] ?? "Función premium";
 }
@@ -39,6 +54,7 @@ export function UpsellModal(props: Props) {
   const { c, requiredTier, onClose } = props;
   const tier = resolveTier(requiredTier);
   const benefits = upsellBenefits(tier);
+  const audience = tierAudience(tier);
   const mailto = `mailto:${UPGRADE_CONTACT_EMAIL}?subject=${encodeURIComponent(`Upgrade ELIA — ${tierDisplayName(tier)}`)}`;
 
   return (
@@ -74,11 +90,14 @@ export function UpsellModal(props: Props) {
         </div>
         <div style={{ fontSize: 14, color: c.muted, marginBottom: 16, lineHeight: 1.5 }}>
           <b>{featureTitle(requiredTier)}</b> es exclusivo del{" "}
-          <b>Plan {tierDisplayName(tier)}</b>.
+          <b>{tierDisplayName(tier)}</b>.
         </div>
+        {audience ? (
+          <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, lineHeight: 1.5 }}>{audience}</div>
+        ) : null}
         {benefits.length > 0 ? (
           <div style={{ fontSize: 13, color: c.text, marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Beneficios del Plan {tierDisplayName(tier)}:</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Beneficios de {tierDisplayName(tier)}:</div>
             <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
               {benefits.map((b) => (
                 <li key={b}>{b}</li>

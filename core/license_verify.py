@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from core.entitlements import CODE_TO_TIER, TIER_BETA, TIER_CODES, get_tier_flags
+from core.entitlements import CODE_TO_TIER, TIER_ARCHITECT, TIER_BETA, TIER_TESTER, normalize_tier
 
 LICENSE_PAYLOAD_VERSION = 4
 
@@ -115,10 +115,8 @@ def _tier_from_payload(payload: Dict[str, Any]) -> Optional[str]:
     code = tier_raw.strip().upper()
     if code in CODE_TO_TIER:
         return CODE_TO_TIER[code]
-    tier_norm = tier_raw.strip().lower()
-    if tier_norm in TIER_CODES and tier_norm != TIER_BETA:
-        return tier_norm
-    return None
+    tier_norm = normalize_tier(tier_raw)
+    return tier_norm or None
 
 
 def _duration_allowed_v4(dur: str) -> bool:
@@ -203,8 +201,8 @@ def verify_v4_key(key: str, machine_fp: Optional[str] = None) -> Optional[Verifi
     if exp <= iat:
         return None
 
-    mobile = tier in ("professional", "enterprise")
-    legacy = tier == "enterprise"
+    mobile = tier in (TIER_TESTER, TIER_ARCHITECT, TIER_BETA)
+    legacy = tier in (TIER_ARCHITECT, TIER_BETA)
 
     return VerifiedLicensePayload(
         duration=dur,

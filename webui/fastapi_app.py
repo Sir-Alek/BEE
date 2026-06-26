@@ -315,6 +315,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             ELIA_SUPPORT_EMAIL,
             ELIA_TAGLINE,
             ELIA_VERSION,
+            elia_is_beta_build,
             elia_version_display,
         )
         from core.changelog import CHANGELOG_UI_ENTRY_LIMIT, load_changelog
@@ -343,6 +344,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "changelog": load_changelog(base_dir, limit=CHANGELOG_UI_ENTRY_LIMIT),
             "beta_feedback_url": feedback or None,
             "local_logs_hint": execution_log_about_hint(),
+            "show_beta_disclaimer": elia_is_beta_build(),
         }
 
     @app.get("/api/ai/status")
@@ -411,7 +413,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if not is_feature_enabled("team_memory_crypto"):
             raise HTTPException(
                 status_code=403,
-                detail="Team Memory Crypto requiere Plan Enterprise",
+                detail="Team Memory Crypto requiere ELIA Architect",
             )
 
         try:
@@ -438,7 +440,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if not is_feature_enabled("team_memory_crypto"):
             raise HTTPException(
                 status_code=403,
-                detail="Team Memory Crypto requiere Plan Enterprise",
+                detail="Team Memory Crypto requiere ELIA Architect",
             )
 
         normalized_mode = (mode or "").strip().lower()
@@ -461,7 +463,10 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     def license_status(_: None = Depends(_require_localhost)) -> Dict[str, Any]:
         from core import elia_license
 
+        from core.entitlements import tier_display_name
+
         st = elia_license.get_license_status()
+        tier_norm = st.tier_name or ""
         return {
             "ok": st.ok,
             "reason": st.reason,
@@ -471,8 +476,8 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
             "can_run_jobs": elia_license.can_run_jobs(),
             "expires_at": st.expires_at,
             "duration_code": st.duration_code,
-            "tier": st.tier_name,
-            "tier_label": (st.tier_name or "").replace("_", " ").title() if st.tier_name else None,
+            "tier": tier_norm,
+            "tier_label": tier_display_name(tier_norm) if tier_norm else None,
             "is_beta": st.is_beta,
             "upgrade_email": st.upgrade_email,
             "features": st.features,

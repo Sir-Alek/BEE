@@ -565,8 +565,10 @@ function GrpcNodeEditor(props: {
   grpc: GrpcConfig;
   onChange: (grpc: GrpcConfig) => void;
   driverCaps?: DriverCapabilities | null;
+  onPreflight?: () => void;
+  preflightBusy?: boolean;
 }) {
-  const { c, grpc, onChange, driverCaps } = props;
+  const { c, grpc, onChange, driverCaps, onPreflight, preflightBusy } = props;
   const patch = (p: Partial<GrpcConfig>) => onChange({ ...grpc, ...p });
   const extractors = grpc.extractors ?? [];
   const grpcOk = driverCaps?.grpc?.available ?? false;
@@ -667,8 +669,13 @@ function GrpcNodeEditor(props: {
       >
         + Extractor gRPC
       </button>
+      {onPreflight ? (
+        <button type="button" disabled={preflightBusy} onClick={onPreflight} style={apiBtn(c, undefined, undefined, true)}>
+          Validar reflexión
+        </button>
+      ) : null}
       <div style={{ fontSize: 11, color: c.muted }}>
-        Reflexión del servidor (grpcio, grpcio-reflection, protobuf). Incluido en pruebas de carga Enterprise.
+        Reflexión del servidor (grpcio, grpcio-reflection, protobuf). Incluido en pruebas de carga ELIA Architect.
       </div>
     </div>
   );
@@ -683,9 +690,21 @@ function NodeEditor(props: {
   envVarNames?: string[];
   driverCaps?: DriverCapabilities | null;
   onSqlPreflight?: (sql: SqlConfig) => void;
+  onGrpcPreflight?: (grpc: GrpcConfig) => void;
   preflightBusy?: boolean;
 }) {
-  const { c, scenarios, node, depth, onChange, envVarNames, driverCaps, onSqlPreflight, preflightBusy } = props;
+  const {
+    c,
+    scenarios,
+    node,
+    depth,
+    onChange,
+    envVarNames,
+    driverCaps,
+    onSqlPreflight,
+    onGrpcPreflight,
+    preflightBusy,
+  } = props;
 
   if (node.type === "request") {
     return (
@@ -728,6 +747,8 @@ function NodeEditor(props: {
         grpc={node.grpc ?? { extractors: [] }}
         onChange={(grpc) => onChange({ ...node, grpc })}
         driverCaps={driverCaps}
+        onPreflight={onGrpcPreflight && node.grpc ? () => onGrpcPreflight(node.grpc!) : undefined}
+        preflightBusy={preflightBusy}
       />
     );
   }
@@ -749,6 +770,7 @@ function NodeEditor(props: {
             envVarNames={envVarNames}
             driverCaps={driverCaps}
             onSqlPreflight={onSqlPreflight}
+            onGrpcPreflight={onGrpcPreflight}
             preflightBusy={preflightBusy}
           />
         </BranchBlock>
@@ -762,6 +784,7 @@ function NodeEditor(props: {
             envVarNames={envVarNames}
             driverCaps={driverCaps}
             onSqlPreflight={onSqlPreflight}
+            onGrpcPreflight={onGrpcPreflight}
             preflightBusy={preflightBusy}
           />
         </BranchBlock>
@@ -813,6 +836,7 @@ function NodeEditor(props: {
           envVarNames={envVarNames}
           driverCaps={driverCaps}
           onSqlPreflight={onSqlPreflight}
+          onGrpcPreflight={onGrpcPreflight}
           preflightBusy={preflightBusy}
         />
       </BranchBlock>
@@ -841,9 +865,21 @@ export function NodeListEditor(props: {
   envVarNames?: string[];
   driverCaps?: DriverCapabilities | null;
   onSqlPreflight?: (sql: SqlConfig) => void;
+  onGrpcPreflight?: (grpc: GrpcConfig) => void;
   preflightBusy?: boolean;
 }) {
-  const { c, scenarios, nodes, depth, onChange, envVarNames, driverCaps, onSqlPreflight, preflightBusy } = props;
+  const {
+    c,
+    scenarios,
+    nodes,
+    depth,
+    onChange,
+    envVarNames,
+    driverCaps,
+    onSqlPreflight,
+    onGrpcPreflight,
+    preflightBusy,
+  } = props;
   const firstScenario = scenarios[0]?.id ?? "";
 
   const addNode = (type: FlowNode["type"]) => {
@@ -896,6 +932,7 @@ export function NodeListEditor(props: {
             envVarNames={envVarNames}
             driverCaps={driverCaps}
             onSqlPreflight={onSqlPreflight}
+            onGrpcPreflight={onGrpcPreflight}
             preflightBusy={preflightBusy}
           />
         </div>

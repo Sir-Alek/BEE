@@ -59,7 +59,9 @@ class ApiRequest:
     response_status: Optional[int] = None
     response_headers: Dict[str, str] = field(default_factory=dict)
     response_body: Optional[str] = None
-    source: str = "manual"  # manual | capture | ai
+    source: str = "manual"  # manual | capture | ai | postman
+    pre_request_script: Optional[str] = None
+    post_request_script: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -103,6 +105,8 @@ class ApiRequest:
             response_headers={str(k): str(v) for k, v in (data.get("response_headers") or {}).items()},
             response_body=data.get("response_body"),
             source=str(data.get("source") or "manual"),
+            pre_request_script=data.get("pre_request_script"),
+            post_request_script=data.get("post_request_script"),
         )
 
 

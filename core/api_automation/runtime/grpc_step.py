@@ -164,5 +164,64 @@ def _interpolate_obj(obj: Any, variables: Dict[str, str]) -> Any:
     return obj
 
 
+def grpc_preflight(config: Dict[str, Any], *, variables: Dict[str, str]) -> Dict[str, Any]:
+    """Valida dependencias, conectividad y reflexión del servidor sin invocar el método."""
+    target = interpolate_text(str(config.get("target") or ""), variables)
+    service = str(config.get("service") or "").strip()
+    method = str(config.get("method") or "").strip()
+    if not target:
+        return _fail("Indica 'target' (host:puerto)")
+
+    try:
+        import grpc  # type: ignore  # noqa: F401
+    except ImportError:
+        return _fail("gRPC no disponible. Ejecuta: pip install grpcio grpcio-reflection protobuf")
+
+    use_tls = bool(config.get("tls"))
+    timeout = float(config.get("timeout_sec") or 10)
+
+    channel = None
+    try:
+        import grpc  # type: ignore
+        from google.protobuf.descriptor_pool import DescriptorPool  # type: ignore
+        from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (  # type: ignore
+            ProtoReflectionDescriptorDatabase,
+        )
+
+        channel = (
+            grpc.secure_channel(target, grpc.ssl_channel_credentials())
+            if use_tls
+            else grpc.insecure_channel(target)
+        )
+        reflection_db = ProtoReflectionDescriptorDatabase(channel)
+        pool = DescriptorPool(reflection_db)
+        grpc.channel_ready_future(channel).result(timeout=timeout)
+
+        out: Dict[str, Any] = {
+            "ok": True,
+            "target": target,
+            "service": service,
+            "method": method,
+            "reflection": True,
+        }
+        if service:
+            service_desc = pool.FindServiceByName(service)
+            out["service_found"] = True
+            if method:
+                service_desc.FindMethodByName(method)
+                out["method_found"] = True
+        return out
+    except _GrpcDepMissing as exc:
+        return _fail(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _fail(f"Preflight gRPC: {exc}")
+    finally:
+        if channel is not None:
+            try:
+                channel.close()
+            except Exception:
+                pass
+
+
 def _fail(message: str) -> Dict[str, Any]:
     return {"ok": False, "response": None, "error": message}

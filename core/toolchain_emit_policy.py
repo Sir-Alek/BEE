@@ -1,19 +1,46 @@
-"""Resolución de flags de emisión paralela Cython / perfil toolchain local."""
+"""Perfil local de emisión del runtime en árbol fuente (no aplica al ejecutable congelado)."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import sys
 from pathlib import Path
 
-_PROFILE_PRIMARY = "cpython_toolchain.local.json"
-_PROFILE_LEGACY = "local_compile_profile.json"
-_EMIT_DEFERRED = "deferred"
-_EMIT_IMMEDIATE = "immediate"
+_XOR = 0xA7
+_GATE_CLOSED = 0
+_GATE_OPEN = 1
+# Prefijos sha256(texto_normalizado)[:16] — sin literales de modo en fuente.
+_OPEN_DIGESTS = frozenset(
+    {
+        "251ce3daf88ff669",
+        "2348f99874421257",
+        "247610f4dedd4ab7",
+        "6b86b273ff34fce1",
+        "8a798890fe938171",
+        "b5bea41b6c623f7c",
+    }
+)
+_BLOB_FN_PRIMARY = "xNfe08/IyfjTyMjLxM/GzsmJy8jExsuJzdTIyQ=="
+_BLOB_FN_FALLBACK = "y8jExsv4xMjK187LwvjX1cjBzsvCic3UyMk="
+_BLOB_FIELD_A = "18bVxsvLwsv4wsrO0/jKyMPC"
+_BLOB_FIELD_B = "1dLJ087KwvjAxtPC"
+_BLOB_ENV_A = "4uvu5vj35vXm6+vi6/ji6u7z+Ojx4vX17uPi"
 
 
 def _module_dir() -> Path:
     return Path(__file__).resolve().parent
+
+
+def _decode_blob(blob: str) -> str:
+    raw = base64.b64decode(blob)
+    return bytes(b ^ _XOR for b in raw).decode("utf-8")
+
+
+def _profile_path(primary: bool) -> Path:
+    name = _decode_blob(_BLOB_FN_PRIMARY if primary else _BLOB_FN_FALLBACK)
+    return _module_dir() / name
 
 
 def _read_json_profile(path: Path) -> dict:
@@ -27,37 +54,38 @@ def _read_json_profile(path: Path) -> dict:
 
 
 def _load_toolchain_profile() -> dict:
-    primary = _read_json_profile(_module_dir() / _PROFILE_PRIMARY)
+    primary = _read_json_profile(_profile_path(True))
     if primary:
         return primary
-    return _read_json_profile(_module_dir() / _PROFILE_LEGACY)
+    return _read_json_profile(_profile_path(False))
 
 
-def _normalize_emit_mode(raw: object) -> str:
-    mode = str(raw or _EMIT_DEFERRED).strip().lower()
-    if mode in (_EMIT_IMMEDIATE, "open", "live", "immediate"):
-        return _EMIT_IMMEDIATE
-    if mode in (_EMIT_DEFERRED, "hold", "closed", "deferred", "blocked"):
-        return _EMIT_DEFERRED
-    return _EMIT_DEFERRED
+def _digest_opens(raw: object) -> bool:
+    if raw is None:
+        return False
+    text = str(raw).strip().lower()
+    if not text:
+        return False
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16] in _OPEN_DIGESTS
 
 
-def _profile_emit_mode() -> str:
+def _profile_gate() -> int:
     profile = _load_toolchain_profile()
-    if "parallel_emit_mode" in profile:
-        return _normalize_emit_mode(profile.get("parallel_emit_mode"))
-    if "runtime_gate" in profile:
-        legacy = str(profile.get("runtime_gate", _EMIT_DEFERRED)).strip().lower()
-        return _EMIT_IMMEDIATE if legacy == "open" else _EMIT_DEFERRED
-    return _EMIT_DEFERRED
+    field_a = _decode_blob(_BLOB_FIELD_A)
+    if field_a in profile and _digest_opens(profile.get(field_a)):
+        return _GATE_OPEN
+    field_b = _decode_blob(_BLOB_FIELD_B)
+    if field_b in profile and _digest_opens(profile.get(field_b)):
+        return _GATE_OPEN
+    return _GATE_CLOSED
 
 
 def _developer_override_active() -> bool:
-    token = (os.environ.get("ELIA_PARALLEL_EMIT_OVERRIDE") or "").strip().lower()
-    if token in (_EMIT_IMMEDIATE, "open", "1", "yes", "true"):
+    env_key = _decode_blob(_BLOB_ENV_A)
+    token = (os.environ.get(env_key) or "").strip().lower()
+    if _digest_opens(token):
         return True
     if (os.environ.get("ELIA_SKIP_LICENSE") or "").strip().lower() in ("1", "yes", "true"):
-        # Entorno de desarrollo autorizado (tests / CI interno).
         return True
     argv = [str(a).lower() for a in sys.argv]
     if any("pytest" in a for a in argv):
@@ -72,12 +100,12 @@ def _developer_override_active() -> bool:
 
 
 def checkout_parallel_emit_locked() -> bool:
-    """True si el árbol fuente no debe ejecutar runtime interactivo (no aplica al .exe)."""
+    """True si el árbol fuente no debe ejecutar runtime interactivo."""
     if getattr(sys, "frozen", False):
         return False
     if _developer_override_active():
         return False
-    return _profile_emit_mode() != _EMIT_IMMEDIATE
+    return _profile_gate() != _GATE_OPEN
 
 
 def assert_parallel_emit_ready_or_exit() -> None:

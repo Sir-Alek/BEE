@@ -9,8 +9,39 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
+from core.api_automation.load_test_profiles import PROFILE_LABELS
 from core.api_automation.traffic_store import ensure_api_project
+
+
+def _profile_label(profile: str) -> str:
+    pid = (profile or "load").strip().lower()
+    return PROFILE_LABELS.get(pid, pid)
+
+
+def _sla_lines(sla_result: Optional[Dict[str, Any]]) -> List[str]:
+    if not sla_result or not sla_result.get("checks"):
+        return []
+    status = "PASS" if sla_result.get("ok") else "FAIL"
+    lines = [f"SLA: {status}"]
+    for check in sla_result.get("checks") or []:
+        mark = "OK" if check.get("passed") else "FAIL"
+        lines.append(
+            f"  [{mark}] {check.get('metric')}: actual={check.get('actual')} "
+            f"umbral={check.get('threshold')}"
+        )
+    return lines
+
+
+def _stage_lines(stages: Optional[List[Dict[str, Any]]]) -> List[str]:
+    if not stages:
+        return []
+    return [
+        f"  Escalón {idx + 1}: {st.get('duration', '?')}s → {st.get('users', '?')} usuarios "
+        f"(spawn {st.get('spawn_rate', '?')})"
+        for idx, st in enumerate(stages)
+    ]
 
 
 def _reports_dir(project: str) -> Path:
@@ -37,7 +68,61 @@ def _pdf_text(text: Any) -> str:
     return str(text).encode("latin-1", errors="replace").decode("latin-1")
 
 
+def _split_long_tokens(text: str, max_len: int = 96) -> str:
+    """Parte tokens largos (URL, HTML) para que multi_cell respete el ancho."""
+    lines: List[str] = []
+    for raw_line in str(text or "").splitlines() or [""]:
+        if len(raw_line) <= max_len:
+            lines.append(raw_line)
+            continue
+        chunks: List[str] = []
+        buf = ""
+        for ch in raw_line:
+            buf += ch
+            if len(buf) >= max_len:
+                chunks.append(buf)
+                buf = ""
+        if buf:
+            chunks.append(buf)
+        lines.append("\n".join(chunks))
+    return "\n".join(lines)
+
+
+def _looks_like_html(body: str) -> bool:
+    lowered = str(body or "").lstrip().lower()
+    return lowered.startswith("<!doctype") or lowered.startswith("<html") or "<html" in lowered[:300]
+
+
+def _format_body_for_pdf(body: Any, *, limit: int = 4000) -> str:
+    """Cuerpo tal cual (JSON indentado si aplica), truncado para el PDF."""
+    text = str(body or "").strip()
+    if not text:
+        return "(vacio)"
+    try:
+        parsed = json.loads(text)
+        text = json.dumps(parsed, ensure_ascii=True, indent=2)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    if len(text) > limit:
+        return f"{text[:limit]}\n... (truncado, {len(text)} caracteres totales)"
+    return text
+
+
+def _header_content_type(headers: Any) -> str:
+    if not isinstance(headers, dict):
+        return ""
+    for key, value in headers.items():
+        if str(key).lower() == "content-type":
+            return str(value)
+    return ""
+
+
 class _ApiEvidencePdf(FPDF):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.set_margins(15, 15, 15)
+        self.set_auto_page_break(auto=True, margin=15)
+
     def footer(self) -> None:
         self.set_y(-12)
         self.set_font("Helvetica", "I", 8)
@@ -46,6 +131,25 @@ class _ApiEvidencePdf(FPDF):
     @property
     def content_width(self) -> float:
         return self.w - self.l_margin - self.r_margin
+
+    def write_wrapped(
+        self,
+        text: str,
+        *,
+        font: str = "Helvetica",
+        style: str = "",
+        size: int = 9,
+        line_h: float = 5,
+    ) -> None:
+        self.set_x(self.l_margin)
+        self.set_font(font, style, size)
+        self.multi_cell(
+            self.content_width,
+            line_h,
+            _pdf_text(_split_long_tokens(text)),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
 
 
 def write_request_evidence_json(project: str, payload: Dict[str, Any]) -> str:
@@ -81,35 +185,44 @@ def write_request_evidence_pdf(project: str, payload: Dict[str, Any]) -> str:
 
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 8, "Peticion", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.multi_cell(pdf.content_width, 5, _pdf_text(f"Metodo: {req.get('method', 'GET')}"))
-    pdf.multi_cell(pdf.content_width, 5, _pdf_text(f"URL: {req.get('url', '')}"))
+    pdf.write_wrapped(f"Metodo: {req.get('method', 'GET')}")
+    pdf.write_wrapped(f"URL: {req.get('url', '')}")
     headers = req.get("headers") or {}
     if headers:
-        pdf.multi_cell(pdf.content_width, 5, _pdf_text("Headers: " + json.dumps(headers, ensure_ascii=True)[:1200]))
+        pdf.write_wrapped("Headers: " + json.dumps(headers, ensure_ascii=True)[:1200])
     body = req.get("body")
     if body:
-        pdf.multi_cell(pdf.content_width, 5, _pdf_text("Body: " + str(body)[:1500]))
+        pdf.write_wrapped("Body: " + str(body)[:1500])
     pdf.ln(3)
 
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 8, "Respuesta", ln=True)
-    pdf.set_font("Helvetica", "", 9)
     status = result.get("status_code", "?")
     elapsed = result.get("elapsed_ms", "?")
     ok = result.get("ok", False)
-    pdf.multi_cell(pdf.content_width, 5, _pdf_text(f"Estado: {'OK' if ok else 'FALLO'} - HTTP {status} ({elapsed} ms)"))
+    pdf.write_wrapped(f"Estado: {'OK' if ok else 'FALLO'} - HTTP {status} ({elapsed} ms)")
+    resp_headers = result.get("headers") or {}
+    if resp_headers:
+        pdf.write_wrapped("Headers: " + json.dumps(resp_headers, ensure_ascii=True)[:1200])
+    content_type = _header_content_type(resp_headers)
+    if content_type:
+        pdf.write_wrapped(f"Content-Type: {content_type}")
     if assertions:
-        pdf.multi_cell(pdf.content_width, 5, "Aserciones:")
+        pdf.write_wrapped("Aserciones:")
         for item in assertions:
             mark = "OK" if item.get("passed") else "FAIL"
-            pdf.multi_cell(pdf.content_width, 5, _pdf_text(f"  [{mark}] {item.get('message', '')}"))
-    resp_body = str(result.get("body") or "")[:4000]
+            pdf.write_wrapped(f"  [{mark}] {item.get('message', '')}")
+    raw_body = str(result.get("body") or "")
+    if _looks_like_html(raw_body):
+        pdf.write_wrapped(
+            "Nota: la respuesta es HTML (pagina web), no JSON de API. "
+            "Compruebe que la URL apunte al endpoint REST y no a la UI de Swagger."
+        )
+    resp_body = _format_body_for_pdf(raw_body)
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 6, "Cuerpo de respuesta (truncado):", ln=True)
-    pdf.set_font("Courier", "", 8)
-    pdf.multi_cell(pdf.content_width, 4, _pdf_text(resp_body or "(vacio)"))
+    pdf.cell(0, 6, "Cuerpo de respuesta:", ln=True)
+    pdf.write_wrapped(resp_body, font="Courier", size=8, line_h=4)
 
     pdf.output(str(out_path))
     return str(out_path)
@@ -194,10 +307,14 @@ def write_enriched_load_test_evidence_pdf(
     host: str = "",
     scenario_count: int = 0,
     run_id: str = "",
+    profile: str = "load",
+    sla_result: Optional[Dict[str, Any]] = None,
+    stages: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """PDF enriquecido con percentiles (opt-in post-carga)."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = _reports_dir(project) / f"ApiLoadTest_{ts}_enriched.pdf"
+    profile_slug = re.sub(r"[^a-z0-9]+", "_", (profile or "load").lower()).strip("_")
+    out_path = _reports_dir(project) / f"ApiLoadTest_{profile_slug}_{ts}_enriched.pdf"
     summary = _metrics_summary(metrics)
 
     pdf = _ApiEvidencePdf()
@@ -207,12 +324,22 @@ def write_enriched_load_test_evidence_pdf(
     pdf.cell(0, 10, "ELIA - Reporte de carga API (enriquecido)", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, _pdf_text(f"Proyecto: {project}"), ln=True)
+    pdf.cell(0, 6, _pdf_text(f"Tipo de prueba: {_profile_label(profile)}"), ln=True)
     if run_id:
         pdf.cell(0, 6, _pdf_text(f"Run ID: {run_id}"), ln=True)
     pdf.cell(0, 6, _pdf_text(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True)
     pdf.cell(0, 6, _pdf_text(f"Usuarios: {users} | Duracion: {run_time} | Escenarios: {scenario_count}"), ln=True)
     if host:
         pdf.cell(0, 6, _pdf_text(f"Host: {host}"), ln=True)
+    for line in _sla_lines(sla_result):
+        pdf.cell(0, 5, _pdf_text(line), ln=True)
+    if profile == "scalability" and stages:
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, "Escalones de escalabilidad:", ln=True)
+        pdf.set_font("Helvetica", "", 9)
+        for line in _stage_lines(stages):
+            pdf.cell(0, 5, _pdf_text(line), ln=True)
     pdf.ln(4)
 
     pdf.set_font("Helvetica", "B", 11)
@@ -270,10 +397,14 @@ def write_enriched_load_test_evidence_html(
     host: str = "",
     scenario_count: int = 0,
     run_id: str = "",
+    profile: str = "load",
+    sla_result: Optional[Dict[str, Any]] = None,
+    stages: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """HTML enriquecido con percentiles (opt-in post-carga)."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = _reports_dir(project) / f"ApiLoadTest_{ts}_enriched.html"
+    profile_slug = re.sub(r"[^a-z0-9]+", "_", (profile or "load").lower()).strip("_")
+    out_path = _reports_dir(project) / f"ApiLoadTest_{profile_slug}_{ts}_enriched.html"
     summary = _metrics_summary(metrics)
     endpoints = summary.get("endpoints") or []
     endpoint_rows = ""
@@ -286,6 +417,31 @@ def write_enriched_load_test_evidence_html(
             f"<td>{ep.get('p99_ms', 0)}</td><td>{ep.get('rps', 0)}</td></tr>"
         )
     console = "<br>".join(_pdf_text(line) for line in _extract_locust_summary(lines)[:30])
+    sla_html = ""
+    if sla_result and sla_result.get("checks"):
+        status = "PASS" if sla_result.get("ok") else "FAIL"
+        color = "#1b7f3a" if sla_result.get("ok") else "#b00020"
+        rows = "".join(
+            f"<tr><td>{c.get('metric')}</td><td>{c.get('actual')}</td>"
+            f"<td>{c.get('threshold')}</td><td>{'OK' if c.get('passed') else 'FAIL'}</td></tr>"
+            for c in sla_result.get("checks") or []
+        )
+        sla_html = (
+            f'<h2 style="color:{color}">SLA: {status}</h2>'
+            f"<table><tr><th>Métrica</th><th>Actual</th><th>Umbral</th><th>Estado</th></tr>{rows}</table>"
+        )
+    stages_html = ""
+    if profile == "scalability" and stages:
+        stage_rows = "".join(
+            f"<tr><td>{idx + 1}</td><td>{st.get('duration', '')}</td>"
+            f"<td>{st.get('users', '')}</td><td>{st.get('spawn_rate', '')}</td></tr>"
+            for idx, st in enumerate(stages)
+        )
+        stages_html = (
+            "<h2>Escalones de escalabilidad</h2>"
+            "<table><tr><th>#</th><th>Duración (s)</th><th>Usuarios</th><th>Spawn rate</th></tr>"
+            f"{stage_rows}</table>"
+        )
     html = f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"><title>ELIA Carga API</title>
 <style>
@@ -297,8 +453,10 @@ th{{background:#f4f4f4}}
 pre{{background:#111;color:#eee;padding:12px;border-radius:8px;font-size:12px;overflow:auto}}
 </style></head><body>
 <h1>ELIA — Reporte de carga API</h1>
-<p><b>Proyecto:</b> {project} | <b>Run:</b> {run_id or 'n/a'} | <b>Fecha:</b> {datetime.now():%Y-%m-%d %H:%M:%S}</p>
+<p><b>Proyecto:</b> {project} | <b>Tipo:</b> {_profile_label(profile)} | <b>Run:</b> {run_id or 'n/a'} | <b>Fecha:</b> {datetime.now():%Y-%m-%d %H:%M:%S}</p>
 <p>Usuarios: {users} | Duración: {run_time} | Escenarios: {scenario_count} | Host: {host or 'n/a'}</p>
+{sla_html}
+{stages_html}
 <div>
 <span class="metric">Req: {summary.get('total_requests', 0)}</span>
 <span class="metric">Fallos: {summary.get('total_failures', 0)}</span>
@@ -342,6 +500,7 @@ def write_suite_evidence_pdf(project: str, payload: Dict[str, Any]) -> str:
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, _pdf_text(f"Proyecto: {project}"), ln=True)
     pdf.cell(0, 6, _pdf_text(f"Entorno: {payload.get('environment', 'dev')}"), ln=True)
+    pdf.cell(0, 6, _pdf_text("Formato: evidencia suite funcional (auditoría ELIA)"), ln=True)
     pdf.cell(0, 6, _pdf_text(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True)
     pdf.cell(0, 6, _pdf_text(
         f"Resultado: {'OK' if suite.get('ok') else 'FALLOS'} — "

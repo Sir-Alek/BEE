@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from core.elia_paths import behave_projects_dir
 from core.test_runner import project_files
-from core.test_runner.run_artifacts import list_pdfs_in_project, resolve_project_pdf
+from core.test_runner.run_artifacts import list_pdfs_in_project, resolve_project_evidence, resolve_project_pdf
 from core.test_runner.run_launcher import (
     BEHAVE_KINDS,
     build_behave_command,
@@ -193,6 +193,26 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
             media_type="application/pdf",
             filename=pdf_path.name,
             headers={"Content-Disposition": f'inline; filename="{pdf_path.name}"'},
+        )
+
+    @app.get("/api/projects/{platform}/{project_name}/evidences/file")
+    def get_project_evidence_file(
+        platform: str,
+        project_name: str,
+        name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> FileResponse:
+        _, root = _project_root(platform, project_name)
+        try:
+            json_path = resolve_project_evidence(root, name)
+        except (ValueError, FileNotFoundError) as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return FileResponse(
+            path=str(json_path),
+            media_type="application/json",
+            filename=json_path.name,
+            headers={"Content-Disposition": f'inline; filename="{json_path.name}"'},
         )
 
     @app.post("/api/projects/{platform}/{project_name}/open-folder")

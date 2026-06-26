@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cloneApiScenario,
   createApiProject,
+  deleteApiCollection,
+  deleteApiScenario,
   executeApiRequest,
   exportApiLoadEvidence,
   exportApiRequestEvidence,
@@ -13,10 +16,13 @@ import {
   getApiTrafficCaptures,
   getApiWebOrigin,
   getProjectReportUrl,
+  getProjectEvidenceUrl,
   getTestRun,
   importApiTrafficCapture,
   importOpenApiSpec,
   importPostmanCollection,
+  loadPreflightApi,
+  openProjectFolder,
   runLoadTest,
   saveApiEnvironment,
   saveApiLoadSnapshot,
@@ -26,19 +32,34 @@ import {
   listApiFlows,
   getApiFlow,
 } from "../api";
+import { ConfirmModal } from "../components/ConfirmModal";
 import {
   DataCsvPanel,
   LoadHistoryComparePanel,
   LoadMetricsPanel,
+  SuiteHistoryPanel,
   SuiteRunnerPanel,
   type AssertionRow,
   type ExtractorRow,
 } from "./ApiAdvancedPanels";
 import { RunConsolePanel } from "./RunConsolePanel";
-import { ApiPostmanSidebar } from "./api/ApiPostmanSidebar";
+import { ApiPostmanSidebar, type ApiCollectionRow, type ApiScenarioRow } from "./api/ApiPostmanSidebar";
+import {
+  LoadTestPanel,
+  buildSlaPayload,
+  buildThinkTimePayload,
+  defaultLoadTestSettings,
+  validateDistributedLoadSettings,
+  type LoadTestSettings,
+} from "./api/LoadTestPanel";
 import { ApiPostmanWorkspace, type PostmanPane } from "./api/ApiPostmanWorkspace";
-import { ApiSection, apiBtn, apiInputStyle } from "./api/apiUi";
+import { ApiCollapsibleSection, ApiSection, apiBtn, apiInputStyle } from "./api/apiUi";
 import { analyzeFlowNodeCounts, deserializeFlowNodes } from "./api/FlowControllerEditor";
+import {
+  loadApiSurfacePersistProject,
+  useApiSurfacePersist,
+  type ApiSurfacePersistedFields,
+} from "./api/useApiSurfacePersist";
 import { featureFromModules } from "../app/entitlements";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import type { ModulesStatus } from "../types";
@@ -61,9 +82,11 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 export function ApiSurface(props: Props) {
   const { c, modules, modulesLoading, canRunJobs, onShowError, setHomeHint } = props;
   const [projects, setProjects] = useState<string[]>([]);
-  const [project, setProject] = useState("DefaultApi");
+  const [project, setProject] = useState(() => loadApiSurfacePersistProject() || "DefaultApi");
   const [newProject, setNewProject] = useState("");
-  const [scenarios, setScenarios] = useState<{ id: string; name: string }[]>([]);
+  const [scenarios, setScenarios] = useState<ApiScenarioRow[]>([]);
+  const [collections, setCollections] = useState<ApiCollectionRow[]>([]);
+  const [activeCollectionId, setActiveCollectionId] = useState("_default");
   const [captures, setCaptures] = useState<{ id: string; name: string; path: string }[]>([]);
   const [environments, setEnvironments] = useState<string[]>(["dev"]);
   const [environment, setEnvironment] = useState("dev");
@@ -94,13 +117,27 @@ export function ApiSurface(props: Props) {
   const [runId, setRunId] = useState<string | null>(null);
   const [execResult, setExecResult] = useState<ExecResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [loadedScenarioMeta, setLoadedScenarioMeta] = useState<{ id: string; source: string } | null>(null);
+  const [scenarioName, setScenarioName] = useState("");
+  const [preRequestScript, setPreRequestScript] = useState("");
+  const [postRequestScript, setPostRequestScript] = useState("");
   const initialized = useRef(false);
   const [importKind, setImportKind] = useState<"postman" | "openapi">("postman");
   const [apiTab, setApiTab] = useState<ApiSubTab>("postman");
   const [postmanPane, setPostmanPane] = useState<PostmanPane>("request");
   const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [loadSettings, setLoadSettings] = useState<LoadTestSettings>(defaultLoadTestSettings);
   const [webOriginAvailable, setWebOriginAvailable] = useState(false);
   const [upsell, setUpsell] = useState<null | "api_postman" | "api_locust">(null);
+  const [confirm, setConfirm] = useState<null | {
+    title: string;
+    message: string;
+    destructive?: boolean;
+    onConfirm: () => void;
+  }>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [suiteHistoryRefresh, setSuiteHistoryRefresh] = useState(0);
   const features = useMemo(() => featureFromModules(modules), [modules]);
   // Evita mostrar candados/upsell mientras se verifica la licencia por primera vez.
   const entitlementsReady = modules !== null || !modulesLoading;
@@ -117,6 +154,22 @@ export function ApiSurface(props: Props) {
     return [];
   }, [envVarsText]);
 
+  const handlePersistRestore = useCallback((fields: ApiSurfacePersistedFields) => {
+    setUrl(fields.url);
+    setPreRequestScript(fields.preRequestScript);
+    setPostRequestScript(fields.postRequestScript);
+    setApiTab(fields.apiTab);
+  }, []);
+
+  useApiSurfacePersist(
+    project,
+    { url, preRequestScript, postRequestScript, apiTab },
+    handlePersistRestore,
+  );
+
+  const allScenariosSelected =
+    scenarios.length > 0 && scenarios.every((s) => selectedScenarios[s.id]);
+
   const refreshProjects = () => {
     void getApiProjects()
       .then((r) => setProjects(r.projects))
@@ -127,13 +180,27 @@ export function ApiSurface(props: Props) {
     if (!project.trim()) return;
     void getApiScenarios(project)
       .then((r) => {
-        const list = r.scenarios.map((s) => ({ id: s.id, name: s.name }));
+        const cols = (r.collections || []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          scenario_count: c.scenario_count,
+        }));
+        setCollections(cols);
+        const list: ApiScenarioRow[] = r.scenarios.map((s) => ({
+          id: s.id,
+          name: s.name,
+          collection_id: s.collection_id,
+          collection_name: s.collection_name,
+        }));
         setScenarios(list);
         setSelectedScenarios((prev) => {
           const next: Record<string, boolean> = {};
           for (const s of list) next[s.id] = prev[s.id] ?? true;
           return next;
         });
+        if (cols.length && !cols.some((c) => c.id === activeCollectionId)) {
+          setActiveCollectionId(cols[0]?.id || "_default");
+        }
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
   };
@@ -178,6 +245,12 @@ export function ApiSurface(props: Props) {
     refreshScenarios();
     refreshCaptures();
     refreshConfig();
+    setActiveScenarioId(null);
+    setLoadedScenarioMeta(null);
+    setScenarioName("");
+    setPreRequestScript("");
+    setPostRequestScript("");
+    setExecResult(null);
   }, [project]);
 
   useEffect(() => {
@@ -246,6 +319,8 @@ export function ApiSurface(props: Props) {
       run_time: loadRunTime.trim() || "1m",
       host: loadHost.trim(),
       scenario_count: ids.length,
+      profile: loadSettings.profile,
+      sla: buildSlaPayload(loadSettings),
     })
       .then(() => setHistoryRefresh((n) => n + 1))
       .catch(() => undefined);
@@ -303,8 +378,8 @@ export function ApiSurface(props: Props) {
     Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]));
 
   const buildRequestPayload = () => ({
-    id: `manual-${Date.now()}`,
-    name: `${method} ${url.split("?")[0].slice(-40)}`,
+    id: loadedScenarioMeta?.id || `manual-${Date.now()}`,
+    name: scenarioName.trim() || `${method} ${url.split("?")[0].slice(-40)}`,
     method,
     url: url.trim(),
     body: body.trim() || null,
@@ -314,7 +389,9 @@ export function ApiSurface(props: Props) {
     extractors: extractors.filter((e) => e.target_var.trim()).map((e) => ({ kind: e.kind, expression: e.expression, target_var: e.target_var })),
     max_duration_ms: maxDurationMs.trim() ? Number(maxDurationMs) : null,
     weight: Number(requestWeight) || 1,
-    source: "manual",
+    source: loadedScenarioMeta?.source || "manual",
+    pre_request_script: preRequestScript.trim() || null,
+    post_request_script: postRequestScript.trim() || null,
   });
 
   const handleSend = () => {
@@ -325,7 +402,12 @@ export function ApiSurface(props: Props) {
     setBusy(true);
     setExecResult(null);
     void executeApiRequest({ project, environment, request: buildRequestPayload() })
-      .then((r) => setExecResult(r))
+      .then((r) => {
+        setExecResult(r);
+        if (r.variables && typeof r.variables === "object") {
+          setEnvVarsText(JSON.stringify(r.variables, null, 2));
+        }
+      })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
   };
@@ -336,9 +418,17 @@ export function ApiSurface(props: Props) {
       return;
     }
     setBusy(true);
-    void saveApiScenario({ project, scenario: buildRequestPayload() })
-      .then(() => {
+    void saveApiScenario({
+      project,
+      scenario: buildRequestPayload(),
+      scenario_id: activeScenarioId || undefined,
+      collection_id: activeScenarioId ? undefined : activeCollectionId,
+    })
+      .then((r) => {
         refreshScenarios();
+        if (r.scenario_id) {
+          setActiveScenarioId(r.scenario_id);
+        }
         setHomeHint("Escenario API guardado.");
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
@@ -403,6 +493,11 @@ export function ApiSurface(props: Props) {
     void getApiScenarioDetail(project, scenarioId)
       .then((r) => {
         const s = r.scenario;
+        setActiveScenarioId(scenarioId);
+        const colId = scenarioId.includes("/") ? scenarioId.split("/")[0] : "_default";
+        setActiveCollectionId(colId);
+        setLoadedScenarioMeta({ id: String(s.id || scenarioId.replace(/\.json$/i, "")), source: String(s.source || "manual") });
+        setScenarioName(String(s.name || ""));
         setMethod(String(s.method || "GET"));
         setUrl(String(s.url || ""));
         setBody(String(s.body || ""));
@@ -426,11 +521,139 @@ export function ApiSurface(props: Props) {
         );
         setMaxDurationMs(s.max_duration_ms != null ? String(s.max_duration_ms) : "");
         setRequestWeight(String(s.weight || 1));
+        setPreRequestScript(String(s.pre_request_script || ""));
+        setPostRequestScript(String(s.post_request_script || ""));
         setApiTab("postman");
         setPostmanPane("request");
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
+  };
+
+  const handleRenameScenario = (scenarioId: string, newName: string) => {
+    setBusy(true);
+    void getApiScenarioDetail(project, scenarioId)
+      .then((r) =>
+        saveApiScenario({
+          project,
+          scenario: { ...(r.scenario as Record<string, unknown>), name: newName },
+          scenario_id: scenarioId,
+        }),
+      )
+      .then(() => {
+        if (activeScenarioId === scenarioId) setScenarioName(newName);
+        refreshScenarios();
+        setHomeHint("Escenario renombrado.");
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setBusy(false));
+  };
+
+  const handleDeleteScenario = (scenarioId: string) => {
+    const name = scenarios.find((s) => s.id === scenarioId)?.name || scenarioId;
+    setConfirm({
+      title: "Eliminar escenario",
+      message: `¿Eliminar el escenario "${name}"?`,
+      destructive: true,
+      onConfirm: () => {
+        setConfirm(null);
+        setBusy(true);
+        void deleteApiScenario(project, scenarioId)
+          .then(() => {
+            if (activeScenarioId === scenarioId) {
+              setActiveScenarioId(null);
+              setLoadedScenarioMeta(null);
+            }
+            setSelectedScenarios((prev) => {
+              const next = { ...prev };
+              delete next[scenarioId];
+              return next;
+            });
+            refreshScenarios();
+            setHomeHint("Escenario eliminado.");
+          })
+          .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+          .finally(() => setBusy(false));
+      },
+    });
+  };
+
+  const handleDeleteCollection = (collectionId: string) => {
+    const col = collections.find((c) => c.id === collectionId);
+    const label = col?.name || collectionId;
+    const count = scenarios.filter((s) => s.collection_id === collectionId).length;
+    const isDefault = collectionId === "_default";
+    const confirmMsg = isDefault
+      ? `¿Vaciar la colección "${label}"? Se eliminarán sus ${count} escenario(s). La colección General permanecerá vacía.`
+      : `¿Eliminar la colección "${label}" y sus ${count} escenario(s)? Esta acción no se puede deshacer.`;
+    setConfirm({
+      title: isDefault ? "Vaciar colección" : "Eliminar colección",
+      message: confirmMsg,
+      destructive: true,
+      onConfirm: () => {
+        setConfirm(null);
+        setBusy(true);
+        void deleteApiCollection(project, collectionId)
+          .then((r) => {
+            if (activeScenarioId?.startsWith(`${collectionId}/`)) {
+              setActiveScenarioId(null);
+              setLoadedScenarioMeta(null);
+              setScenarioName("");
+            }
+            setSelectedScenarios((prev) => {
+              const next = { ...prev };
+              for (const s of scenarios) {
+                if (s.collection_id === collectionId) delete next[s.id];
+              }
+              return next;
+            });
+            if (!isDefault && activeCollectionId === collectionId) {
+              setActiveCollectionId("_default");
+            }
+            refreshScenarios();
+            setHomeHint(
+              isDefault
+                ? `Colección "${label}" vaciada (${r.deleted_scenarios} escenario(s) eliminados).`
+                : `Colección eliminada (${r.deleted_scenarios} escenario(s)).`,
+            );
+          })
+          .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+          .finally(() => setBusy(false));
+      },
+    });
+  };
+
+  const handleCloneScenario = (scenarioId: string) => {
+    setBusy(true);
+    void cloneApiScenario(project, scenarioId)
+      .then((r) => {
+        refreshScenarios();
+        if (r.scenario_id) {
+          handleLoadScenario(r.scenario_id);
+        }
+        setHomeHint("Escenario duplicado.");
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setBusy(false));
+  };
+
+  const handleLoadPreflight = () => {
+    setPreflightBusy(true);
+    void loadPreflightApi({
+      mode: loadSettings.mode === "standalone" ? "local" : loadSettings.mode,
+      master_host: loadSettings.masterHost.trim() || "127.0.0.1",
+      master_port: Number(loadSettings.masterPort) || 5557,
+    })
+      .then((r) => {
+        const failed = r.checks.filter((c) => !c.ok);
+        if (r.ok) {
+          setHomeHint("Preflight de carga: todas las comprobaciones OK.");
+        } else {
+          onShowError(failed.map((c) => c.message).join(" · ") || "Preflight de carga falló.");
+        }
+      })
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setPreflightBusy(false));
   };
 
   const handleImportFile = (file: File) => {
@@ -446,7 +669,11 @@ export function ApiSurface(props: Props) {
         void task
           .then((r) => {
             refreshScenarios();
-            setHomeHint(`${r.count} escenario(s) importado(s).`);
+            if (environment) loadEnvironmentVars(environment);
+            const varsMsg = "variables_imported" in r && r.variables_imported ? ` (${r.variables_imported} variables de colección)` : "";
+            const colMsg = r.collection_name ? ` en colección «${r.collection_name}»` : "";
+            if (r.collection_id) setActiveCollectionId(r.collection_id);
+            setHomeHint(`${r.count} escenario(s) importado(s)${colMsg}${varsMsg}.`);
           })
           .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
           .finally(() => setBusy(false));
@@ -471,8 +698,12 @@ export function ApiSurface(props: Props) {
       .then((r) => {
         if (format === "pdf") {
           window.open(getProjectReportUrl("api", project, r.filename), "_blank");
+          setHomeHint(`Evidencia PDF guardada: ${r.filename}`);
+        } else {
+          window.open(getProjectEvidenceUrl("api", project, r.filename), "_blank");
+          void openProjectFolder("api", project, "outputs/evidences").catch(() => undefined);
+          setHomeHint(`Evidencia JSON guardada y abierta: ${r.filename}`);
         }
-        setHomeHint(`Evidencia ${format.toUpperCase()} guardada: ${r.filename}`);
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
@@ -507,6 +738,11 @@ export function ApiSurface(props: Props) {
       onShowError("Selecciona escenarios o un flujo guardado para Locust.");
       return;
     }
+    const distErr = validateDistributedLoadSettings(loadSettings);
+    if (distErr) {
+      onShowError(distErr);
+      return;
+    }
     setBusy(true);
     setLoadRunFinished(false);
     setLoadReportFilename(null);
@@ -524,6 +760,16 @@ export function ApiSurface(props: Props) {
       flow_id: loadFlowId || undefined,
       run_setup_flow: runSetupFlow && !!loadFlowId,
       environment,
+      profile: loadSettings.profile,
+      think_time: buildThinkTimePayload(loadSettings),
+      sla: buildSlaPayload(loadSettings),
+      data_file: loadSettings.dataFile || undefined,
+      processes: Number(loadSettings.processes) || 0,
+      mode: loadSettings.mode,
+      master_host: loadSettings.mode !== "standalone" ? loadSettings.masterHost : undefined,
+      master_port:
+        loadSettings.mode !== "standalone" ? Number(loadSettings.masterPort) || undefined : undefined,
+      expect_workers: loadSettings.mode === "master" ? Number(loadSettings.expectWorkers) || undefined : undefined,
     })
       .then((r) => {
         setRunId(r.run_id);
@@ -533,6 +779,11 @@ export function ApiSurface(props: Props) {
         if (r.setup_sql) {
           setHomeHint("Pre-carga SQL ejecutada; variables inyectadas en Locust.");
         }
+        if (loadSettings.mode === "worker") {
+          setHomeHint("Worker Locust iniciado; conectando al master…");
+        } else if (loadSettings.mode === "master") {
+          setHomeHint("Master Locust iniciado; lanza workers en otras máquinas con el mismo proyecto.");
+        }
       })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
@@ -541,6 +792,17 @@ export function ApiSurface(props: Props) {
   return (
     <div data-testid="elia-api-panel">
       {upsell ? <UpsellModal c={c} requiredTier={upsell} onClose={() => setUpsell(null)} /> : null}
+      {confirm ? (
+        <ConfirmModal
+          c={c}
+          title={confirm.title}
+          message={confirm.message}
+          destructive={confirm.destructive}
+          confirmLabel={confirm.destructive ? "Eliminar" : "Confirmar"}
+          onConfirm={confirm.onConfirm}
+          onCancel={() => setConfirm(null)}
+        />
+      ) : null}
       <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
         Pruebas API: cliente de peticiones, suites encadenadas y pruebas de carga (motor Locust).
         {modules?.tier_label ? (
@@ -601,41 +863,31 @@ export function ApiSurface(props: Props) {
         {(
           [
             { id: "postman" as const, label: "Cliente API" },
-            { id: "load" as const, label: "Pruebas de carga" },
+            { id: "load" as const, label: "Suites y carga" },
           ] as const
         ).map(({ id, label }) => {
           const active = apiTab === id;
-          const locked = entitlementsReady && id === "load" && !features.api_locust;
           return (
             <button
               key={id}
               type="button"
               data-testid={`elia-api-subtab-${id}`}
-              onClick={() => {
-                if (locked) {
-                  setUpsell("api_locust");
-                  return;
-                }
-                setApiTab(id);
-              }}
+              onClick={() => setApiTab(id)}
               style={{
                 padding: "7px 18px",
                 borderRadius: 8,
                 border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
                 background: active ? c.primary : c.btnGhostBg,
-                color: active ? c.primaryFg : locked ? c.muted : c.text,
+                color: active ? c.primaryFg : c.text,
                 fontWeight: active ? 700 : 400,
                 cursor: "pointer",
                 fontSize: 14,
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                opacity: locked ? 0.75 : 1,
               }}
             >
-              {locked ? <span style={{ fontSize: 12 }}>🔒</span> : null}
               {label}
-              {locked ? <TierBadge c={c} label="Enterprise" /> : null}
             </button>
           );
         })}
@@ -657,30 +909,49 @@ export function ApiSurface(props: Props) {
               c={c}
               busy={busy}
               canRunJobs={canRunJobs}
+              collections={collections}
               scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              activeCollectionId={activeCollectionId}
+              onActiveCollectionChange={setActiveCollectionId}
               captures={captures}
               importKind={importKind}
               onImportKindChange={setImportKind}
               onImportFile={handleImportFile}
               onImportCapture={handleImportCapture}
               onLoadScenario={handleLoadScenario}
+              onRenameScenario={handleRenameScenario}
+              onDeleteScenario={handleDeleteScenario}
+              onDeleteCollection={handleDeleteCollection}
+              onCloneScenario={features.api_postman_suites ? handleCloneScenario : undefined}
+              webOriginAvailable={webOriginAvailable}
+              onSyncFromWeb={handleSyncFromWeb}
             />
           ) : (
             lockOverlay(
               true,
               "api_postman",
-              "Desbloquea la importación de colecciones con Plan Professional",
+              "Desbloquea la importación de colecciones con ELIA Tester",
               <ApiPostmanSidebar
                 c={c}
                 busy={busy}
                 canRunJobs={canRunJobs}
+                collections={collections}
                 scenarios={scenarios}
+                activeScenarioId={activeScenarioId}
+                activeCollectionId={activeCollectionId}
+                onActiveCollectionChange={setActiveCollectionId}
                 captures={captures}
                 importKind={importKind}
                 onImportKindChange={setImportKind}
                 onImportFile={handleImportFile}
                 onImportCapture={handleImportCapture}
                 onLoadScenario={handleLoadScenario}
+                onRenameScenario={handleRenameScenario}
+                onDeleteScenario={handleDeleteScenario}
+                onDeleteCollection={handleDeleteCollection}
+                webOriginAvailable={webOriginAvailable}
+                onSyncFromWeb={handleSyncFromWeb}
               />,
             )
           )}
@@ -698,6 +969,9 @@ export function ApiSurface(props: Props) {
             onSaveEnvironment={handleSaveEnvironment}
             onSaveGlobalConfig={handleSaveGlobalConfig}
             onSyncFromWeb={handleSyncFromWeb}
+            scenarioName={scenarioName}
+            onScenarioNameChange={setScenarioName}
+            activeScenarioId={activeScenarioId}
             method={method}
             methods={METHODS}
             onMethodChange={setMethod}
@@ -717,216 +991,336 @@ export function ApiSurface(props: Props) {
             onBodyChange={setBody}
             onSend={handleSend}
             onSaveScenario={features.api_postman_suites ? handleSaveScenario : () => setUpsell("api_postman")}
+            preRequestScript={preRequestScript}
+            onPreRequestScriptChange={setPreRequestScript}
+            postRequestScript={postRequestScript}
+            onPostRequestScriptChange={setPostRequestScript}
             execResult={execResult}
             onExportEvidence={handleExportEvidence}
           />
         </div>
-      ) : lockOverlay(
-        !features.api_locust,
-        "api_locust",
-        "Desbloquea pruebas de carga con Plan Enterprise",
-        (
+      ) : (
         <>
-      <ApiSection c={c} title="Datos CSV (data-driven)">
-        <DataCsvPanel c={c} project={project} busy={busy} onError={onShowError} onHint={setHomeHint} />
-      </ApiSection>
+          {features.api_postman_suites || !entitlementsReady ? (
+            <>
+              <ApiSection c={c} title="Datos CSV (data-driven)">
+                <DataCsvPanel c={c} project={project} busy={busy} onError={onShowError} onHint={setHomeHint} />
+              </ApiSection>
 
-      <ApiSection c={c} title={`Escenarios para carga (${scenarios.length})`}>
-        {scenarios.length === 0 ? (
-          <div style={{ fontSize: 13, color: c.muted }}>Sin escenarios guardados.</div>
-        ) : (
-          <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", fontSize: 13 }}>
-            {scenarios.map((s) => (
-              <li
-                key={s.id}
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  marginBottom: 8,
-                  flexWrap: "wrap",
-                }}
+              <ApiCollapsibleSection
+                c={c}
+                title={`Escenarios para suite/carga (${scenarios.length})`}
+                subtitle={
+                  scenarios.length
+                    ? `${scenarios.filter((s) => selectedScenarios[s.id]).length} seleccionados · lista con scroll`
+                    : undefined
+                }
               >
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedScenarios[s.id]}
-                    onChange={(e) =>
-                      setSelectedScenarios((prev) => ({ ...prev, [s.id]: e.target.checked }))
+                {scenarios.length === 0 ? (
+                  <div style={{ fontSize: 13, color: c.muted }}>Sin escenarios guardados.</div>
+                ) : (
+                  <>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        marginBottom: 10,
+                        position: "sticky",
+                        top: 0,
+                        background: c.surface,
+                        paddingBottom: 6,
+                        zIndex: 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allScenariosSelected}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setSelectedScenarios((prev) => {
+                            const next = { ...prev };
+                            for (const s of scenarios) next[s.id] = checked;
+                            return next;
+                          });
+                        }}
+                      />
+                      Seleccionar todos
+                    </label>
+                    <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", fontSize: 13 }}>
+                      {scenarios.map((s) => (
+                        <li
+                          key={s.id}
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            marginBottom: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!selectedScenarios[s.id]}
+                              onChange={(e) =>
+                                setSelectedScenarios((prev) => ({ ...prev, [s.id]: e.target.checked }))
+                              }
+                            />
+                            {s.name}
+                          </label>
+                          {features.api_locust ? (
+                            <input
+                              type="number"
+                              min={1}
+                              value={scenarioWeights[s.id] ?? "1"}
+                              onChange={(e) => setScenarioWeights((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                              title="Peso Locust"
+                              style={{ ...apiInputStyle(c, { width: 56 }), padding: "4px 6px" }}
+                            />
+                          ) : null}
+                          <button type="button" disabled={busy} onClick={() => handleLoadScenario(s.id)} style={apiBtn(c)}>
+                            Cargar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleDeleteScenario(s.id)}
+                            style={apiBtn(c, undefined, undefined, true)}
+                          >
+                            Eliminar
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </ApiCollapsibleSection>
+
+              <ApiSection c={c} title="Suite funcional">
+                <SuiteRunnerPanel
+                  c={c}
+                  project={project}
+                  environment={environment}
+                  scenarioIds={scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id)}
+                  scenarios={scenarios}
+                  envVarNames={envVarNames}
+                  canRun={canRunJobs}
+                  busy={busy}
+                  onError={onShowError}
+                  onHint={(msg) => {
+                    setHomeHint(msg);
+                    if (msg.startsWith("Suite:") || msg.startsWith("Flujo:")) {
+                      setSuiteHistoryRefresh((n) => n + 1);
                     }
-                  />
-                  {s.name}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={scenarioWeights[s.id] ?? "1"}
-                  onChange={(e) => setScenarioWeights((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                  title="Peso Locust"
-                  style={{ ...apiInputStyle(c, { width: 56 }), padding: "4px 6px" }}
+                  }}
                 />
-                <button type="button" disabled={busy} onClick={() => handleLoadScenario(s.id)} style={apiBtn(c)}>
-                  Cargar
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </ApiSection>
+              </ApiSection>
 
-      <ApiSection c={c} title="Suite funcional">
-        <SuiteRunnerPanel
-          c={c}
-          project={project}
-          environment={environment}
-          scenarioIds={scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id)}
-          scenarios={scenarios}
-          envVarNames={envVarNames}
-          canRun={canRunJobs}
-          busy={busy}
-          onError={onShowError}
-          onHint={setHomeHint}
-        />
-      </ApiSection>
+              <ApiSection c={c} title="Historial de suites">
+                <SuiteHistoryPanel
+                  c={c}
+                  project={project}
+                  refreshToken={suiteHistoryRefresh}
+                  onError={onShowError}
+                />
+              </ApiSection>
+            </>
+          ) : (
+            lockOverlay(
+              true,
+              "api_postman",
+              "Desbloquea suites funcionales con ELIA Tester",
+              <div style={{ fontSize: 13, color: c.muted, padding: 12 }}>
+                Las suites encadenadas, CSV data-driven e historial requieren licencia Tester.
+              </div>,
+            )
+          )}
 
-      <ApiSection c={c} title="Prueba de carga (Locust)">
-        <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
-          Métricas en RAM/consola. CSV Locust opt-in automático para dashboard. PDF/HTML solo bajo demanda.
-          {modules?.api_limits?.max_load_users ? (
-            <> Límite licencia: {modules.api_limits.max_load_users} usuarios.</>
-          ) : null}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
-          <div style={{ flex: "1 1 220px" }}>
-            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>
-              Flujo guardado (opcional)
-            </label>
-            <select
-              value={loadFlowId}
-              onChange={(e) => setLoadFlowId(e.target.value)}
-              style={apiInputStyle(c, { width: "100%" })}
-            >
-              <option value="">— solo escenarios seleccionados —</option>
-              {savedLoadFlows.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {loadFlowId && (loadFlowCounts.sql ?? 0) > 0 ? (
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={runSetupFlow}
-                onChange={(e) => setRunSetupFlow(e.target.checked)}
-              />
-              Ejecutar SQL de pre-carga antes de Locust
-            </label>
-          ) : null}
-        </div>
-        {loadFlowId && ((loadFlowCounts.sql ?? 0) > 0 || (loadFlowCounts.grpc ?? 0) > 0) ? (
-          <div
-            style={{
-              fontSize: 12,
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: `1px solid ${c.border}`,
-              background: c.neutralBg,
-              marginBottom: 10,
-            }}
-          >
-            {(loadFlowCounts.sql ?? 0) > 0 ? (
-              <div>
-                Este flujo incluye {(loadFlowCounts.sql ?? 0)} paso(s) SQL.
-                {runSetupFlow
-                  ? " Se ejecutarán como pre-carga; las variables resultantes alimentan la carga."
-                  : " En Locust se omiten (solo HTTP/gRPC en la fase de carga)."}
-              </div>
-            ) : null}
-            {(loadFlowCounts.grpc ?? 0) > 0 ? (
-              <div style={{ marginTop: (loadFlowCounts.sql ?? 0) > 0 ? 4 : 0 }}>
-                Incluye {(loadFlowCounts.grpc ?? 0)} paso(s) gRPC — disponible en carga (Plan Enterprise).
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Usuarios</label>
-            <input
-              value={loadUsers}
-              onChange={(e) => setLoadUsers(e.target.value)}
-              style={apiInputStyle(c, { width: 80 })}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Tasa de subida</label>
-            <input
-              value={loadSpawn}
-              onChange={(e) => setLoadSpawn(e.target.value)}
-              style={apiInputStyle(c, { width: 80 })}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Duración</label>
-            <input
-              value={loadRunTime}
-              onChange={(e) => setLoadRunTime(e.target.value)}
-              placeholder="1m"
-              style={apiInputStyle(c, { width: 72 })}
-            />
-          </div>
-          <div style={{ flex: "1 1 200px" }}>
-            <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Host base (opcional)</label>
-            <input
-              value={loadHost}
-              onChange={(e) => setLoadHost(e.target.value)}
-              placeholder="https://api.ejemplo.com"
-              style={apiInputStyle(c, { width: "100%" })}
-            />
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={generateLoadReport}
-              onChange={(e) => setGenerateLoadReport(e.target.checked)}
-            />
-            Permitir reporte PDF al finalizar
-          </label>
-          <button type="button" disabled={!canRunJobs || busy} onClick={handleRunLocust} style={apiBtn(c, c.primary, c.primaryFg)}>
-            Ejecutar Locust
-          </button>
-        </div>
-        {loadRunFinished && generateLoadReport ? (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-            <button type="button" disabled={busy} onClick={() => handleExportLoadReport("pdf")} style={apiBtn(c, c.primary, c.primaryFg)}>
-              Generar reporte enriquecido (PDF)
-            </button>
-            <button type="button" disabled={busy} onClick={() => handleExportLoadReport("html")} style={apiBtn(c, undefined, undefined, true)}>
-              Generar reporte enriquecido (HTML)
-            </button>
-            {loadReportFilename ? (
-              <span style={{ fontSize: 12, color: c.muted }}>Guardado: {loadReportFilename}</span>
-            ) : null}
-          </div>
-        ) : null}
-        <LoadMetricsPanel c={c} runId={runId} />
-        <LoadHistoryComparePanel c={c} project={project} refreshToken={historyRefresh} onError={onShowError} />
-        {runId ? (
-          <div style={{ marginTop: 12 }}>
-            <RunConsolePanel
-              c={c}
-              runId={runId}
-              platform="api"
-              project={project}
-              onClose={() => setRunId(null)}
-            />
-          </div>
-        ) : null}
-      </ApiSection>
+          {lockOverlay(
+            !features.api_locust,
+            "api_locust",
+            "Desbloquea pruebas de carga con ELIA Architect",
+            (
+              <ApiSection c={c} title="Prueba de carga (Locust)">
+                <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
+                  Métricas en RAM/consola. CSV Locust opt-in automático para dashboard. PDF/HTML solo bajo demanda.
+                  {modules?.api_limits?.max_load_users ? (
+                    <> Límite licencia: {modules.api_limits.max_load_users} usuarios.</>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+                  <div style={{ flex: "1 1 220px" }}>
+                    <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>
+                      Flujo guardado (opcional)
+                    </label>
+                    <select
+                      value={loadFlowId}
+                      onChange={(e) => setLoadFlowId(e.target.value)}
+                      style={apiInputStyle(c, { width: "100%" })}
+                    >
+                      <option value="">— solo escenarios seleccionados —</option>
+                      {savedLoadFlows.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {loadFlowId && (loadFlowCounts.sql ?? 0) > 0 ? (
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={runSetupFlow}
+                        onChange={(e) => setRunSetupFlow(e.target.checked)}
+                      />
+                      Ejecutar SQL de pre-carga antes de Locust
+                    </label>
+                  ) : null}
+                </div>
+                {loadFlowId && ((loadFlowCounts.sql ?? 0) > 0 || (loadFlowCounts.grpc ?? 0) > 0) ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${c.border}`,
+                      background: c.neutralBg,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {(loadFlowCounts.sql ?? 0) > 0 ? (
+                      <div>
+                        Este flujo incluye {(loadFlowCounts.sql ?? 0)} paso(s) SQL.
+                        {runSetupFlow
+                          ? " Se ejecutarán como pre-carga; las variables resultantes alimentan la carga."
+                          : " En Locust se omiten (solo HTTP/gRPC en la fase de carga)."}
+                      </div>
+                    ) : null}
+                    {(loadFlowCounts.grpc ?? 0) > 0 ? (
+                      <div style={{ marginTop: (loadFlowCounts.sql ?? 0) > 0 ? 4 : 0 }}>
+                        Incluye {(loadFlowCounts.grpc ?? 0)} paso(s) gRPC — disponible en carga (ELIA Architect).
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <LoadTestPanel
+                  c={c}
+                  project={project}
+                  settings={loadSettings}
+                  onChange={(patch) => setLoadSettings((prev) => ({ ...prev, ...patch }))}
+                  onPreflight={handleLoadPreflight}
+                  preflightBusy={preflightBusy}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Usuarios</label>
+                    <input
+                      value={loadUsers}
+                      onChange={(e) => setLoadUsers(e.target.value)}
+                      style={apiInputStyle(c, { width: 80 })}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Tasa de subida</label>
+                    <input
+                      value={loadSpawn}
+                      onChange={(e) => setLoadSpawn(e.target.value)}
+                      style={apiInputStyle(c, { width: 80 })}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Duración</label>
+                    <input
+                      value={loadRunTime}
+                      onChange={(e) => setLoadRunTime(e.target.value)}
+                      placeholder="1m"
+                      style={apiInputStyle(c, { width: 72 })}
+                    />
+                  </div>
+                  <div style={{ flex: "1 1 200px" }}>
+                    <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Host base (opcional)</label>
+                    <input
+                      value={loadHost}
+                      onChange={(e) => setLoadHost(e.target.value)}
+                      placeholder="https://api.ejemplo.com"
+                      style={apiInputStyle(c, { width: "100%" })}
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={generateLoadReport}
+                      onChange={(e) => setGenerateLoadReport(e.target.checked)}
+                    />
+                    Permitir reporte PDF al finalizar
+                  </label>
+                  {loadSettings.mode === "standalone" ? (
+                    <button
+                      type="button"
+                      disabled={preflightBusy}
+                      onClick={handleLoadPreflight}
+                      style={apiBtn(c, undefined, undefined, true)}
+                    >
+                      Preflight
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!canRunJobs || busy}
+                    onClick={handleRunLocust}
+                    style={apiBtn(c, c.primary, c.primaryFg)}
+                  >
+                    Ejecutar Locust
+                  </button>
+                </div>
+                {loadRunFinished && generateLoadReport ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleExportLoadReport("pdf")}
+                      style={apiBtn(c, c.primary, c.primaryFg)}
+                    >
+                      Generar reporte enriquecido (PDF)
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleExportLoadReport("html")}
+                      style={apiBtn(c, undefined, undefined, true)}
+                    >
+                      Generar reporte enriquecido (HTML)
+                    </button>
+                    {loadReportFilename ? (
+                      <span style={{ fontSize: 12, color: c.muted }}>Guardado: {loadReportFilename}</span>
+                    ) : null}
+                  </div>
+                ) : null}
+                <LoadMetricsPanel c={c} runId={runId} />
+                <LoadHistoryComparePanel
+                  c={c}
+                  project={project}
+                  refreshToken={historyRefresh}
+                  onError={onShowError}
+                  onHint={setHomeHint}
+                />
+                {runId ? (
+                  <div style={{ marginTop: 12 }}>
+                    <RunConsolePanel
+                      c={c}
+                      runId={runId}
+                      platform="api"
+                      project={project}
+                      onClose={() => setRunId(null)}
+                    />
+                  </div>
+                ) : null}
+              </ApiSection>
+            ),
+          )}
         </>
-        ),
       )}
     </div>
   );

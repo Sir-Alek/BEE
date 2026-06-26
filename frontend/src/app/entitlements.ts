@@ -1,9 +1,15 @@
 /** Constantes de tiers (espejo de core/entitlements.py). */
 
-export const TIER_BASIC = "basic";
-export const TIER_PROFESSIONAL = "professional";
-export const TIER_ENTERPRISE = "enterprise";
+export const TIER_TESTER = "tester";
+export const TIER_ARCHITECT = "architect";
 export const TIER_BETA = "beta";
+
+/** @deprecated Usar TIER_TESTER */
+export const TIER_BASIC = "basic";
+/** @deprecated Usar TIER_TESTER */
+export const TIER_PROFESSIONAL = "professional";
+/** @deprecated Usar TIER_ARCHITECT */
+export const TIER_ENTERPRISE = "enterprise";
 
 export const UPGRADE_CONTACT_EMAIL = "elia.qa.software+contacto@gmail.com";
 
@@ -21,31 +27,64 @@ export type FeatureFlags = {
   team_memory_crypto?: boolean;
 };
 
+const LEGACY_SLUG_LABELS: Record<string, string> = {
+  basic: TIER_TESTER,
+  professional: TIER_TESTER,
+  enterprise: TIER_ARCHITECT,
+};
+
+export function normalizeTier(tier: string): string {
+  const raw = (tier || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === TIER_BETA) return TIER_BETA;
+  if (raw in LEGACY_SLUG_LABELS) return LEGACY_SLUG_LABELS[raw];
+  if (raw === TIER_TESTER || raw === TIER_ARCHITECT) return raw;
+  return "";
+}
+
 export function tierDisplayName(tier: string): string {
+  const norm = normalizeTier(tier) || tier;
   const labels: Record<string, string> = {
-    basic: "Basic",
-    professional: "Professional",
-    enterprise: "Enterprise",
+    tester: "ELIA Tester",
+    architect: "ELIA Architect",
     beta: "Beta",
+    basic: "ELIA Tester",
+    professional: "ELIA Tester",
+    enterprise: "ELIA Architect",
   };
-  return labels[tier] ?? tier;
+  return labels[norm] ?? tier;
+}
+
+export function tierAudience(tier: string): string {
+  const norm = normalizeTier(tier);
+  if (norm === TIER_ARCHITECT) {
+    return "Bancos, financieras, grandes corporativos y arquitectos de automatización con infraestructura pesada.";
+  }
+  if (norm === TIER_TESTER) {
+    return "Testers independientes, equipos medianos y células de desarrollo ágil estándar.";
+  }
+  return "";
 }
 
 export function upsellBenefits(tier: string): string[] {
-  if (tier === TIER_PROFESSIONAL) {
+  const norm = normalizeTier(tier);
+  if (norm === TIER_TESTER) {
     return [
-      "Inteligencia de Requerimientos (Doc-to-BDD)",
-      "Automatización Móvil (Appium)",
+      "Grabación web y cliente HTTP API",
       "Pruebas API en cadena (cliente y suites)",
+      "Inteligencia Doc-to-BDD (IA local desde el día uno)",
+      "Automatización móvil (Appium)",
       "Publishers Git y Jira Vanilla",
     ];
   }
-  if (tier === TIER_ENTERPRISE) {
+  if (norm === TIER_ARCHITECT) {
     return [
-      "Automatización Legacy (pywinauto)",
+      "Todo lo incluido en ELIA Tester",
+      "Automatización Legacy (escritorio / pywinauto)",
+      "Pruebas de carga Locust, reportes PDF/HTML y SLA",
+      "Controladores lógicos (If/Loop), gRPC, JDBC y carga distribuida local",
       "Publishers Xray, Value Edge y Azure DevOps",
-      "Team Memory Crypto (export/import seguro)",
-      "Performance Testing con Locust y reportes PDF",
+      "Team Memory Crypto (seguridad asimétrica local-first)",
     ];
   }
   return [];

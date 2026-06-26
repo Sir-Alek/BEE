@@ -2,10 +2,13 @@ import React, { useEffect, useState } from "react";
 import {
   compareApiLoadRuns,
   exportApiSuiteEvidence,
+  exportLoadHistoryReport,
   getApiDataFiles,
   getApiDriverCapabilities,
   getApiFlow,
   getApiLoadHistory,
+  getApiSuiteHistory,
+  getApiSuiteProgress,
   getLoadTestMetrics,
   getProjectReportUrl,
   getTestRun,
@@ -14,13 +17,16 @@ import {
   saveApiDataFile,
   saveApiFlow,
   sqlPreflight,
+  grpcPreflight,
 } from "../api";
+import { ConfirmModal } from "../components/ConfirmModal";
 import {
   NodeListEditor,
   deserializeFlowNodes,
   serializeFlowNodes,
   type DriverCapabilities,
   type FlowNode,
+  type GrpcConfig,
   type SqlConfig,
 } from "./api/FlowControllerEditor";
 
@@ -176,6 +182,7 @@ export function SuiteRunnerPanel(props: {
   const [driverCaps, setDriverCaps] = useState<DriverCapabilities | null>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [suiteResult, setSuiteResult] = useState<Awaited<ReturnType<typeof runApiSuite>> | null>(null);
+  const [confirm, setConfirm] = useState<null | { title: string; message: string; onConfirm: () => void }>(null);
 
   useEffect(() => {
     if (!project) return;
@@ -212,25 +219,56 @@ export function SuiteRunnerPanel(props: {
       return;
     }
     const existing = savedFlows.find((f) => f.id === loadedFlowId || f.name.toLowerCase() === name.toLowerCase());
-    if (existing && !window.confirm(`El flujo «${existing.name}» ya existe. ¿Sobrescribir?`)) {
+    const doSave = () => {
+      const flowId = existing?.id ?? loadedFlowId ?? undefined;
+      void saveApiFlow({
+        project,
+        flow_id: flowId,
+        flow: {
+          name,
+          nodes: serializeFlowNodes(flowNodes),
+          continue_on_failure: continueOnFail,
+        },
+      })
+        .then((r) => {
+          setLoadedFlowId(r.flow_id);
+          refreshFlows();
+          onHint(`Flujo guardado: ${name}`);
+        })
+        .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+    };
+    if (existing) {
+      setConfirm({
+        title: "Sobrescribir flujo",
+        message: `El flujo «${existing.name}» ya existe. ¿Sobrescribir?`,
+        onConfirm: () => {
+          setConfirm(null);
+          doSave();
+        },
+      });
       return;
     }
-    const flowId = existing?.id ?? loadedFlowId ?? undefined;
-    void saveApiFlow({
-      project,
-      flow_id: flowId,
-      flow: {
-        name,
-        nodes: serializeFlowNodes(flowNodes),
-        continue_on_failure: continueOnFail,
+    doSave();
+  };
+
+  const handleNewFlow = () => {
+    const reset = () => {
+      setFlowNodes([]);
+      setFlowName("Mi flujo");
+      setLoadedFlowId(null);
+    };
+    if (!flowNodes.length) {
+      reset();
+      return;
+    }
+    setConfirm({
+      title: "Nuevo flujo",
+      message: "¿Descartar el flujo actual y empezar uno nuevo?",
+      onConfirm: () => {
+        setConfirm(null);
+        reset();
       },
-    })
-      .then((r) => {
-        setLoadedFlowId(r.flow_id);
-        refreshFlows();
-        onHint(`Flujo guardado: ${name}`);
-      })
-      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+    });
   };
 
   const handleLoadFlow = (flowId: string) => {
@@ -250,15 +288,6 @@ export function SuiteRunnerPanel(props: {
       .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
   };
 
-  const handleNewFlow = () => {
-    if (flowNodes.length && !window.confirm("¿Descartar el flujo actual y empezar uno nuevo?")) {
-      return;
-    }
-    setFlowNodes([]);
-    setFlowName("Mi flujo");
-    setLoadedFlowId(null);
-  };
-
   const handleSqlPreflight = (sql: SqlConfig) => {
     setPreflightBusy(true);
     void sqlPreflight({
@@ -269,6 +298,21 @@ export function SuiteRunnerPanel(props: {
       .then((r) => {
         const res = r.result as Record<string, unknown>;
         onHint(res.ok ? "Preflight SQL OK" : `Preflight SQL: ${String(res.error ?? "fallo")}`);
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)))
+      .finally(() => setPreflightBusy(false));
+  };
+
+  const handleGrpcPreflight = (grpc: GrpcConfig) => {
+    setPreflightBusy(true);
+    void grpcPreflight({
+      project,
+      environment,
+      grpc: serializeFlowNodes([{ type: "grpc", grpc }])[0].grpc as Record<string, unknown>,
+    })
+      .then((r) => {
+        const res = r.result as Record<string, unknown>;
+        onHint(res.ok ? "Preflight gRPC OK (reflexión)" : `Preflight gRPC: ${String(res.error ?? "fallo")}`);
       })
       .catch((e: unknown) => onError(String((e as Error)?.message ?? e)))
       .finally(() => setPreflightBusy(false));
@@ -323,6 +367,16 @@ export function SuiteRunnerPanel(props: {
 
   return (
     <div>
+      {confirm ? (
+        <ConfirmModal
+          c={c}
+          title={confirm.title}
+          message={confirm.message}
+          confirmLabel="Continuar"
+          onConfirm={confirm.onConfirm}
+          onCancel={() => setConfirm(null)}
+        />
+      ) : null}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <button
           type="button"
@@ -390,6 +444,7 @@ export function SuiteRunnerPanel(props: {
             envVarNames={envVarNames}
             driverCaps={driverCaps}
             onSqlPreflight={handleSqlPreflight}
+            onGrpcPreflight={handleGrpcPreflight}
             preflightBusy={preflightBusy}
           />
         </div>
@@ -575,6 +630,7 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
 
   if (!runId || !metrics) return null;
   const live = metrics.metrics.live;
+  const sla = metrics.sla;
   const bars = [
     { label: "RPS", value: live.current_rps, max: Math.max(live.current_rps, 1) },
     { label: "p50 ms", value: live.p50_ms, max: Math.max(live.p95_ms, live.p50_ms, 1) },
@@ -614,6 +670,28 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
           </div>
         ))}
       </div>
+      {sla && sla.checks?.length ? (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${sla.ok ? c.primary : "#b00020"}`,
+            background: sla.ok ? c.neutralBg : "#fff5f5",
+          }}
+        >
+          <div style={{ fontWeight: 700, color: sla.ok ? c.primary : "#b00020" }}>
+            SLA: {sla.ok ? "PASS" : "FAIL"}
+          </div>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12 }}>
+            {sla.checks.map((check) => (
+              <li key={check.metric} style={{ color: check.passed ? c.text : "#b00020" }}>
+                {check.metric}: {check.actual} (umbral {String(check.threshold)}) — {check.passed ? "OK" : "FAIL"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -623,12 +701,14 @@ export function LoadHistoryComparePanel(props: {
   project: string;
   refreshToken?: number;
   onError: (msg: string) => void;
+  onHint?: (msg: string) => void;
 }) {
-  const { c, project, refreshToken, onError } = props;
+  const { c, project, refreshToken, onError, onHint } = props;
   const [runs, setRuns] = useState<Array<{ id: string; label: string }>>([]);
   const [runA, setRunA] = useState("");
   const [runB, setRunB] = useState("");
   const [compare, setCompare] = useState<Awaited<ReturnType<typeof compareApiLoadRuns>> | null>(null);
+  const [reportBusy, setReportBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!project) return;
@@ -638,7 +718,9 @@ export function LoadHistoryComparePanel(props: {
           const id = String(item.id || "");
           const saved = String(item.saved_at || "").slice(0, 19);
           const users = String(item.users ?? "?");
-          return { id, label: `${saved} — ${users} usuarios` };
+          const profile = String(item.profile || "");
+          const profileSuffix = profile ? ` · ${profile}` : "";
+          return { id, label: `${saved} — ${users} usuarios${profileSuffix}` };
         });
         setRuns(items);
         if (items.length >= 2) {
@@ -657,6 +739,18 @@ export function LoadHistoryComparePanel(props: {
     void compareApiLoadRuns({ project, run_a: runA, run_b: runB })
       .then(setCompare)
       .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+  };
+
+  const handleRetroReport = (historyId: string, format: "pdf" | "html") => {
+    if (!historyId) return;
+    setReportBusy(`${historyId}:${format}`);
+    void exportLoadHistoryReport({ project, history_id: historyId, format })
+      .then((r) => {
+        window.open(getProjectReportUrl("api", project, r.filename), "_blank");
+        onHint?.(`Reporte ${format.toUpperCase()} desde historial: ${r.filename}`);
+      })
+      .catch((e: unknown) => onError(String((e as Error)?.message ?? e)))
+      .finally(() => setReportBusy(null));
   };
 
   if (!runs.length) return null;
@@ -685,6 +779,48 @@ export function LoadHistoryComparePanel(props: {
           Comparar
         </button>
       </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        {runA ? (
+          <>
+            <button
+              type="button"
+              disabled={!!reportBusy}
+              onClick={() => handleRetroReport(runA, "pdf")}
+              style={btn(c, true)}
+            >
+              Reporte PDF (A)
+            </button>
+            <button
+              type="button"
+              disabled={!!reportBusy}
+              onClick={() => handleRetroReport(runA, "html")}
+              style={btn(c, true)}
+            >
+              Reporte HTML (A)
+            </button>
+          </>
+        ) : null}
+        {runB ? (
+          <>
+            <button
+              type="button"
+              disabled={!!reportBusy}
+              onClick={() => handleRetroReport(runB, "pdf")}
+              style={btn(c, true)}
+            >
+              Reporte PDF (B)
+            </button>
+            <button
+              type="button"
+              disabled={!!reportBusy}
+              onClick={() => handleRetroReport(runB, "html")}
+              style={btn(c, true)}
+            >
+              Reporte HTML (B)
+            </button>
+          </>
+        ) : null}
+      </div>
       {compare ? (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
@@ -706,6 +842,83 @@ export function LoadHistoryComparePanel(props: {
             ))}
           </tbody>
         </table>
+      ) : null}
+    </div>
+  );
+}
+
+export function SuiteHistoryPanel(props: {
+  c: Theme;
+  project: string;
+  refreshToken?: number;
+  onError: (msg: string) => void;
+}) {
+  const { c, project, refreshToken, onError } = props;
+  const [runs, setRuns] = useState<Array<Record<string, unknown>>>([]);
+  const [progress, setProgress] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    const load = () => {
+      void getApiSuiteHistory(project)
+        .then((r) => {
+          if (!cancelled) setRuns(r.runs || []);
+        })
+        .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+      void getApiSuiteProgress(project)
+        .then((r) => {
+          if (!cancelled) setProgress(r.progress);
+        })
+        .catch(() => {
+          if (!cancelled) setProgress(null);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, progress ? 2000 : 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [project, refreshToken, onError, progress]);
+
+  if (!runs.length && !progress) {
+    return <div style={{ fontSize: 13, color: c.muted }}>Sin historial de suites en este proyecto.</div>;
+  }
+
+  return (
+    <div
+      data-testid="elia-suite-history-panel"
+      style={{ fontSize: 13, padding: 10, borderRadius: 8, border: `1px solid ${c.border}`, background: c.neutralBg }}
+    >
+      {progress ? (
+        <div style={{ marginBottom: 10, padding: 8, borderRadius: 8, border: `1px solid ${c.primary}`, background: c.surface }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Suite en curso</div>
+          <div style={{ fontSize: 12, color: c.muted }}>
+            Paso {String(progress.current_step ?? "?")} / {String(progress.total_steps ?? "?")}
+            {progress.step_name ? ` — ${String(progress.step_name)}` : ""}
+          </div>
+        </div>
+      ) : null}
+      {runs.length ? (
+        <>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Historial reciente</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {runs.slice(0, 12).map((run) => {
+              const id = String(run.id || "");
+              const saved = String(run.saved_at || "").slice(0, 19);
+              const ok = run.ok === true;
+              const passed = String(run.passed_steps ?? "?");
+              const failed = String(run.failed_steps ?? "?");
+              return (
+                <li key={id || saved} style={{ marginBottom: 4, color: ok ? c.text : "#c0392b" }}>
+                  {saved} — {passed} OK / {failed} fallos
+                  {run.environment ? ` (${String(run.environment)})` : ""}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       ) : null}
     </div>
   );

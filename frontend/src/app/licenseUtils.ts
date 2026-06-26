@@ -63,7 +63,7 @@ export function formatLicenseStatusLabel(license: LicenseState): string {
   }
   if (license.activated) {
     if (license.expires_at == null) {
-      return "Licencia permanente.";
+      return "Licencia activa.";
     }
     const days = Math.max(0, (license.expires_at * 1000 - Date.now()) / 86400000);
     return `Licencia temporal: expira el ${formatLicenseExpiryDate(license.expires_at)} (≈ ${Math.ceil(days)} día(s)).`;
@@ -83,4 +83,18 @@ export function licenseNeedsExpiryBanner(license: LicenseState): boolean {
   }
   const daysLeft = (license.expires_at * 1000 - Date.now()) / 86400000;
   return daysLeft <= 7;
+}
+
+/** Aviso suave de caducidad (≤14 días); no se muestra si ya aplica el aviso de 7 días. */
+export function licenseNeedsSoftExpiryBanner(license: LicenseState): boolean {
+  if (!license.activated || license.expires_at == null) {
+    return false;
+  }
+  const daysLeft = (license.expires_at * 1000 - Date.now()) / 86400000;
+  return daysLeft > 0 && daysLeft <= 14 && daysLeft > 7;
+}
+
+/** Clave localStorage para descartar el aviso suave (por fecha de expiración). */
+export function licenseSoftExpiryDismissKey(expiresAtSec: number): string {
+  return `elia.license.soft_expiry.dismiss.${expiresAtSec}`;
 }

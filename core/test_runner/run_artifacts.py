@@ -99,3 +99,16 @@ def resolve_project_pdf(project_root: str | Path, filename: str) -> Path:
     if not target.is_file():
         raise FileNotFoundError(name)
     return target
+
+
+def resolve_project_evidence(project_root: str | Path, filename: str) -> Path:
+    name = os.path.basename(str(filename or "").replace("\\", "/"))
+    if not name.lower().endswith(".json"):
+        raise ValueError("Solo archivos JSON de evidencia")
+    root = Path(project_root).resolve()
+    target = (root / "outputs" / "evidences" / name).resolve()
+    if not str(target).startswith(str(root)):
+        raise ValueError("Ruta fuera del proyecto")
+    if not target.is_file():
+        raise FileNotFoundError(name)
+    return target

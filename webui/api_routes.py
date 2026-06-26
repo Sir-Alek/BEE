@@ -16,7 +16,7 @@ from core.api_automation.flow_store import list_flows, load_flow, save_flow
 from core.api_automation.locust_metrics import resolve_metrics
 from core.api_automation.models import ApiFlow, ApiRequest
 from core.api_automation.openapi_import import import_openapi_spec
-from core.api_automation.postman_import import import_postman_collection
+from core.api_automation.postman_import import import_postman_collection, postman_collection_variables
 from core.api_automation.project_config import (
     list_environments,
     load_environment,
@@ -27,8 +27,13 @@ from core.api_automation.project_config import (
 )
 from core.api_automation.runtime.request_executor import execute_request
 from core.api_automation.runtime.suite_runner import run_suite
+from core.api_automation.load_test_profiles import list_profiles, resolve_load_profile
 from core.api_automation.traffic_store import (
+    delete_scenario,
+    delete_scenarios,
+    clone_scenario,
     ensure_api_project,
+    import_requests_as_collection,
     import_traffic_to_scenarios,
     list_api_projects,
     list_scenarios,
@@ -38,8 +43,15 @@ from core.api_automation.traffic_store import (
     save_scenario,
     traffic_path_for_script,
 )
+from core.api_automation.collection_store import delete_collection, list_collections
+from core.api_automation.scripts_guide import API_SCRIPTS_GUIDE_TITLE, load_api_scripts_guide_markdown
 from core.elia_paths import behave_projects_dir
-from core.test_runner.run_launcher import build_locust_command, build_run_env, prepare_project
+from core.test_runner.run_launcher import (
+    build_locust_command,
+    build_run_env,
+    prepare_project,
+    validate_distributed_load_options,
+)
 from core.test_runner.runner_service import test_runner_service
 
 
@@ -47,6 +59,7 @@ class ApiScenarioSaveRequest(BaseModel):
     project: str
     scenario: Dict[str, Any]
     scenario_id: Optional[str] = None
+    collection_id: Optional[str] = None
 
 
 class ApiConvertRequest(BaseModel):
@@ -85,12 +98,25 @@ class ApiLoadTestRequest(BaseModel):
     # Setup SQL antes de Locust (nodos sql del flujo, una sola vez)
     run_setup_flow: bool = False
     environment: Optional[str] = None
+    profile: Optional[str] = None  # load | stress | spike | soak | scalability | volume
+    data_file: Optional[str] = None
+
+
+class ApiDeleteScenariosRequest(BaseModel):
+    project: str
+    scenario_ids: List[str]
 
 
 class ApiSqlPreflightRequest(BaseModel):
     project: str
     environment: Optional[str] = None
     sql: Dict[str, Any]
+
+
+class ApiGrpcPreflightRequest(BaseModel):
+    project: str
+    environment: Optional[str] = None
+    grpc: Dict[str, Any]
 
 
 class ApiRunSuiteRequest(BaseModel):
@@ -173,6 +199,8 @@ class ApiLoadHistorySnapshot(BaseModel):
     run_time: str = "1m"
     host: str = ""
     scenario_count: int = 0
+    profile: Optional[str] = None
+    sla: Optional[Dict[str, Any]] = None
 
 
 class ApiLoadHistoryCompare(BaseModel):
@@ -194,7 +222,7 @@ def _require_api_postman() -> None:
     if not is_feature_enabled("api_postman_suites"):
         raise HTTPException(
             status_code=403,
-            detail="Importación Postman/OpenAPI y suites requieren Plan Professional",
+            detail="Importación Postman/OpenAPI y suites requieren ELIA Tester",
         )
 
 
@@ -202,7 +230,7 @@ def _require_api_locust() -> None:
     from core.modules_config import is_feature_enabled
 
     if not is_feature_enabled("api_locust"):
-        raise HTTPException(status_code=403, detail="Pruebas de carga Locust requieren Plan Enterprise")
+        raise HTTPException(status_code=403, detail="Pruebas de carga Locust requieren ELIA Architect")
 
 
 def _require_api_module() -> None:
@@ -229,6 +257,18 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
     ) -> Dict[str, Any]:
         _require_api_module()
         return {"projects": list_api_projects()}
+
+    @app.get("/api/api/scripts-guide")
+    def api_scripts_guide(
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, str]:
+        _require_api_module()
+        try:
+            content = load_api_scripts_guide_markdown()
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"title": API_SCRIPTS_GUIDE_TITLE, "content": content}
 
     @app.post("/api/api/projects/{project_name}")
     def api_create_project(
@@ -307,6 +347,30 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         )
         return {"ok": True}
 
+    @app.get("/api/api/projects/{project_name}/collections")
+    def api_list_collections(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        return {"collections": list_collections(project_name)}
+
+    @app.delete("/api/api/projects/{project_name}/collections/{collection_id}")
+    def api_delete_collection(
+        project_name: str,
+        collection_id: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        try:
+            deleted = delete_collection(project_name, collection_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"ok": True, "collection_id": collection_id, "deleted_scenarios": deleted}
+
     @app.get("/api/api/projects/{project_name}/scenarios")
     def api_list_scenarios(
         project_name: str,
@@ -314,9 +378,9 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
-        return {"scenarios": list_scenarios(project_name)}
+        return {"scenarios": list_scenarios(project_name), "collections": list_collections(project_name)}
 
-    @app.get("/api/api/projects/{project_name}/scenarios/{scenario_id}")
+    @app.get("/api/api/projects/{project_name}/scenarios/{scenario_id:path}")
     def api_get_scenario(
         project_name: str,
         scenario_id: str,
@@ -329,6 +393,46 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return {"scenario": req.to_dict()}
+
+    @app.post("/api/api/projects/{project_name}/scenarios/{scenario_id:path}/clone")
+    def api_clone_scenario(
+        project_name: str,
+        scenario_id: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        try:
+            new_id = clone_scenario(project_name, scenario_id)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"ok": True, "scenario_id": new_id}
+
+    @app.get("/api/api/projects/{project_name}/suite-history")
+    def api_list_suite_history(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.suite_run_history import list_suite_runs
+
+        _require_api_module()
+        _require_api_postman()
+        return {"runs": list_suite_runs(project_name)}
+
+    @app.get("/api/api/projects/{project_name}/suite-progress")
+    def api_suite_progress(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.suite_progress import read_suite_progress
+
+        _require_api_module()
+        _require_api_postman()
+        progress = read_suite_progress(project_name)
+        return {"progress": progress}
 
     @app.get("/api/api/projects/{project_name}/traffic-captures")
     def api_list_traffic_captures(
@@ -365,8 +469,41 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         _require_api_module()
         _require_api_postman()
         req = ApiRequest.from_dict(body.scenario)
-        sid = save_scenario(body.project, req, scenario_id=body.scenario_id)
+        sid = save_scenario(
+            body.project,
+            req,
+            scenario_id=body.scenario_id,
+            collection_id=body.collection_id,
+        )
         return {"ok": True, "scenario_id": sid}
+
+    @app.delete("/api/api/projects/{project_name}/scenarios/{scenario_id:path}")
+    def api_delete_scenario(
+        project_name: str,
+        scenario_id: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        try:
+            delete_scenario(project_name, scenario_id)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"ok": True, "scenario_id": scenario_id}
+
+    @app.post("/api/api/scenarios/delete")
+    def api_delete_scenarios_bulk(
+        body: ApiDeleteScenariosRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        if not body.scenario_ids:
+            raise HTTPException(status_code=400, detail="Lista de escenarios vacía")
+        deleted = delete_scenarios(body.project, body.scenario_ids)
+        return {"ok": True, "deleted": deleted}
 
     @app.post("/api/api/execute")
     def api_execute_request(
@@ -433,6 +570,21 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 continue_on_failure=body.continue_on_failure,
                 data_file=body.data_file,
             )
+            from core.api_automation.suite_run_history import append_suite_run
+
+            history_id = append_suite_run(
+                body.project,
+                {
+                    "environment": body.environment or "dev",
+                    "scenario_ids": scenario_ids,
+                    "flow_id": body.flow_id,
+                    "ok": result.get("ok"),
+                    "passed_steps": result.get("passed_steps"),
+                    "failed_steps": result.get("failed_steps"),
+                    "iterations": result.get("iterations"),
+                },
+            )
+            result["history_id"] = history_id
             log_execution(
                 "api_run_suite_done",
                 project=body.project,
@@ -507,6 +659,20 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         result = sql_preflight(body.sql, variables=ctx["variables"])
         return {"ok": bool(result.get("ok")), "result": result, "environment": ctx["environment"]}
 
+    @app.post("/api/api/grpc/preflight")
+    def api_grpc_preflight(
+        body: ApiGrpcPreflightRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.runtime.grpc_step import grpc_preflight
+
+        _require_api_module()
+        _require_api_locust()
+        ctx = resolve_runtime_context(body.project, body.environment)
+        result = grpc_preflight(body.grpc, variables=ctx["variables"])
+        return {"ok": bool(result.get("ok")), "result": result, "environment": ctx["environment"]}
+
     @app.get("/api/api/projects/{project_name}/data-files")
     def api_list_data_files(
         project_name: str,
@@ -577,12 +743,34 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         _require_api_module()
         _require_api_postman()
         if not body.collection:
-            raise HTTPException(status_code=400, detail="Colección Postman requerida")
-        requests = import_postman_collection(body.collection)
+            raise HTTPException(status_code=400, detail="Colección JSON requerida")
+        requests, collection_name = import_postman_collection(body.collection)
         if not requests:
             raise HTTPException(status_code=400, detail="La colección no contiene peticiones")
-        ids = [save_scenario(body.project, req) for req in requests]
-        return {"ok": True, "count": len(ids), "scenario_ids": ids}
+        imported = import_requests_as_collection(
+            body.project,
+            requests,
+            collection_name=collection_name,
+            source="import_v21",
+        )
+        collection_vars = postman_collection_variables(body.collection)
+        if collection_vars:
+            cfg = load_project_config(body.project)
+            env_name = cfg.get("default_environment") or "dev"
+            try:
+                env = load_environment(body.project, env_name)
+            except FileNotFoundError:
+                env = {"name": env_name, "variables": {}}
+            merged = {**(env.get("variables") or {}), **collection_vars}
+            save_environment(body.project, env_name, {"name": env_name, "variables": merged})
+        return {
+            "ok": True,
+            "count": imported["count"],
+            "scenario_ids": imported["scenario_ids"],
+            "collection_id": imported["collection_id"],
+            "collection_name": imported["collection_name"],
+            "variables_imported": len(collection_vars),
+        }
 
     @app.post("/api/api/import/openapi")
     def api_import_openapi(
@@ -594,11 +782,22 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         _require_api_postman()
         if not body.spec:
             raise HTTPException(status_code=400, detail="Especificación OpenAPI requerida")
-        requests = import_openapi_spec(body.spec)
+        requests, collection_name = import_openapi_spec(body.spec)
         if not requests:
             raise HTTPException(status_code=400, detail="La especificación no contiene operaciones")
-        ids = [save_scenario(body.project, req) for req in requests]
-        return {"ok": True, "count": len(ids), "scenario_ids": ids}
+        imported = import_requests_as_collection(
+            body.project,
+            requests,
+            collection_name=collection_name,
+            source="openapi",
+        )
+        return {
+            "ok": True,
+            "count": imported["count"],
+            "scenario_ids": imported["scenario_ids"],
+            "collection_id": imported["collection_id"],
+            "collection_name": imported["collection_name"],
+        }
 
     @app.post("/api/api/convert")
     def api_convert(
@@ -690,16 +889,58 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             if not scenarios:
                 raise HTTPException(status_code=400, detail="Sin escenarios para generar carga")
 
+        profile_id, resolved_stages, resolved_think, effective_run_time = resolve_load_profile(
+            body.profile,
+            users=body.users,
+            spawn_rate=body.spawn_rate,
+            run_time=body.run_time,
+            think_time=body.think_time,
+            stages=body.stages,
+        )
+        think_time = resolved_think if body.think_time is None else body.think_time
+        stages = resolved_stages if body.stages is None else body.stages
+        run_time = effective_run_time
+
+        dist_ok, dist_err = validate_distributed_load_options(
+            mode=body.mode,
+            master_host=body.master_host,
+            master_port=body.master_port,
+            processes=body.processes,
+        )
+        if not dist_ok:
+            raise HTTPException(status_code=400, detail=dist_err)
+
+        if node_counts.get("grpc", 0) > 0:
+            from core.api_automation.driver_capabilities import grpc_driver_status
+
+            grpc_caps = grpc_driver_status()
+            if not grpc_caps.get("available"):
+                missing = ", ".join(grpc_caps.get("missing") or [])
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"El flujo incluye pasos gRPC pero faltan dependencias: {missing}. "
+                    "pip install grpcio grpcio-reflection protobuf",
+                )
+
+        csv_rows = None
+        data_file = (body.data_file or "").strip()
+        if data_file:
+            try:
+                csv_rows = read_csv_rows(body.project, data_file)
+            except FileNotFoundError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+
         weights = body.scenario_weights or {}
         locust_path = write_locustfile(
             project_path,
             scenarios,
             host=body.host,
             weights=weights,
-            think_time=body.think_time,
-            stages=body.stages,
+            think_time=think_time,
+            stages=stages,
             flow_nodes=flow_nodes,
             initial_vars=setup_vars,
+            csv_rows=csv_rows,
         )
         try:
             import locust  # noqa: F401
@@ -713,7 +954,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             locust_path,
             users=body.users,
             spawn_rate=body.spawn_rate,
-            run_time=body.run_time,
+            run_time=run_time,
             host=body.host,
             csv_prefix=csv_prefix,
             processes=body.processes,
@@ -734,6 +975,10 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 "csv_prefix": csv_prefix or "elia_load",
                 "collect_metrics": body.collect_metrics,
                 "sla": body.sla or {},
+                "profile": profile_id,
+                "stages": stages or [],
+                "think_time": think_time or {},
+                "data_file": data_file,
                 "mode": body.mode,
                 "flow_node_counts": node_counts,
                 "setup_sql": bool(body.run_setup_flow and node_counts.get("sql")),
@@ -747,7 +992,20 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             "flow_node_counts": node_counts,
             "setup_sql": bool(body.run_setup_flow and node_counts.get("sql")),
             "collect_metrics": body.collect_metrics,
+            "profile": profile_id,
+            "run_time": run_time,
+            "mode": body.mode,
+            "command": cmd,
         }
+
+    @app.get("/api/api/load-test/profiles")
+    def api_load_test_profiles(
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_locust()
+        return {"profiles": list_profiles()}
 
     @app.post("/api/api/export/request-evidence")
     def api_export_request_evidence(
@@ -829,6 +1087,15 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
         csv_prefix = str((run.meta or {}).get("csv_prefix") or "elia_load")
         metrics = resolve_metrics(run.project_path or run.cwd, list(run.lines), csv_prefix=csv_prefix)
+        run_meta = run.meta or {}
+        profile = str(run_meta.get("profile") or "load")
+        stages = run_meta.get("stages") or []
+        sla_cfg = run_meta.get("sla") or {}
+        sla_result = None
+        if sla_cfg:
+            from core.api_automation.locust_metrics import evaluate_load_sla
+
+            sla_result = evaluate_load_sla(metrics, sla_cfg)
         fmt = (body.format or "pdf").lower()
         if fmt == "html" and body.enriched:
             path = write_enriched_load_test_evidence_html(
@@ -840,6 +1107,9 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 host=body.host,
                 scenario_count=body.scenario_count,
                 run_id=body.run_id,
+                profile=profile,
+                sla_result=sla_result,
+                stages=stages,
             )
         elif fmt == "pdf" and body.enriched:
             path = write_enriched_load_test_evidence_pdf(
@@ -851,6 +1121,9 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 host=body.host,
                 scenario_count=body.scenario_count,
                 run_id=body.run_id,
+                profile=profile,
+                sla_result=sla_result,
+                stages=stages,
             )
         else:
             path = write_load_test_evidence_pdf(
@@ -891,6 +1164,13 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             raise HTTPException(status_code=404, detail="Ejecución no encontrada")
         csv_prefix = str((run.meta or {}).get("csv_prefix") or "elia_load")
         metrics = resolve_metrics(run.project_path or run.cwd, list(run.lines), csv_prefix=csv_prefix)
+        run_meta = run.meta or {}
+        sla_cfg = body.sla if body.sla is not None else (run_meta.get("sla") or {})
+        sla_result = None
+        if sla_cfg:
+            from core.api_automation.locust_metrics import evaluate_load_sla
+
+            sla_result = evaluate_load_sla(metrics, sla_cfg)
         history_id = append_load_run(
             body.project,
             {
@@ -899,6 +1179,8 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
                 "run_time": body.run_time,
                 "host": body.host,
                 "scenario_count": body.scenario_count,
+                "profile": body.profile or run_meta.get("profile") or "load",
+                "sla": sla_result,
                 "metrics": metrics,
             },
         )
@@ -918,6 +1200,82 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             return compare_load_runs(body.project, body.run_a, body.run_b)
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+
+    @app.post("/api/api/load-preflight")
+    def api_load_preflight(
+        body: Dict[str, Any],
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.api_automation.load_preflight import validate_load_preflight
+
+        _require_api_module()
+        _require_api_locust()
+        return validate_load_preflight(
+            mode=str(body.get("mode") or "local"),
+            master_host=str(body.get("master_host") or "127.0.0.1"),
+            master_port=int(body.get("master_port") or 5557),
+        )
+
+    @app.post("/api/api/load-history/report")
+    def api_load_history_report(
+        body: Dict[str, Any],
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        """Genera PDF/HTML desde snapshot de historial (sin re-ejecutar Locust)."""
+        from core.api_automation.api_evidence_report import (
+            write_enriched_load_test_evidence_html,
+            write_enriched_load_test_evidence_pdf,
+        )
+        from core.api_automation.load_run_history import get_load_run
+
+        _require_api_module()
+        _require_api_locust()
+        project = str(body.get("project") or "")
+        history_id = str(body.get("history_id") or "")
+        fmt = str(body.get("format") or "pdf").lower()
+        entry = get_load_run(project, history_id)
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entrada de historial no encontrada")
+        metrics = entry.get("metrics") or {}
+        sla_result = entry.get("sla")
+        profile = str(entry.get("profile") or "load")
+        users = int(entry.get("users") or 5)
+        run_time = str(entry.get("run_time") or "1m")
+        host = str(entry.get("host") or "")
+        scenario_count = int(entry.get("scenario_count") or 0)
+        runner_run_id = str(entry.get("runner_run_id") or history_id)
+        if fmt == "html":
+            path = write_enriched_load_test_evidence_html(
+                project,
+                lines=[],
+                metrics=metrics,
+                users=users,
+                run_time=run_time,
+                host=host,
+                scenario_count=scenario_count,
+                run_id=runner_run_id,
+                profile=profile,
+                sla_result=sla_result,
+                stages=[],
+            )
+        else:
+            path = write_enriched_load_test_evidence_pdf(
+                project,
+                lines=[],
+                metrics=metrics,
+                users=users,
+                run_time=run_time,
+                host=host,
+                scenario_count=scenario_count,
+                run_id=runner_run_id,
+                profile=profile,
+                sla_result=sla_result,
+                stages=[],
+            )
+        filename = os.path.basename(path)
+        return {"ok": True, "format": fmt, "path": path, "filename": filename}
 
     @app.post("/api/api/projects/{project_name}/environments/{env_name}/sync-from-web")
     def api_sync_env_from_web(

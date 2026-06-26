@@ -410,6 +410,7 @@ export type AppAboutResponse = {
   changelog: ChangelogEntry[];
   beta_feedback_url?: string | null;
   local_logs_hint?: string | null;
+  show_beta_disclaimer?: boolean;
 };
 
 export async function getAppAbout(): Promise<AppAboutResponse> {
@@ -713,6 +714,12 @@ export async function sendPromptResponse(params: {
   }
 }
 
+export async function getApiScriptsGuide(): Promise<{ title: string; content: string }> {
+  const res = await fetch("/api/api/scripts-guide");
+  if (!res.ok) throw new Error(`No se pudo cargar la guía de scripts: ${res.status}`);
+  return res.json();
+}
+
 export async function getApiProjects(): Promise<{ projects: string[] }> {
   const res = await fetch("/api/api/projects");
   if (!res.ok) throw new Error(`Failed to list API projects: ${res.status}`);
@@ -725,9 +732,24 @@ export async function createApiProject(name: string): Promise<{ ok: boolean; pro
   return res.json();
 }
 
-export async function getApiScenarios(project: string): Promise<{ scenarios: { id: string; name: string; path: string }[] }> {
+export async function getApiScenarios(project: string): Promise<{
+  scenarios: { id: string; name: string; path: string; collection_id: string; collection_name: string }[];
+  collections: { id: string; name: string; scenario_count: number; source?: string }[];
+}> {
   const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/scenarios`);
   if (!res.ok) throw new Error(`Failed to list scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteApiCollection(
+  project: string,
+  collectionId: string,
+): Promise<{ ok: boolean; collection_id: string; deleted_scenarios: number }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/collections/${encodeURIComponent(collectionId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`Failed to delete collection: ${res.status}`);
   return res.json();
 }
 
@@ -756,6 +778,7 @@ export async function saveApiScenario(body: {
   project: string;
   scenario: Record<string, unknown>;
   scenario_id?: string;
+  collection_id?: string;
 }): Promise<{ ok: boolean; scenario_id: string }> {
   const res = await fetch("/api/api/scenarios", {
     method: "POST",
@@ -763,6 +786,37 @@ export async function saveApiScenario(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to save scenario: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteApiScenario(
+  project: string,
+  scenarioId: string,
+): Promise<{ ok: boolean; scenario_id: string }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/scenarios/${encodeURIComponent(scenarioId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`Failed to delete scenario: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteApiScenarios(body: {
+  project: string;
+  scenario_ids: string[];
+}): Promise<{ ok: boolean; deleted: number }> {
+  const res = await fetch("/api/api/scenarios/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to delete scenarios: ${res.status}`);
+  return res.json();
+}
+
+export async function getLoadTestProfiles(): Promise<{ profiles: { id: string; label: string }[] }> {
+  const res = await fetch("/api/api/load-test/profiles");
+  if (!res.ok) throw new Error(`Failed to list load profiles: ${res.status}`);
   return res.json();
 }
 
@@ -904,6 +958,11 @@ export function getProjectReportUrl(platform: string, project: string, filename:
   return `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/reports/file?${params.toString()}`;
 }
 
+export function getProjectEvidenceUrl(platform: string, project: string, filename: string): string {
+  const params = new URLSearchParams({ name: filename });
+  return `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/evidences/file?${params.toString()}`;
+}
+
 export async function openProjectFolder(
   platform: string,
   project: string,
@@ -949,6 +1008,11 @@ export async function runLoadTest(body: {
   processes?: number;
   sla?: Record<string, unknown>;
   mode?: string;
+  master_host?: string;
+  master_port?: number;
+  expect_workers?: number;
+  profile?: string;
+  data_file?: string;
 }): Promise<{
   run_id: string;
   locustfile: string;
@@ -956,6 +1020,10 @@ export async function runLoadTest(body: {
   flow?: boolean;
   flow_node_counts?: Record<string, number>;
   setup_sql?: boolean;
+  profile?: string;
+  run_time?: string;
+  mode?: string;
+  command?: string[];
 }> {
   const res = await fetch("/api/api/load-test", {
     method: "POST",
@@ -1026,6 +1094,10 @@ export async function getLoadTestMetrics(runId: string): Promise<{
     };
     csv: Record<string, unknown>;
   };
+  sla?: {
+    ok: boolean;
+    checks: Array<{ metric: string; threshold: unknown; actual: number; passed: boolean }>;
+  } | null;
 }> {
   const res = await fetch(`/api/api/load-test/${encodeURIComponent(runId)}/metrics`);
   if (!res.ok) throw new Error(`Failed to get load metrics: ${res.status}`);
@@ -1111,6 +1183,8 @@ export async function executeApiRequest(body: {
   elapsed_ms: number;
   assertions: Array<{ kind: string; passed: boolean; message: string }>;
   environment?: string;
+  variables?: Record<string, string>;
+  script_logs?: string[];
 }> {
   const res = await fetch("/api/api/execute", {
     method: "POST",
@@ -1127,20 +1201,33 @@ export async function executeApiRequest(body: {
 export async function importPostmanCollection(body: {
   project: string;
   collection: Record<string, unknown>;
-}): Promise<{ ok: boolean; count: number; scenario_ids: string[] }> {
+}): Promise<{
+  ok: boolean;
+  count: number;
+  scenario_ids: string[];
+  collection_id?: string;
+  collection_name?: string;
+  variables_imported?: number;
+}> {
   const res = await fetch("/api/api/import/postman", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to import Postman collection: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to import collection: ${res.status}`);
   return res.json();
 }
 
 export async function importOpenApiSpec(body: {
   project: string;
   spec: Record<string, unknown>;
-}): Promise<{ ok: boolean; count: number; scenario_ids: string[] }> {
+}): Promise<{
+  ok: boolean;
+  count: number;
+  scenario_ids: string[];
+  collection_id?: string;
+  collection_name?: string;
+}> {
   const res = await fetch("/api/api/import/openapi", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1258,6 +1345,20 @@ export async function sqlPreflight(body: {
   return res.json();
 }
 
+export async function grpcPreflight(body: {
+  project: string;
+  environment?: string;
+  grpc: Record<string, unknown>;
+}): Promise<{ ok: boolean; result: Record<string, unknown>; environment: string }> {
+  const res = await fetch("/api/api/grpc/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed gRPC preflight: ${res.status}`);
+  return res.json();
+}
+
 export async function getApiLoadHistory(
   project: string,
 ): Promise<{ runs: Array<Record<string, unknown>> }> {
@@ -1273,6 +1374,8 @@ export async function saveApiLoadSnapshot(body: {
   run_time?: string;
   host?: string;
   scenario_count?: number;
+  profile?: string;
+  sla?: Record<string, unknown>;
 }): Promise<{ ok: boolean; history_id: string }> {
   const res = await fetch("/api/api/load-history/snapshot", {
     method: "POST",
@@ -1312,6 +1415,62 @@ export async function syncApiEnvironmentFromWeb(
 export async function getApiWebOrigin(project: string): Promise<{ origin: string | null; available: boolean }> {
   const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/web-origin`);
   if (!res.ok) throw new Error(`Failed to get web origin: ${res.status}`);
+  return res.json();
+}
+
+export async function cloneApiScenario(
+  project: string,
+  scenarioId: string,
+): Promise<{ ok: boolean; scenario_id: string }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/scenarios/${encodeURIComponent(scenarioId)}/clone`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(`Failed to clone scenario: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiSuiteHistory(
+  project: string,
+): Promise<{ runs: Array<Record<string, unknown>> }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/suite-history`);
+  if (!res.ok) throw new Error(`Failed to list suite history: ${res.status}`);
+  return res.json();
+}
+
+export async function getApiSuiteProgress(
+  project: string,
+): Promise<{ progress: Record<string, unknown> | null }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/suite-progress`);
+  if (!res.ok) throw new Error(`Failed to get suite progress: ${res.status}`);
+  return res.json();
+}
+
+export async function loadPreflightApi(body: {
+  mode?: string;
+  master_host?: string;
+  master_port?: number;
+}): Promise<{ ok: boolean; checks: Array<{ id: string; ok: boolean; message: string }>; mode: string }> {
+  const res = await fetch("/api/api/load-preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed load preflight: ${res.status}`);
+  return res.json();
+}
+
+export async function exportLoadHistoryReport(body: {
+  project: string;
+  history_id: string;
+  format?: "pdf" | "html";
+}): Promise<{ ok: boolean; filename: string; path: string; format?: string }> {
+  const res = await fetch("/api/api/load-history/report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to export load history report: ${res.status}`);
   return res.json();
 }
 

@@ -8,6 +8,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.api_automation.collection_store import (
+    DEFAULT_COLLECTION_ID,
+    collection_scenarios_dir,
+    create_collection,
+    delete_collection,
+    ensure_default_collection,
+    get_collection_name,
+    list_collections,
+    parse_scenario_ref,
+    scenario_ref,
+)
 from core.api_automation.models import ApiRequest, ApiTrafficCapture
 from core.api_automation.sanitize import is_noise_url, sanitize_body, sanitize_headers
 from core.elia_paths import behave_projects_dir
@@ -35,7 +46,29 @@ def ensure_api_project(project: str) -> Path:
     if not path.is_dir():
         scaffold_api_project(path)
     ensure_project_defaults(project)
+    ensure_default_collection(project)
+    from core.api_automation.scripts_guide import ensure_api_scripts_guide
+
+    ensure_api_scripts_guide(path)
+    _migrate_legacy_flat_scenarios(project)
     return path
+
+
+def _migrate_legacy_flat_scenarios(project: str) -> None:
+    """Mueve escenarios sueltos en scenarios/*.json a scenarios/_default/."""
+    root = _project_root(project) / "scenarios"
+    if not root.is_dir():
+        return
+    target = collection_scenarios_dir(project, DEFAULT_COLLECTION_ID)
+    target.mkdir(parents=True, exist_ok=True)
+    for path in root.glob("*.json"):
+        dest = target / path.name
+        if dest.exists():
+            continue
+        try:
+            path.replace(dest)
+        except OSError:
+            continue
 
 
 def web_project_name_from_path(project_path: str) -> str:
@@ -56,14 +89,12 @@ def api_traffic_path_for_recording(api_project: str, recording_basename: str) ->
 
 
 def traffic_path_for_web_recording(web_project_path: str, output_file: str) -> str:
-    """Ruta del JSON de tráfico bajo behave/api/{proyecto}/scripts/."""
     api_project = web_project_name_from_path(web_project_path)
     recording_base = os.path.splitext(os.path.basename(output_file))[0]
     return str(api_traffic_path_for_recording(api_project, recording_base))
 
 
 def traffic_path_for_script(script_path: str) -> str:
-    """Resuelve tráfico API asociado a un script web grabado."""
     recording_base = os.path.splitext(os.path.basename(script_path))[0]
     norm = os.path.normpath(script_path)
     parts = norm.split(os.sep)
@@ -104,7 +135,6 @@ def resolve_traffic_capture_path(project: str, capture_id: str) -> Path:
 
 
 def request_fingerprint(request: ApiRequest) -> str:
-    """Huella estable method+URL para deduplicar importaciones de captura."""
     url = (request.url or "").split("?")[0].strip().lower()
     return f"{(request.method or 'GET').upper()}:{url}"
 
@@ -125,9 +155,11 @@ def import_traffic_to_scenarios(
     traffic_path: str,
     *,
     dedupe: bool = True,
+    collection_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Importa peticiones de captura como escenarios; deduplica por method+URL."""
     capture = load_traffic_file(traffic_path)
+    label = (collection_name or "").strip() or Path(traffic_path).stem.replace("_api_traffic", "") or "Captura web"
+    collection_id = create_collection(project, label, source="capture")
     ids: List[str] = []
     skipped = 0
     known = _existing_fingerprints(project) if dedupe else {}
@@ -137,11 +169,18 @@ def import_traffic_to_scenarios(
             skipped += 1
             ids.append(known[fp])
             continue
-        sid = save_scenario(project, entry)
+        sid = save_scenario(project, entry, collection_id=collection_id)
         ids.append(sid)
         if dedupe:
             known[fp] = sid
-    return {"scenario_ids": ids, "imported": len(ids) - skipped, "skipped": skipped, "total": len(capture.entries)}
+    return {
+        "scenario_ids": ids,
+        "imported": len(ids) - skipped,
+        "skipped": skipped,
+        "total": len(capture.entries),
+        "collection_id": collection_id,
+        "collection_name": get_collection_name(project, collection_id),
+    }
 
 
 def scenarios_dir(project: str) -> Path:
@@ -163,7 +202,6 @@ def save_traffic_file(path: str, capture: ApiTrafficCapture) -> None:
 
 
 def ingest_capture_dict(data: Dict[str, Any], *, source_url: str = "") -> ApiTrafficCapture:
-    """Normaliza JSON emitido por web_capture_engine.js."""
     entries: List[ApiRequest] = []
     raw_entries = data.get("entries") if isinstance(data, dict) else []
     if not isinstance(raw_entries, list):
@@ -208,19 +246,46 @@ def ingest_capture_dict(data: Dict[str, Any], *, source_url: str = "") -> ApiTra
     )
 
 
-def list_scenarios(project: str) -> List[Dict[str, str]]:
+def list_scenarios(project: str, *, collection_id: Optional[str] = None) -> List[Dict[str, str]]:
+    ensure_api_project(project)
     out: List[Dict[str, str]] = []
-    sdir = scenarios_dir(project)
-    for fname in sorted(os.listdir(sdir)):
-        if not fname.lower().endswith(".json"):
+    collections = list_collections(project)
+    allowed = {c["id"] for c in collections}
+    targets = [collection_id] if collection_id else sorted(allowed)
+    for cid in targets:
+        if cid not in allowed:
             continue
-        out.append({"id": fname, "path": str(sdir / fname), "name": os.path.splitext(fname)[0]})
+        sdir = collection_scenarios_dir(project, cid)
+        if not sdir.is_dir():
+            continue
+        cname = get_collection_name(project, cid)
+        for path in sorted(sdir.glob("*.json")):
+            display_name = path.stem
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    raw_name = str(data.get("name") or "").strip()
+                    if raw_name:
+                        display_name = raw_name
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+            sid = scenario_ref(cid, path.name)
+            out.append(
+                {
+                    "id": sid,
+                    "path": str(path),
+                    "name": display_name,
+                    "collection_id": cid,
+                    "collection_name": cname,
+                }
+            )
     return out
 
 
 def load_scenario(project: str, scenario_id: str) -> ApiRequest:
-    sid = os.path.basename(scenario_id)
-    path = scenarios_dir(project) / sid
+    collection_id, fname = parse_scenario_ref(scenario_id)
+    path = collection_scenarios_dir(project, collection_id) / fname
     if not path.is_file():
         raise FileNotFoundError(scenario_id)
     with open(path, encoding="utf-8") as f:
@@ -230,14 +295,73 @@ def load_scenario(project: str, scenario_id: str) -> ApiRequest:
     return ApiRequest.from_dict(data)
 
 
-def save_scenario(project: str, request: ApiRequest, *, scenario_id: Optional[str] = None) -> str:
+def save_scenario(
+    project: str,
+    request: ApiRequest,
+    *,
+    scenario_id: Optional[str] = None,
+    collection_id: Optional[str] = None,
+) -> str:
     ensure_api_project(project)
-    sid = scenario_id or f"{request.id or uuid.uuid4().hex[:8]}.json"
-    if not sid.endswith(".json"):
-        sid += ".json"
-    sid = os.path.basename(sid)
-    path = scenarios_dir(project) / sid
-    os.makedirs(path.parent, exist_ok=True)
+    if scenario_id:
+        cid, fname = parse_scenario_ref(scenario_id)
+    else:
+        cid = collection_id or DEFAULT_COLLECTION_ID
+        if cid == DEFAULT_COLLECTION_ID:
+            ensure_default_collection(project)
+        fname = os.path.basename(request.id or uuid.uuid4().hex[:8])
+        if not fname.lower().endswith(".json"):
+            fname += ".json"
+    target = collection_scenarios_dir(project, cid)
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / fname
     with open(path, "w", encoding="utf-8") as f:
         json.dump(request.to_dict(), f, ensure_ascii=False, indent=2)
-    return sid
+    return scenario_ref(cid, fname)
+
+
+def delete_scenario(project: str, scenario_id: str) -> None:
+    collection_id, fname = parse_scenario_ref(scenario_id)
+    path = collection_scenarios_dir(project, collection_id) / fname
+    if not path.is_file():
+        raise FileNotFoundError(scenario_id)
+    path.unlink()
+
+
+def clone_scenario(project: str, scenario_id: str, *, new_name: Optional[str] = None) -> str:
+    req = load_scenario(project, scenario_id)
+    collection_id, _ = parse_scenario_ref(scenario_id)
+    label = (new_name or "").strip() or f"{req.name} (copia)"
+    req.name = label
+    req.id = f"clone-{uuid.uuid4().hex[:8]}"
+    return save_scenario(project, req, collection_id=collection_id)
+
+
+def delete_scenarios(project: str, scenario_ids: List[str]) -> int:
+    deleted = 0
+    for sid in scenario_ids:
+        try:
+            delete_scenario(project, sid)
+            deleted += 1
+        except FileNotFoundError:
+            continue
+    return deleted
+
+
+def import_requests_as_collection(
+    project: str,
+    requests: List[ApiRequest],
+    *,
+    collection_name: str,
+    source: str,
+) -> Dict[str, Any]:
+    if not requests:
+        raise ValueError("Sin peticiones para importar")
+    cid = create_collection(project, collection_name, source=source)
+    ids = [save_scenario(project, req, collection_id=cid) for req in requests]
+    return {
+        "collection_id": cid,
+        "collection_name": get_collection_name(project, cid),
+        "scenario_ids": ids,
+        "count": len(ids),
+    }

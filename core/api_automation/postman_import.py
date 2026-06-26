@@ -8,14 +8,15 @@ from typing import Any, Dict, List, Optional
 from core.api_automation.models import ApiRequest
 
 
-def import_postman_collection(data: Dict[str, Any], *, source_name: str = "Postman") -> List[ApiRequest]:
+def import_postman_collection(data: Dict[str, Any], *, source_name: str = "Colección") -> tuple[List[ApiRequest], str]:
     info = data.get("info") if isinstance(data, dict) else {}
-    collection_name = str((info or {}).get("name") or source_name)
+    collection_name = str((info or {}).get("name") or source_name).strip() or "Colección"
     variables = _postman_variables(data)
     items = data.get("item") if isinstance(data, dict) else []
     if not isinstance(items, list):
         items = []
-    return _walk_items(items, variables, prefix=collection_name)
+    requests = _walk_items(items, variables, prefix="")
+    return requests, collection_name
 
 
 def import_postman_file(path: str) -> List[ApiRequest]:
@@ -23,7 +24,12 @@ def import_postman_file(path: str) -> List[ApiRequest]:
         data = json.load(f)
     if not isinstance(data, dict):
         raise ValueError("Colección Postman inválida")
-    return import_postman_collection(data, source_name=path)
+    return import_postman_collection(data, source_name=path)[0]
+
+
+def postman_collection_variables(data: Dict[str, Any]) -> Dict[str, str]:
+    """Variables de colección Postman (variable[])."""
+    return _postman_variables(data)
 
 
 def _postman_variables(data: Dict[str, Any]) -> Dict[str, str]:
@@ -53,8 +59,9 @@ def _walk_items(
             continue
         nested = item.get("item")
         if isinstance(nested, list):
-            folder = str(item.get("name") or prefix)
-            requests.extend(_walk_items(nested, variables, prefix=folder))
+            folder = str(item.get("name") or "").strip()
+            nested_prefix = f"{prefix} / {folder}" if prefix and folder else (folder or prefix)
+            requests.extend(_walk_items(nested, variables, prefix=nested_prefix))
     return requests
 
 
@@ -82,18 +89,40 @@ def _item_to_request(
             if key:
                 headers[key] = str(header.get("value") or "")
 
+    auth = raw.get("auth") if isinstance(raw.get("auth"), dict) else item.get("auth")
+    if isinstance(auth, dict):
+        auth_type = str(auth.get("type") or "").lower()
+        if auth_type == "bearer":
+            for entry in auth.get("bearer") or []:
+                if isinstance(entry, dict) and str(entry.get("key") or "").lower() == "token":
+                    token = str(entry.get("value") or "{{token}}")
+                    headers.setdefault("Authorization", f"Bearer {token}")
+        elif auth_type == "apikey":
+            for entry in auth.get("apikey") or []:
+                if not isinstance(entry, dict):
+                    continue
+                key = str(entry.get("key") or "").strip()
+                val = str(entry.get("value") or "")
+                where = str(entry.get("in") or "header").lower()
+                if key and where == "header":
+                    headers.setdefault(key, val or "{{" + key + "}}")
+
     body = _postman_body(raw.get("body"))
     name = str(item.get("name") or f"{method} {url}")
+    pre_script, post_script = _postman_item_scripts(item)
     req_id = f"postman-{uuid.uuid4().hex[:8]}"
+    display_name = f"{prefix} / {name}" if prefix else name
     return ApiRequest(
         id=req_id,
-        name=f"{prefix}: {name}" if prefix else name,
+        name=display_name,
         method=method,
         url=url,
         headers=headers,
         body=body,
         expected_status=200,
         source="postman",
+        pre_request_script=pre_script or None,
+        post_request_script=post_script or None,
     )
 
 
@@ -115,6 +144,30 @@ def _postman_url(url_obj: Dict[str, Any]) -> str:
     if not host:
         return path
     return f"{protocol}://{host}/{path.lstrip('/')}"
+
+
+def _postman_item_scripts(item: Dict[str, Any]) -> tuple[str, str]:
+    pre_lines: List[str] = []
+    post_lines: List[str] = []
+    for event in item.get("event") or []:
+        if not isinstance(event, dict):
+            continue
+        listen = str(event.get("listen") or "").lower()
+        script = event.get("script")
+        if not isinstance(script, dict):
+            continue
+        exec_lines = script.get("exec")
+        if isinstance(exec_lines, list):
+            block = "\n".join(str(line) for line in exec_lines if str(line).strip())
+        else:
+            block = str(script.get("exec") or script.get("src") or "").strip()
+        if not block:
+            continue
+        if listen == "prerequest":
+            pre_lines.append(block)
+        elif listen == "test":
+            post_lines.append(block)
+    return ("\n\n".join(pre_lines).strip(), "\n\n".join(post_lines).strip())
 
 
 def _postman_body(body: Any) -> Optional[str]:
