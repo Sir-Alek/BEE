@@ -8,6 +8,7 @@ type Props = {
   c: Record<string, string>;
   busy: boolean;
   canRunJobs: boolean;
+  scenariosLoading?: boolean;
   collections: ApiCollectionRow[];
   scenarios: ApiScenarioRow[];
   activeScenarioId: string | null;
@@ -32,6 +33,7 @@ export function ApiPostmanSidebar(props: Props) {
     c,
     busy,
     canRunJobs,
+    scenariosLoading = false,
     collections,
     scenarios,
     activeScenarioId,
@@ -232,7 +234,25 @@ export function ApiPostmanSidebar(props: Props) {
           style={apiInputStyle(c, { width: "100%", marginBottom: 10 })}
           data-testid="elia-api-scenario-search"
         />
-        {grouped.length === 0 ? (
+        {scenariosLoading ? (
+          <div
+            data-testid="elia-api-scenarios-loading"
+            style={{ fontSize: 12, color: c.muted, display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                border: `2px solid ${c.border}`,
+                borderTopColor: c.primary,
+                animation: "elia-spin 0.8s linear infinite",
+              }}
+            />
+            Cargando colecciones…
+          </div>
+        ) : grouped.length === 0 ? (
           <div style={{ fontSize: 12, color: c.muted }}>Sin colecciones. Importa JSON o guarda un escenario.</div>
         ) : (
           grouped.map(({ collection, scenarios: colScenarios }) => {

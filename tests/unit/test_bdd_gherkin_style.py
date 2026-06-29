@@ -45,6 +45,19 @@ class TestGherkinStyle(unittest.TestCase):
         self.assertNotIn("Verificar:", clean)
         self.assertNotIn("el contexto es:", clean)
 
+    def test_sanitize_normalizes_spanish_keywords(self) -> None:
+        raw = (
+            "Feature: X\n"
+            "  Scenario: Demo\n"
+            "    Dado el usuario autenticado\n"
+            "    Cuando abre el módulo\n"
+            "    Entonces ve el panel\n"
+        )
+        clean = _sanitize_gherkin_text(raw)
+        self.assertIn("Given el usuario autenticado", clean)
+        self.assertIn("When abre el módulo", clean)
+        self.assertIn("Then ve el panel", clean)
+
 
 if __name__ == "__main__":
     unittest.main()

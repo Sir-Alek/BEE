@@ -47,3 +47,9 @@ html[data-elia-theme="dark"] {
   scrollbar-color: #475569 #0f172a;
   scrollbar-width: thin;
 }
+
+@keyframes elia-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

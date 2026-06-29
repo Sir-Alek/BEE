@@ -15,6 +15,7 @@ export function useLicense(options: UseLicenseOptions) {
   const { isHomeSurface, settingsOpen, settingsTab, setSettingsTab } = options;
 
   const [license, setLicense] = useState<LicenseState | null>(null);
+  const [licenseLoading, setLicenseLoading] = useState(true);
   const [activationKey, setActivationKey] = useState("");
   const [licenseActivateMsg, setLicenseActivateMsg] = useState<string | null>(null);
   const [fpCopyAck, setFpCopyAck] = useState(false);
@@ -23,6 +24,7 @@ export function useLicense(options: UseLicenseOptions) {
   const canRunJobs = license?.can_run_jobs ?? false;
 
   const refreshLicense = useCallback(async () => {
+    setLicenseLoading(true);
     try {
       const l = await getLicenseStatus();
       setLicense(licenseFromApi(l));
@@ -38,6 +40,8 @@ export function useLicense(options: UseLicenseOptions) {
         machine_fingerprint: "",
         reason: pingOk ? "license_fetch_failed" : "disconnected",
       });
+    } finally {
+      setLicenseLoading(false);
     }
   }, []);
 
@@ -67,6 +71,7 @@ export function useLicense(options: UseLicenseOptions) {
 
   return {
     license,
+    licenseLoading,
     setLicense,
     activationKey,
     setActivationKey,

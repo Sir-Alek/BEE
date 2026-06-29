@@ -22,8 +22,10 @@ from core.elia_memory_crypto import (
 
 _LOCK = threading.Lock()
 _MAX_ENTRIES = 80
+_PROMPT_EXAMPLES_LIMIT = 3
 _KEEP_RECENT = 12
 ImportMode = Literal["merge", "replace"]
+MemorySource = Literal["doc_to_bdd", "web_capture", "unknown"]
 
 
 def _empty_document() -> Dict[str, Any]:
@@ -125,11 +127,15 @@ def _normalize_entry(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not script or not feature:
         return None
     fp = str(entry.get("script_fp") or _fingerprint(script))
+    source = str(entry.get("source") or "unknown").strip().lower()
+    if source not in ("doc_to_bdd", "web_capture", "unknown"):
+        source = "unknown"
     return {
         "ts": float(entry.get("ts") or time.time()),
         "script_fp": fp,
         "script": script,
         "feature": feature,
+        "source": source,
     }
 
 
@@ -155,13 +161,43 @@ def memory_status() -> Dict[str, Any]:
     return {
         "entries": len(entries),
         "max_entries": _MAX_ENTRIES,
+        "prompt_examples_limit": _PROMPT_EXAMPLES_LIMIT,
         "encrypted": enc.is_file(),
         "updated_at": updated_at,
         "export_format": EXPORT_FORMAT,
     }
 
 
-def append_correction(*, script_snippet: str, feature_text: str) -> None:
+def should_learn_correction(
+    *,
+    edited: bool,
+    content_changed: bool,
+    attempt: int = 1,
+    preferences: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Decide si persistir un par script/feature según preferencias de usuario."""
+    if preferences is None:
+        try:
+            from core.ai_policy import load_preferences
+
+            preferences = load_preferences()
+        except Exception:
+            preferences = {}
+    if not bool(preferences.get("memory_auto_learn", True)):
+        return False
+    if edited or content_changed:
+        return True
+    if attempt > 1 and bool(preferences.get("memory_learn_after_retry", False)):
+        return True
+    return False
+
+
+def append_correction(
+    *,
+    script_snippet: str,
+    feature_text: str,
+    source: MemorySource = "unknown",
+) -> None:
     """Guarda un par script/feature tras aceptación (especialmente si el usuario editó el feature)."""
     script_snippet = _trim_script(script_snippet)
     feature_text = (feature_text or "").strip()
@@ -176,27 +212,89 @@ def append_correction(*, script_snippet: str, feature_text: str) -> None:
             "script_fp": _fingerprint(script_snippet),
             "script": script_snippet,
             "feature": feature_text,
+            "source": source,
         }
         entries.append(entry)
         data["entries"] = _trim_entries(entries)
         _save_unlocked(data)
 
 
-def recent_examples_for_prompt(*, limit: int = 3) -> List[Dict[str, str]]:
+def recent_examples_for_prompt(*, limit: int = _PROMPT_EXAMPLES_LIMIT) -> List[Dict[str, str]]:
     """Últimas correcciones para inyectar en el prompt (más recientes primero)."""
     with _LOCK:
         data = _load_unlocked()
     entries: List[Dict[str, Any]] = list(data.get("entries") or [])
     entries.sort(key=lambda e: float(e.get("ts", 0.0)), reverse=True)
     out: List[Dict[str, str]] = []
+    seen_fp: set[str] = set()
     for e in entries[: max(limit, _KEEP_RECENT)]:
         if len(out) >= limit:
             break
         s = str(e.get("script", "")).strip()
         f = str(e.get("feature", "")).strip()
-        if s and f:
-            out.append({"script": s, "feature": f})
+        fp = str(e.get("script_fp") or "")
+        if not s or not f:
+            continue
+        if fp and fp in seen_fp:
+            continue
+        if fp:
+            seen_fp.add(fp)
+        out.append({"script": s, "feature": f})
     return out
+
+
+def _preview(text: str, max_len: int = 120) -> str:
+    t = (text or "").strip().replace("\r\n", "\n")
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1] + "…"
+
+
+def list_entries(*, limit: int = 40) -> List[Dict[str, Any]]:
+    """Lista entradas recientes para la UI (metadatos + extractos truncados)."""
+    with _LOCK:
+        data = _load_unlocked()
+    entries: List[Dict[str, Any]] = list(data.get("entries") or [])
+    entries.sort(key=lambda e: float(e.get("ts", 0.0)), reverse=True)
+    out: List[Dict[str, Any]] = []
+    for e in entries[: max(1, min(limit, _MAX_ENTRIES))]:
+        norm = _normalize_entry(e) if isinstance(e, dict) else None
+        if not norm:
+            continue
+        out.append(
+            {
+                "script_fp": norm["script_fp"],
+                "ts": norm["ts"],
+                "source": norm.get("source") or "unknown",
+                "script_preview": _preview(norm["script"]),
+                "feature_preview": _preview(norm["feature"]),
+            }
+        )
+    return out
+
+
+def delete_entry(script_fp: str) -> bool:
+    fp = (script_fp or "").strip()
+    if not fp:
+        return False
+    with _LOCK:
+        data = _load_unlocked()
+        entries: List[Dict[str, Any]] = list(data.get("entries") or [])
+        kept = [e for e in entries if str(e.get("script_fp") or "") != fp]
+        if len(kept) == len(entries):
+            return False
+        data["entries"] = kept
+        _save_unlocked(data)
+    return True
+
+
+def clear_entries() -> int:
+    with _LOCK:
+        data = _load_unlocked()
+        count = len(list(data.get("entries") or []))
+        data["entries"] = []
+        _save_unlocked(data)
+    return count
 
 
 def export_for_team(team_passphrase: str) -> Tuple[bytes, str]:

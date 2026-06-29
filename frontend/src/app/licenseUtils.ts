@@ -12,6 +12,7 @@ export type LicenseState = {
   tier_label?: string | null;
   is_beta?: boolean;
   upgrade_email?: string;
+  features?: Record<string, boolean>;
 };
 
 export function licenseFromApi(l: LicenseStatusResponse): LicenseState {
@@ -27,6 +28,7 @@ export function licenseFromApi(l: LicenseStatusResponse): LicenseState {
     tier_label: l.tier_label ?? null,
     is_beta: l.is_beta,
     upgrade_email: l.upgrade_email,
+    features: l.features,
   };
 }
 

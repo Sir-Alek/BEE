@@ -357,8 +357,16 @@ export async function getAiStatus(): Promise<AiStatusResponse> {
 
 export type AiMode = "auto" | "on" | "off";
 
+export type AiPreferences = {
+  mode: AiMode;
+  version: number;
+  memory_auto_learn?: boolean;
+  memory_learn_after_retry?: boolean;
+  gherkin_keywords_english?: boolean;
+};
+
 export type AiCapabilitiesResponse = {
-  preferences: { mode: AiMode; version: number };
+  preferences: AiPreferences;
   capability: {
     model_ok: boolean;
     llama_ok: boolean;
@@ -368,9 +376,18 @@ export type AiCapabilitiesResponse = {
     ram_available_gb: number | null;
     ram_min_total_gb: number;
     ram_min_free_gb: number;
+    profile?: string;
+    runtime_profile?: string;
     capable: boolean;
     reasons: string[];
-    model: { path: string; exists: boolean; size_bytes: number; frozen: boolean };
+    model: {
+      path: string;
+      exists: boolean;
+      size_bytes: number;
+      frozen: boolean;
+      profile?: string;
+      models?: unknown[];
+    };
   };
   resolution: {
     use_ai: boolean;
@@ -381,12 +398,89 @@ export type AiCapabilitiesResponse = {
     reasons: string[];
   };
   runtime: AiStatusResponse;
+  setup?: AiSetupStatusResponse;
   brand_line: string;
+};
+
+export type AiSetupDownloadProfile = "auto" | "lite" | "standard";
+
+export type AiSetupStatusResponse = {
+  assigned_profile: string;
+  models_root: string;
+  lite_ready: boolean;
+  standard_ready: boolean;
+  lite_models: unknown[];
+  standard_models: unknown[];
+  download: AiDownloadStatusResponse;
+  manifest_version: number;
+  show_wizard?: boolean;
+  wizard_completed?: boolean;
+  profile_ready?: boolean;
+  ram_total_gb?: number | null;
+  ram_available_gb?: number | null;
+  ram_min_free_gb?: number;
+  ram_free_ok?: boolean;
+  download_size_hint_gb?: number;
+  wizard_state?: {
+    completed?: boolean;
+    completed_at?: string | null;
+    version?: number;
+  };
+};
+
+export type AiDownloadStatusResponse = {
+  active: boolean;
+  profile: string | null;
+  current: string | null;
+  completed: string[];
+  errors: string[];
+  done: boolean;
 };
 
 export async function getAiCapabilities(): Promise<AiCapabilitiesResponse> {
   const res = await fetch("/api/ai/capabilities");
   if (!res.ok) throw new Error(`Failed to fetch AI capabilities: ${res.status}`);
+  return res.json();
+}
+
+export async function postAiSetupDownload(profile: "auto" | "lite" | "standard" = "auto"): Promise<{
+  ok: boolean;
+  started?: boolean;
+  profile?: string;
+  error?: string;
+}> {
+  const res = await fetch("/api/ai/setup/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  if (!res.ok) throw new Error(`Failed to start model download: ${res.status}`);
+  return res.json();
+}
+
+export async function getAiSetupDownloadStatus(): Promise<AiDownloadStatusResponse> {
+  const res = await fetch("/api/ai/setup/download/status");
+  if (!res.ok) throw new Error(`Failed to fetch download status: ${res.status}`);
+  return res.json();
+}
+
+export async function postAiSetupVerify(profile: AiSetupDownloadProfile = "auto"): Promise<{
+  profile: string;
+  ok: boolean;
+  models: unknown[];
+}> {
+  const res = await fetch("/api/ai/setup/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  if (!res.ok) throw new Error(`Failed to verify models: ${res.status}`);
+  return res.json();
+}
+
+export async function postAiSetupWizardComplete(): Promise<AiSetupStatusResponse> {
+  const res = await fetch("/api/ai/setup/wizard/complete", { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to complete AI wizard: ${res.status}`);
   return res.json();
 }
 
@@ -419,11 +513,13 @@ export async function getAppAbout(): Promise<AppAboutResponse> {
   return res.json();
 }
 
-export async function putAiPreferences(mode: AiMode): Promise<AiCapabilitiesResponse> {
+export async function putAiPreferences(
+  patch: Partial<AiPreferences> & { mode?: AiMode },
+): Promise<AiCapabilitiesResponse> {
   const res = await fetch("/api/ai/preferences", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify(patch),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -435,9 +531,18 @@ export async function putAiPreferences(mode: AiMode): Promise<AiCapabilitiesResp
 export type AiMemoryStatusResponse = {
   entries: number;
   max_entries: number;
+  prompt_examples_limit: number;
   encrypted: boolean;
   updated_at: number | null;
   export_format: string;
+};
+
+export type AiMemoryEntryRow = {
+  script_fp: string;
+  ts: number;
+  source: string;
+  script_preview: string;
+  feature_preview: string;
 };
 
 export type AiMemoryImportResponse = {
@@ -451,6 +556,24 @@ export type AiMemoryImportResponse = {
 export async function getAiMemoryStatus(): Promise<AiMemoryStatusResponse> {
   const res = await fetch("/api/ai/memory/status");
   if (!res.ok) throw new Error(`No se pudo leer el estado de memoria IA: ${res.status}`);
+  return res.json();
+}
+
+export async function getAiMemoryEntries(): Promise<{ status: AiMemoryStatusResponse; entries: AiMemoryEntryRow[] }> {
+  const res = await fetch("/api/ai/memory/entries");
+  if (!res.ok) throw new Error(`No se pudo listar la memoria IA: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteAiMemoryEntry(scriptFp: string): Promise<{ ok: boolean; status: AiMemoryStatusResponse }> {
+  const res = await fetch(`/api/ai/memory/entries/${encodeURIComponent(scriptFp)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`No se pudo eliminar la entrada: ${res.status}`);
+  return res.json();
+}
+
+export async function clearAiMemory(): Promise<{ ok: boolean; removed: number; status: AiMemoryStatusResponse }> {
+  const res = await fetch("/api/ai/memory/clear", { method: "POST" });
+  if (!res.ok) throw new Error(`No se pudo vaciar la memoria: ${res.status}`);
   return res.json();
 }
 

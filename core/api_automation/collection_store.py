@@ -84,15 +84,20 @@ def collection_scenarios_dir(project: str, collection_id: str) -> Path:
 
 
 def list_collections(project: str) -> List[Dict[str, Any]]:
+    from core.api_automation.scenario_index import ensure_index, scenario_count_for_collection
+
     ensure_default_collection(project)
     registry = _load_registry(project)
+    index = ensure_index(project)
     out: List[Dict[str, Any]] = []
     for item in registry["collections"]:
         cid = str(item.get("id") or "").strip()
         if not cid:
             continue
         sdir = collection_scenarios_dir(project, cid)
-        count = len(list(sdir.glob("*.json"))) if sdir.is_dir() else 0
+        count = scenario_count_for_collection(project, cid, index=index)
+        if count == 0 and sdir.is_dir():
+            count = len(list(sdir.glob("*.json")))
         out.append(
             {
                 "id": cid,
@@ -149,11 +154,23 @@ def delete_collection(project: str, collection_id: str) -> int:
                 pass
     if cid == DEFAULT_COLLECTION_ID:
         ensure_default_collection(project)
+        try:
+            from core.api_automation.scenario_index import remove_collection
+
+            remove_collection(project, cid)
+        except Exception:
+            pass
         return deleted
     registry = _load_registry(project)
     registry["collections"] = [c for c in registry["collections"] if str(c.get("id") or "") != cid]
     _save_registry(project, registry)
     ensure_default_collection(project)
+    try:
+        from core.api_automation.scenario_index import remove_collection
+
+        remove_collection(project, cid)
+    except Exception:
+        pass
     return deleted
 
 

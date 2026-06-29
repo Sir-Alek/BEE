@@ -378,7 +378,11 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _require_api_module()
-        return {"scenarios": list_scenarios(project_name), "collections": list_collections(project_name)}
+        collections = list_collections(project_name)
+        return {
+            "scenarios": list_scenarios(project_name, collections=collections),
+            "collections": collections,
+        }
 
     @app.get("/api/api/projects/{project_name}/scenarios/{scenario_id:path}")
     def api_get_scenario(

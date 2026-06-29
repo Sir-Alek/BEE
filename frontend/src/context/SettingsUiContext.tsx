@@ -37,6 +37,7 @@ export type SettingsUiContextValue = {
   aboutInfo: AppAboutResponse | null;
   aboutChangelogOpen: boolean;
   setAboutChangelogOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  reopenAiWizard: () => void;
 };
 
 const SettingsUiContext = createContext<SettingsUiContextValue | null>(null);

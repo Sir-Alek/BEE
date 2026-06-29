@@ -157,7 +157,14 @@ class LicenseActivateRequest(BaseModel):
 
 
 class AiPreferencesRequest(BaseModel):
-    mode: str  # auto | on | off
+    mode: Optional[str] = None  # auto | on | off
+    memory_auto_learn: Optional[bool] = None
+    memory_learn_after_retry: Optional[bool] = None
+    gherkin_keywords_english: Optional[bool] = None
+
+
+class AiSetupDownloadRequest(BaseModel):
+    profile: str  # lite | standard | auto
 
 
 class AiMemoryExportRequest(BaseModel):
@@ -386,11 +393,109 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     ) -> Dict[str, Any]:
         from core.ai_policy import get_ai_status_payload, save_preferences
 
-        mode = (req.mode or "auto").strip().lower()
-        if mode not in ("auto", "on", "off"):
-            raise HTTPException(status_code=400, detail="mode debe ser auto, on u off")
-        save_preferences(mode=mode)  # type: ignore[arg-type]
+        if (
+            req.mode is None
+            and req.memory_auto_learn is None
+            and req.memory_learn_after_retry is None
+            and req.gherkin_keywords_english is None
+        ):
+            raise HTTPException(status_code=400, detail="Sin cambios en preferencias")
+        mode = None
+        if req.mode is not None:
+            mode = (req.mode or "auto").strip().lower()
+            if mode not in ("auto", "on", "off"):
+                raise HTTPException(status_code=400, detail="mode debe ser auto, on u off")
+        save_preferences(
+            mode=mode,  # type: ignore[arg-type]
+            memory_auto_learn=req.memory_auto_learn,
+            memory_learn_after_retry=req.memory_learn_after_retry,
+            gherkin_keywords_english=req.gherkin_keywords_english,
+        )
         return get_ai_status_payload()
+
+    @app.get("/api/ai/setup/status")
+    def ai_setup_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ai.model_download import setup_status
+
+        return setup_status()
+
+    @app.post("/api/ai/setup/download")
+    def ai_setup_download(
+        req: AiSetupDownloadRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ai.model_download import download_profile
+        from core.ai.profiles import resolve_profile_from_ram
+
+        profile = (req.profile or "auto").strip().lower()
+        if profile == "auto":
+            try:
+                import psutil
+
+                vm = psutil.virtual_memory()
+                total = round(vm.total / (1024**3), 2)
+                avail = round(vm.available / (1024**3), 2)
+            except Exception:
+                total = None
+                avail = None
+            assigned = resolve_profile_from_ram(total_gb=total, available_gb=avail)
+            profile = assigned if assigned in ("lite", "standard") else "standard"
+        if profile not in ("lite", "standard"):
+            raise HTTPException(status_code=400, detail="profile debe ser lite, standard o auto")
+        try:
+            return download_profile(profile)  # type: ignore[arg-type]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.get("/api/ai/setup/download/status")
+    def ai_setup_download_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ai.model_download import get_download_status
+
+        return get_download_status()
+
+    @app.post("/api/ai/setup/verify")
+    def ai_setup_verify(
+        req: AiSetupDownloadRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ai.model_download import verify_installed
+        from core.ai.profiles import resolve_profile_from_ram
+
+        profile = (req.profile or "auto").strip().lower()
+        if profile == "auto":
+            try:
+                import psutil
+
+                vm = psutil.virtual_memory()
+                total = round(vm.total / (1024**3), 2)
+                avail = round(vm.available / (1024**3), 2)
+            except Exception:
+                total = None
+                avail = None
+            assigned = resolve_profile_from_ram(total_gb=total, available_gb=avail)
+            profile = assigned if assigned in ("lite", "standard") else "standard"
+        if profile not in ("lite", "standard"):
+            raise HTTPException(status_code=400, detail="profile debe ser lite, standard o auto")
+        return verify_installed(profile)  # type: ignore[arg-type]
+
+    @app.post("/api/ai/setup/wizard/complete")
+    def ai_setup_wizard_complete(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ai.model_download import setup_status
+        from core.ai.setup_wizard import mark_wizard_completed
+
+        mark_wizard_completed(note="user")
+        return setup_status()
 
     @app.get("/api/ai/memory/status")
     def ai_memory_status(
@@ -400,6 +505,37 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         from core.elia_memory import memory_status
 
         return memory_status()
+
+    @app.get("/api/ai/memory/entries")
+    def ai_memory_entries(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.elia_memory import list_entries, memory_status
+
+        return {"status": memory_status(), "entries": list_entries()}
+
+    @app.delete("/api/ai/memory/entries/{script_fp}")
+    def ai_memory_delete_entry(
+        script_fp: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.elia_memory import delete_entry, memory_status
+
+        if not delete_entry(script_fp):
+            raise HTTPException(status_code=404, detail="Entrada no encontrada")
+        return {"ok": True, "status": memory_status()}
+
+    @app.post("/api/ai/memory/clear")
+    def ai_memory_clear(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.elia_memory import clear_entries, memory_status
+
+        removed = clear_entries()
+        return {"ok": True, "removed": removed, "status": memory_status()}
 
     @app.post("/api/ai/memory/export")
     def ai_memory_export(

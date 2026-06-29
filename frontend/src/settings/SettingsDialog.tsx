@@ -1,13 +1,21 @@
 import React from "react";
 import {
   activateLicense,
+  clearAiMemory,
+  deleteAiMemoryEntry,
   exportAiMemory,
+  getAiCapabilities,
+  getAiMemoryEntries,
+  getAiSetupDownloadStatus,
   getModulesStatus,
   importAiMemory,
+  postAiSetupDownload,
+  postAiSetupVerify,
   putAiPreferences,
   putEliaConnectors,
   testEliaConnector,
   type AiCapabilitiesResponse,
+  type AiMemoryEntryRow,
   type AiMemoryStatusResponse,
   type AiMode,
   type AppAboutResponse,
@@ -36,6 +44,10 @@ export type SettingsDialogProps = {
 export function SettingsDialog(props: SettingsDialogProps) {
   if (!props.open) return null;
   const { onClose } = props;
+  const [aiDownloadBusy, setAiDownloadBusy] = React.useState(false);
+  const [aiDownloadMsg, setAiDownloadMsg] = React.useState<string | null>(null);
+  const [aiLearnOpen, setAiLearnOpen] = React.useState(false);
+  const [aiMemoryEntries, setAiMemoryEntries] = React.useState<AiMemoryEntryRow[]>([]);
   const {
     c,
     dark,
@@ -66,6 +78,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     aboutInfo,
     aboutChangelogOpen,
     setAboutChangelogOpen,
+    reopenAiWizard,
   } = useSettingsUiContext();
   const {
     license,
@@ -93,6 +106,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
     duplicateConnectorProfile,
     deleteConnectorProfile,
   } = useConnectorContext();
+
+  const patchAiPreferences = (patch: Parameters<typeof putAiPreferences>[0]) => {
+    setAiPrefsSaving(true);
+    void (async () => {
+      try {
+        const next = await putAiPreferences(patch);
+        setAiCaps(next);
+      } catch (e: unknown) {
+        setErrorText(String((e as Error)?.message ?? e));
+      } finally {
+        setAiPrefsSaving(false);
+      }
+    })();
+  };
+
+  React.useEffect(() => {
+    if (!props.open || settingsTab !== "ai" || !aiLearnOpen) return;
+    void getAiMemoryEntries()
+      .then((r) => setAiMemoryEntries(r.entries))
+      .catch(() => setAiMemoryEntries([]));
+  }, [props.open, settingsTab, aiLearnOpen, aiMemoryStatus?.entries]);
 
   return (
         <div
@@ -273,7 +307,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       setAiPrefsSaving(true);
                       void (async () => {
                         try {
-                          const next = await putAiPreferences(m);
+                          const next = await putAiPreferences({ mode: m });
                           setAiCaps(next);
                         } catch (e: unknown) {
                           setErrorText(String((e as Error)?.message ?? e));
@@ -294,17 +328,81 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </b>
                     <span style={{ display: "block", fontSize: 12, color: c.muted, marginTop: 2 }}>
                       {m === "auto"
-                        ? "Usa IA si hay modelo de IA disponible, llama-cpp y RAM (≥8 GB total, ≥4 GB libres)."
+                        ? "Standard (>8 GB RAM, ≥5 GB libres) o Lite (≤8 GB, ≥4 GB libres). Sin margen → heurísticas."
                         : m === "on"
-                          ? "Fuerza IA si el modelo está disponible; ignora el umbral de RAM libre (puede ir muy lento o fallar)."
+                          ? "Fuerza IA si los modelos están disponibles; ignora el umbral de RAM libre (puede ir muy lento o fallar)."
                           : "Conversiones heurísticas deterministas, sin revisión de IA."}
                     </span>
                   </span>
                 </label>
               ))}
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: `1px solid ${c.border}`,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Aprendizaje y Gherkin</div>
+                <label style={{ display: "flex", gap: 8, fontSize: 13, cursor: aiPrefsSaving ? "wait" : "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={aiCaps?.preferences.gherkin_keywords_english !== false}
+                    disabled={aiPrefsSaving}
+                    onChange={(e) =>
+                      patchAiPreferences({ gherkin_keywords_english: e.target.checked })
+                    }
+                  />
+                  <span>
+                    Keywords Gherkin en inglés (Given/When/Then) — recomendado para Behave
+                    <span style={{ display: "block", fontSize: 11, color: c.muted, marginTop: 2 }}>
+                      El texto del paso puede seguir en español; solo afecta las palabras reservadas.
+                    </span>
+                  </span>
+                </label>
+                <label style={{ display: "flex", gap: 8, fontSize: 13, cursor: aiPrefsSaving ? "wait" : "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={aiCaps?.preferences.memory_auto_learn !== false}
+                    disabled={aiPrefsSaving}
+                    onChange={(e) => patchAiPreferences({ memory_auto_learn: e.target.checked })}
+                  />
+                  <span>Recordar correcciones al aceptar features (solo con IA activa)</span>
+                </label>
+                <label style={{ display: "flex", gap: 8, fontSize: 13, cursor: aiPrefsSaving ? "wait" : "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={aiCaps?.preferences.memory_learn_after_retry === true}
+                    disabled={aiPrefsSaving}
+                    onChange={(e) =>
+                      patchAiPreferences({ memory_learn_after_retry: e.target.checked })
+                    }
+                  />
+                  <span>
+                    También aprender al aceptar tras un reintento (aunque no edites el texto)
+                    <span style={{ display: "block", fontSize: 11, color: c.muted, marginTop: 2 }}>
+                      Opcional; la IA usa como máximo{" "}
+                      {aiMemoryStatus?.prompt_examples_limit ?? 3} ejemplos recientes por prompt (de hasta{" "}
+                      {aiMemoryStatus?.max_entries ?? 80} guardados).
+                    </span>
+                  </span>
+                </label>
+              </div>
               {aiCaps && (
                 <div style={{ fontSize: 12, color: c.muted, marginTop: 8, lineHeight: 1.4 }}>
                   <div>{aiCaps.resolution.message}</div>
+                  {aiCaps.capability.profile && (
+                    <div style={{ marginTop: 6 }}>
+                      Perfil asignado: <b>{aiCaps.capability.profile}</b>
+                      {aiCaps.capability.runtime_profile &&
+                      aiCaps.capability.runtime_profile !== aiCaps.capability.profile
+                        ? ` (runtime: ${aiCaps.capability.runtime_profile})`
+                        : ""}
+                    </div>
+                  )}
                   {aiCaps.capability.ram_total_gb != null && (
                     <div style={{ marginTop: 6 }}>
                       RAM: {aiCaps.capability.ram_available_gb ?? "?"} GB libres /{" "}
@@ -319,6 +417,271 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       ))}
                     </ul>
                   )}
+                </div>
+              )}
+              {aiCaps?.setup && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: `1px solid ${c.border}`,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Motor de IA local</div>
+                  <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
+                    Perfil Standard (~10 GB en disco) o Lite (~2,5 GB). ELIA elige según la RAM de tu equipo.
+                  </div>
+                  <div style={{ fontSize: 12, marginBottom: 8 }}>
+                    Lite {aiCaps.setup.lite_ready ? "✓" : "—"} · Standard{" "}
+                    {aiCaps.setup.standard_ready ? "✓" : "—"}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      disabled={aiDownloadBusy}
+                      onClick={() => {
+                        setAiDownloadBusy(true);
+                        setAiDownloadMsg(null);
+                        void (async () => {
+                          try {
+                            await postAiSetupDownload("auto");
+                            setAiDownloadMsg("Descarga iniciada…");
+                            for (let i = 0; i < 360; i++) {
+                              await new Promise((r) => setTimeout(r, 2000));
+                              const st = await getAiSetupDownloadStatus();
+                              if (st.errors.length) {
+                                setAiDownloadMsg(st.errors.join("; "));
+                              } else if (st.done) {
+                                setAiDownloadMsg(
+                                  st.completed.length
+                                    ? `Completado: ${st.completed.join(", ")}`
+                                    : "Descarga finalizada.",
+                                );
+                                setAiCaps(await getAiCapabilities());
+                                break;
+                              } else if (st.current) {
+                                setAiDownloadMsg(`Descargando ${st.current}…`);
+                              }
+                              if (!st.active && st.done) break;
+                            }
+                          } catch (e: unknown) {
+                            setAiDownloadMsg(String((e as Error)?.message ?? e));
+                          } finally {
+                            setAiDownloadBusy(false);
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.border}`,
+                        background: aiDownloadBusy ? c.buttonDisabledBg : c.primary,
+                        color: "#fff",
+                        cursor: aiDownloadBusy ? "wait" : "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      {aiDownloadBusy ? "Descargando…" : "Descargar perfil recomendado"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={aiDownloadBusy}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const v = await postAiSetupVerify("auto");
+                            setAiDownloadMsg(
+                              v.ok ? "Verificación OK" : "Verificación fallida — revisa modelos",
+                            );
+                            setAiCaps(await getAiCapabilities());
+                          } catch (e: unknown) {
+                            setAiDownloadMsg(String((e as Error)?.message ?? e));
+                          }
+                        })();
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.border}`,
+                        background: c.neutralBg,
+                        cursor: "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      Verificar integridad
+                    </button>
+                    {(!aiCaps.setup.wizard_completed || !aiCaps.setup.profile_ready) && (
+                      <button
+                        type="button"
+                        data-testid="elia-ai-reopen-wizard"
+                        disabled={aiDownloadBusy}
+                        onClick={reopenAiWizard}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          border: `1px solid ${c.border}`,
+                          background: c.neutralBg,
+                          cursor: aiDownloadBusy ? "wait" : "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        Reabrir asistente de IA
+                      </button>
+                    )}
+                  </div>
+                  {aiDownloadMsg && (
+                    <div style={{ fontSize: 12, marginTop: 8, color: c.text }}>{aiDownloadMsg}</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div
+              data-testid="elia-ai-learn-accordion"
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                marginBottom: 14,
+                background: c.neutralBg,
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                data-testid="elia-ai-learn-toggle"
+                onClick={() => setAiLearnOpen((open) => !open)}
+                aria-expanded={aiLearnOpen}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  border: "none",
+                  background: "transparent",
+                  color: c.text,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                <span style={{ fontSize: 11, color: c.muted, width: 14 }}>{aiLearnOpen ? "▾" : "▸"}</span>
+                <span>Qué aprendió ELIA</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: c.muted }}>
+                  {aiMemoryStatus
+                    ? `${aiMemoryStatus.entries} guardados · ${aiMemoryStatus.prompt_examples_limit} en prompts`
+                    : "—"}
+                </span>
+              </button>
+              {aiLearnOpen && (
+                <div
+                  style={{
+                    padding: "0 14px 14px",
+                    borderTop: `1px solid ${c.border}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.45, paddingTop: 12 }}>
+                    Correcciones locales usadas como ejemplos few-shot en Doc-to-BDD y grabaciones web.
+                    El límite de almacenamiento ({aiMemoryStatus?.max_entries ?? 80}) conserva historial
+                    y exportación; la mejora por inferencia depende sobre todo de los{" "}
+                    {aiMemoryStatus?.prompt_examples_limit ?? 3} ejemplos más recientes inyectados en cada prompt.
+                  </div>
+                  {aiMemoryEntries.length === 0 ? (
+                    <div style={{ fontSize: 12, color: c.muted }}>Sin ejemplos guardados aún.</div>
+                  ) : (
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+                      {aiMemoryEntries.map((entry) => (
+                        <li
+                          key={entry.script_fp}
+                          style={{
+                            border: `1px solid ${c.border}`,
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 11,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                            <span style={{ color: c.muted }}>
+                              {entry.source === "web_capture"
+                                ? "Grabación web"
+                                : entry.source === "doc_to_bdd"
+                                  ? "Doc-to-BDD"
+                                  : "General"}{" "}
+                              · {new Date(entry.ts * 1000).toLocaleString()}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={aiMemoryBusy}
+                              onClick={() => {
+                                setAiMemoryBusy(true);
+                                void (async () => {
+                                  try {
+                                    await deleteAiMemoryEntry(entry.script_fp);
+                                    await refreshAiMemoryStatus();
+                                    const r = await getAiMemoryEntries();
+                                    setAiMemoryEntries(r.entries);
+                                  } catch (e) {
+                                    setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo eliminar.");
+                                  } finally {
+                                    setAiMemoryBusy(false);
+                                  }
+                                })();
+                              }}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                color: c.errorBody,
+                                cursor: aiMemoryBusy ? "wait" : "pointer",
+                                fontSize: 11,
+                              }}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                          <div style={{ color: c.text }}>
+                            <strong>Feature:</strong> {entry.feature_preview}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <button
+                    type="button"
+                    disabled={aiMemoryBusy || !aiMemoryStatus?.entries}
+                    onClick={() => {
+                      if (!window.confirm("¿Vaciar todos los ejemplos aprendidos en este equipo?")) return;
+                      setAiMemoryBusy(true);
+                      void (async () => {
+                        try {
+                          await clearAiMemory();
+                          await refreshAiMemoryStatus();
+                          setAiMemoryEntries([]);
+                          setAiMemoryMsg("Memoria local vaciada.");
+                        } catch (e) {
+                          setAiMemoryMsg(e instanceof Error ? e.message : "No se pudo vaciar.");
+                        } finally {
+                          setAiMemoryBusy(false);
+                        }
+                      })();
+                    }}
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${c.border}`,
+                      background: c.surface,
+                      color: c.text,
+                      cursor: aiMemoryBusy ? "wait" : "pointer",
+                      fontSize: 12,
+                    }}
+                  >
+                    Vaciar memoria local
+                  </button>
                 </div>
               )}
             </div>

@@ -17,29 +17,8 @@ import { useJobProgress } from "./job/useJobProgress";
 import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
-
-// Caché del estado de módulos/licencia para que el arranque refleje de inmediato
-// el último tier conocido y no se muestren funciones como "bloqueadas" mientras
-// llega la verificación real (lo que confundía al usuario haciéndole creer que
-// perdió su licencia). NO sustituye los bloqueos reales: solo evita el parpadeo.
-const MODULES_CACHE_KEY = "elia.modules.cache.v1";
-
-function readCachedModules(): ModulesStatus | null {
-  try {
-    const raw = localStorage.getItem(MODULES_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as ModulesStatus) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedModules(m: ModulesStatus): void {
-  try {
-    localStorage.setItem(MODULES_CACHE_KEY, JSON.stringify(m));
-  } catch {
-    /* almacenamiento no disponible: degradar silenciosamente */
-  }
-}
+import { resolveEntitlements } from "./app/entitlementPhase";
+import { cacheTierMismatch, invalidateModulesCache, readCachedModules, writeCachedModules } from "./app/modulesCache";
 import {
   inferBehaveProjectFromProgress,
   requestAppExitIfClosing,
@@ -65,6 +44,7 @@ import { useMobileRecording } from "./hooks/useMobileRecording";
 import { HomeSurface } from "./home/HomeSurface";
 import { AppHeader, ErrorAlert } from "./layout/AppShell";
 import { BetaExpiredScreen } from "./components/BetaExpiredScreen";
+import { AiSetupWizardModal } from "./components/AiSetupWizardModal";
 import { JobWorkspace } from "./job/JobWorkspace";
 import { SettingsDialog } from "./settings/SettingsDialog";
 
@@ -99,14 +79,16 @@ export default function App() {
   const [aiMemoryImportFile, setAiMemoryImportFile] = useState<File | null>(null);
   const [aiMemoryBusy, setAiMemoryBusy] = useState(false);
   const [aiMemoryMsg, setAiMemoryMsg] = useState<string | null>(null);
+  const [aiWizardOpen, setAiWizardOpen] = useState(false);
   const [bddPreviewText, setBddPreviewText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   const [aboutInfo, setAboutInfo] = useState<AppAboutResponse | null>(null);
   const [aboutChangelogOpen, setAboutChangelogOpen] = useState(false);
-  const [modules, setModules] = useState<ModulesStatus | null>(() => readCachedModules());
-  // true mientras no haya un resultado de verificación (ni caché ni fetch resuelto).
-  const [modulesLoading, setModulesLoading] = useState<boolean>(() => readCachedModules() == null);
+  const [modules, setModules] = useState<ModulesStatus | null>(null);
+  const [modulesLoading, setModulesLoading] = useState(true);
+  const [modulesFetchFailed, setModulesFetchFailed] = useState(false);
+  const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(false);
   const [showLockModal, setShowLockModal] = useState<string | null>(null);
   const [platform, setPlatform] = useState<"web" | "mobile" | "legacy">("web");
   const [recorderPreflight, setRecorderPreflight] = useState<RecorderPreflightResponse | null>(null);
@@ -127,7 +109,7 @@ export default function App() {
   const licenseState = useLicense({ isHomeSurface, settingsOpen, settingsTab, setSettingsTab });
   const {
     license, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
-    fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, refreshLicense,
+    fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, licenseLoading, refreshLicense,
   } = licenseState;
 
   const connectorState = useConnectors({ isHomeSurface });
@@ -215,6 +197,11 @@ export default function App() {
   }, [isHomeSurface, refreshAiCapabilities]);
 
   useEffect(() => {
+    if (!isHomeSurface || !aiCaps?.setup?.show_wizard) return;
+    setAiWizardOpen(true);
+  }, [isHomeSurface, aiCaps?.setup?.show_wizard]);
+
+  useEffect(() => {
     if (settingsOpen && isHomeSurface) void refreshAiCapabilities();
   }, [settingsOpen, isHomeSurface, refreshAiCapabilities]);
 
@@ -267,24 +254,77 @@ export default function App() {
   }, [canRunJobs]);
 
   useEffect(() => {
-    if (!isHomeSurface) return;
+    if (!isHomeSurface || !canRunJobs) {
+      setModulesLoading(false);
+      return;
+    }
     let alive = true;
+    setModulesLoading(true);
+    setModulesFetchFailed(false);
     void (async () => {
       try {
         const m = await getModulesStatus();
-        if (alive) {
-          setModules(m);
-          writeCachedModules(m);
-        }
+        if (!alive) return;
+        setModules(m);
+        writeCachedModules(m);
+        setModulesFetchFailed(false);
+        setOfflineBannerDismissed(false);
       } catch {
-        // Error transitorio: conservar el último estado conocido (caché) en lugar
-        // de anularlo, para no aparentar que la licencia se perdió.
+        if (!alive) return;
+        setModulesFetchFailed(true);
+        const cached = readCachedModules();
+        if (cached) setModules(cached);
       } finally {
         if (alive) setModulesLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, [isHomeSurface, canRunJobs]);
+    return () => {
+      alive = false;
+    };
+  }, [isHomeSurface, canRunJobs, license?.tier]);
+
+  useEffect(() => {
+    if (!license?.can_run_jobs || licenseLoading) return;
+    const cached = readCachedModules();
+    if (!cacheTierMismatch(license.tier, cached)) return;
+    invalidateModulesCache();
+    setModules(null);
+    if (isHomeSurface) setModulesLoading(true);
+  }, [license?.tier, license?.can_run_jobs, licenseLoading, isHomeSurface]);
+
+  useEffect(() => {
+    if (!isHomeSurface || !modulesFetchFailed || !canRunJobs) return;
+    const retry = () => {
+      if (document.visibilityState !== "visible") return;
+      setModulesLoading(true);
+      void getModulesStatus()
+        .then((m) => {
+          setModules(m);
+          writeCachedModules(m);
+          setModulesFetchFailed(false);
+          setOfflineBannerDismissed(false);
+        })
+        .catch(() => {
+          /* sigue offline */
+        })
+        .finally(() => setModulesLoading(false));
+    };
+    window.addEventListener("focus", retry);
+    return () => window.removeEventListener("focus", retry);
+  }, [isHomeSurface, modulesFetchFailed, canRunJobs]);
+
+  const entitlement = useMemo(
+    () =>
+      resolveEntitlements({
+        licenseLoading,
+        license,
+        modulesLoading,
+        modules,
+        modulesFetchFailed,
+        cachedModules: readCachedModules(),
+      }),
+    [licenseLoading, license, modulesLoading, modules, modulesFetchFailed],
+  );
 
   useEffect(() => {
     if (!isHomeSurface || homeTab !== "ui" || platform !== "web" || !canRunJobs) return;
@@ -622,11 +662,11 @@ export default function App() {
 
   const licenseCtx = useMemo(
     () => ({
-      license, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
+      license, licenseLoading, setLicense, activationKey, setActivationKey, licenseActivateMsg, setLicenseActivateMsg,
       fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, refreshLicense,
     }),
     [
-      license, activationKey, licenseActivateMsg, fpCopyAck, licenseFpVisible,
+      license, licenseLoading, activationKey, licenseActivateMsg, fpCopyAck, licenseFpVisible,
       canRunJobs, refreshLicense, setLicense, setActivationKey, setLicenseActivateMsg,
       setFpCopyAck, setLicenseFpVisible,
     ],
@@ -671,6 +711,11 @@ export default function App() {
     ],
   );
 
+  const reopenAiWizard = useCallback(() => {
+    setSettingsOpen(false);
+    setAiWizardOpen(true);
+  }, []);
+
   const settingsUiCtx = useMemo(
     () => ({
       c, dark, toggleTheme: toggle, visibleSettingsTabs, settingsTab, setSettingsTab,
@@ -678,19 +723,25 @@ export default function App() {
       aiMemoryStatus, aiMemoryTeamPassphrase, setAiMemoryTeamPassphrase, aiMemoryImportMode,
       setAiMemoryImportMode, aiMemoryImportFile, setAiMemoryImportFile, aiMemoryBusy, setAiMemoryBusy,
       aiMemoryMsg, setAiMemoryMsg, refreshAiMemoryStatus, setErrorText, setModules,
-      aboutInfo, aboutChangelogOpen, setAboutChangelogOpen,
+      aboutInfo, aboutChangelogOpen, setAboutChangelogOpen, reopenAiWizard,
     }),
     [
       c, dark, toggle, visibleSettingsTabs, settingsTab, aiCaps, aiPrefsSaving, aiMemoryOpen,
       aiMemoryStatus, aiMemoryTeamPassphrase, aiMemoryImportMode, aiMemoryImportFile, aiMemoryBusy,
-      aiMemoryMsg, refreshAiMemoryStatus, aboutInfo, aboutChangelogOpen,
+      aiMemoryMsg, refreshAiMemoryStatus, aboutInfo, aboutChangelogOpen, reopenAiWizard,
     ],
   );
 
   const homeUiCtx = useMemo(
     () => ({
-      c, dark, initialChecked, homeTab, setHomeTab, homeHint, setHomeHint, aiCaps, license,
+      c, dark, initialChecked, homeTab, setHomeTab, homeHint, setHomeHint, aiCaps, license, licenseLoading,
       setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules, modulesLoading,
+      entitlementPhase: entitlement.phase,
+      entitlementFeatures: entitlement.features,
+      entitlementBanner: entitlement.banner,
+      showTierUpsell: entitlement.showTierUpsell,
+      offlineBannerDismissed,
+      setOfflineBannerDismissed,
       showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
       autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
       setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
@@ -699,7 +750,8 @@ export default function App() {
       homeDataRefresh, pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
     }),
     [
-      c, dark, initialChecked, homeTab, homeHint, aiCaps, license, canRunJobs, modules, modulesLoading,
+      c, dark, initialChecked, homeTab, homeHint, aiCaps, license, licenseLoading, canRunJobs, modules, modulesLoading,
+      entitlement, offlineBannerDismissed,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
       availableRecordings, startJob, homeDataRefresh, pendingRunProject,
@@ -744,6 +796,19 @@ export default function App() {
                 />
 
                 <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+                {aiCaps?.setup && aiWizardOpen && (
+                  <AiSetupWizardModal
+                    c={c}
+                    open={aiWizardOpen}
+                    setup={aiCaps.setup}
+                    onClose={() => setAiWizardOpen(false)}
+                    onUpdated={(caps) => {
+                      setAiCaps(caps);
+                      if (!caps.setup?.show_wizard) setAiWizardOpen(false);
+                    }}
+                  />
+                )}
 
                 <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px" }}>
                   {!serverOnline && isHomeSurface ? (

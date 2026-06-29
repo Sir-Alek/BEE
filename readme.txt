@@ -28,9 +28,9 @@ Todo el ecosistema de ELIA opera bajo un enfoque de privacidad estricta.
 El procesamiento principal, la conversión y el almacenamiento ocurren 100% 
 en tu equipo: tus flujos de negocio, credenciales y documentos nunca se envían 
 a nubes externas por defecto.
-Incluso su cerebro de Inteligencia Artificial (impulsado por modelos compatibles
-como la familia Gemma) se ejecuta de forma local, garantizando la seguridad de
-tu infraestructura corporativa sin sacrificar innovación tecnológica.
+Incluso su cerebro de Inteligencia Artificial se ejecuta de forma local en tu PC,
+garantizando la seguridad de tu infraestructura corporativa sin sacrificar innovación
+tecnológica.
 
 --------------------------------------------------------------------------------
   REQUISITOS (Windows)
@@ -42,9 +42,10 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
   • Conexión a red/Internet: Necesaria para acceder a las páginas web que deseas grabar
    y para las integraciones (Jira, ValueEdge). Sin embargo, todo el procesamiento, 
    incluyendo la inteligencia y conversión de ELIA se realiza de forma estrictamente local.
-  • Para inteligencia local (IA): modelo de lenguaje compatible incluido (familia Gemma)
-   o colocado en la carpeta de recursos del producto, y recomendable ≥ 8 GB de RAM total
-   con ≥ 4 GB libres (modo Automático). Sin IA, las conversiones usan reglas heurísticas rápidas.
+  • Para inteligencia local (IA): motor de IA instalado o descargado desde ELIA (asistente
+   de primer arranque o Configuración → Inteligencia). Perfil Lite: ≤ 8 GB RAM total y
+   ≥ 4 GB libres. Perfil Standard: > 8 GB RAM total y ≥ 5 GB libres. Sin IA, las
+   conversiones usan reglas heurísticas rápidas.
 
   Si Chrome no está en la ruta habitual, tu administrador puede definir antes de
   abrir ELIA la variable de entorno:
@@ -67,6 +68,9 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
      la beta. Alterar de forma manual el reloj del sistema operativo o bloquear 
      completamente las salidas HTTP del backend provocará el bloqueo preventivo 
      de la aplicación por seguridad.
+  4. Descarga inicial de modelos IA (opcional): la primera instalación puede 
+     descargar archivos desde Hugging Face (repos oficiales Qwen). Tras la descarga,
+     la inferencia sigue siendo 100% local.
 
 --------------------------------------------------------------------------------
   INICIO RÁPIDO
@@ -76,22 +80,24 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
      tu organización.
   2. Abre ELIA desde el acceso directo. Se abrirá el navegador en la dirección
      local de la aplicación (por ejemplo http://127.0.0.1 y un puerto).
-  3. Mantén abierta la pestaña de INICIO: desde ahí lanzas cada operación; el
+  3. En el primer arranque, el asistente de IA local puede guiarte para descargar
+     o verificar los modelos según la RAM de tu equipo.
+  4. Mantén abierta la pestaña de INICIO: desde ahí lanzas cada operación; el
      resto de ventanas (grabación, avisos, resultados) se abren en pestañas nuevas.
-  4. Usa el icono de engranaje (Configuración) para licencia, inteligencia, temas
+  5. Usa el icono de engranaje (Configuración) para licencia, inteligencia, temas
      y conectores externos.
 
   Al cerrar la pestaña principal en tu navegador, el motor local de ELIA se detendrá
   automáticamente para liberar recursos.
 
 --------------------------------------------------------------------------------
-  PROGRAMA DE BETA PÚBLICA (JUNIO 2026)
+  PROGRAMA DE BETA PÚBLICA (JULIO 2026)
 --------------------------------------------------------------------------------
 
   Esta distribución de ELIA pertenece a una fase de Beta Pública exclusiva. 
   
-  • Duración de la Beta: 30 días, activa desde el 1 de junio de 2026 hasta su 
-    fecha límite automática el 30 de junio de 2026 a las 23:59:59 UTC.
+  • Duración de la Beta: 30 días, activa desde el 1 de julio de 2026 hasta su 
+    fecha límite automática el 31 de julio de 2026 a las 23:59:59 UTC.
   • Acceso Completo: Todas las capacidades premium (Automatización Web/Mobile, 
     generación BDD e Inteligencia Artificial) están desbloqueadas de fábrica.
   • Sin Claves de Activación: El software es "Plug-and-Play". No necesitas 
@@ -150,15 +156,55 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
 
   En Configuración → pestaña «Inteligencia» puedes elegir:
 
-    • Automático (recomendado): usa IA solo si el modelo está disponible, el motor
-      local responde y hay RAM suficiente; si no, convierte en modo rápido.
+    • Automático (recomendado): usa IA solo si el motor local está instalado,
+      responde y hay RAM suficiente; si no, convierte en modo rápido (heurísticas).
     • Siempre activada: intenta IA en cada conversión (puede ir lento si falta RAM).
     • Desactivada: solo conversiones heurísticas, sin modelo generativo.
+
+  Perfiles según hardware (asignación automática):
+    • ELIA Standard (> 8 GB RAM total, ≥ 5 GB libres): experiencia completa para QA.
+    • ELIA Lite (≤ 8 GB RAM total, ≥ 4 GB libres): fallback en equipos limitados.
+    • Sin IA (< 8 GB RAM o RAM libre insuficiente): solo heurísticas.
 
   La comprobación de RAM no es continua durante un lote largo: se evalúa al iniciar
   cada trabajo y al refrescar el estado en Configuración.
   ELIA puede recordar correcciones que hagas en BDD (memoria local) para afinar
   futuras sugerencias de redacción.
+
+  Asistente de primer arranque: al abrir ELIA por primera vez (o desde «Reabrir
+  asistente de IA» en Configuración) puedes descargar los modelos, verificar una
+  copia manual o posponer la configuración.
+
+--------------------------------------------------------------------------------
+  MODELOS DE IA LOCAL (REFERENCIA TÉCNICA)
+--------------------------------------------------------------------------------
+
+  ELIA usa modelos GGUF cuantizados Q4_K_M, inferencia local vía llama.cpp
+  (llama-cpp-python). Descarga desde repos oficiales Hugging Face o copia manual
+  a la carpeta indicada en Configuración → Inteligencia.
+
+  PERFIL STANDARD (> 8 GB RAM) — ~10 GB en disco, un componente en RAM a la vez:
+    • Análisis / Doc-to-BDD: Qwen3-8B-GGUF → Qwen3-8B-Q4_K_M.gguf (~5 GB)
+      Repo: https://huggingface.co/Qwen/Qwen3-8B-GGUF
+    • Código / locators / JSON: Qwen2.5-Coder-7B-Instruct-GGUF →
+      qwen2.5-coder-7b-instruct-q4_k_m.gguf (~4,7 GB)
+      Repo: https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  PERFIL LITE (≤ 8 GB RAM) — ~2,5 GB en disco:
+    • Unificado: Qwen3-4B-GGUF → Qwen3-4B-Q4_K_M.gguf (~2,5 GB)
+      Repo: https://huggingface.co/Qwen/Qwen3-4B-GGUF
+
+  Rutas por defecto (desarrollo / instalación):
+    resources/models/qwen/standard/   (Standard)
+    resources/models/qwen/lite/       (Lite)
+  En ejecutable empaquetado, la descarga va a Documentos\ELIA\models\qwen\
+
+  Variables útiles (administradores):
+    ELIA_LLAMA_N_CTX=4096
+    ELIA_LLAMA_N_GPU_LAYERS=0
+    ELIA_AI_LITE_MIN_RAM_FREE_GB=4
+    ELIA_AI_STANDARD_MIN_RAM_FREE_GB=5
+    ELIA_AI_MODELS_DIR=<ruta alternativa>
 
 --------------------------------------------------------------------------------
   CONECTORES Y PUBLICADORES (EXTRACCIÓN Y SUBIDA)
@@ -198,16 +244,16 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
 
   • General — Control visual de la interfaz (conmutación de tema claro/oscuro) 
     y preferencias de logs y alertas de la plataforma.
-  • Inteligencia — Configuración del motor de IA local (Gemma). Permite validar 
-    la capacidad de hardware (RAM libre), comprobar la integridad del archivo 
-    GGUF y alternar los modos de asistencia automatizada.
+  • Inteligencia — Motor de IA local: perfil (Standard/Lite), RAM, descarga o
+    verificación de modelos, modos Automático / Siempre / Desactivado y memoria
+    de estilo BDD del equipo.
   • Conectores — Panel centralizado para dar de alta y probar credenciales. 
     Permite configurar URLs, credenciales y tokens de acceso para Jira, Xray, 
     Value Edge, Azure DevOps y Git, con validación de conexión en tiempo real.
   • Licencia — Estado del periodo de pruebas de la Beta Pública. Monitorea de 
     forma autónoma el tiempo restante de tus 30 días de uso libre sin requerir 
     intervención o activación manual.
-  • Acerca de — Resumen de metadatos de ELIA: versión del producto (0.9.68), 
+  • Acerca de — Resumen de metadatos de ELIA: versión del producto (0.10.10), 
     créditos del desarrollador, enlaces al canal oficial de soporte y acceso al 
     formulario exclusivo para reportar feedback de la beta.
 
@@ -220,7 +266,7 @@ tu infraestructura corporativa sin sacrificar innovación tecnológica.
   
   • Formulario de Feedback Beta: https://forms.gle/Ep4AzkPToW8A2Zd99
   • Correo de Contacto: elia.qa.software+contacto@gmail.com
-  • Versión del Producto: 0.9.68 (Canal: Beta Pública)
+  • Versión del Producto: 0.10.10 (Canal: Beta Pública — Julio 2026)
   • Desarrollador: Alejandro Ramírez </Sir_Alek>
 
 ================================================================================

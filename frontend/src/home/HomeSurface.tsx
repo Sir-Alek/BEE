@@ -1,7 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { stopMobileAppium, getRecordings, getScenarios, uploadDocs } from "../api";
 import { encodeRecordingLink, encodeScenarioLink } from "../app/linkUtils";
-import { featureFromModules } from "../app/entitlements";
+import {
+  canExecuteHomeActions,
+  getFeatureAccess,
+  isNoLicense,
+  shouldShowTierUpsell,
+} from "../app/entitlementPhase";
 import {
   formatLicenseExpiryDate,
   licenseNeedsActivationBanner,
@@ -11,6 +16,8 @@ import {
   type LicenseState,
 } from "../app/licenseUtils";
 import { OutlinedButton, SecondaryToolbar } from "../components/ui";
+import { EntitlementBanner } from "../components/EntitlementBanner";
+import { NoLicenseOverlay } from "../components/NoLicenseOverlay";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
@@ -24,8 +31,10 @@ import { useRecordingContext } from "../context/RecordingContext";
 
 export function HomeSurface() {
   const {
-    c, dark, initialChecked, homeTab, setHomeTab, homeHint, license,
+    c, dark, initialChecked, homeTab, setHomeTab, homeHint, license, licenseLoading,
     setSettingsOpen, setSettingsTab, setLicenseActivateMsg, canRunJobs, modules, modulesLoading,
+    entitlementPhase, entitlementFeatures, entitlementBanner, showTierUpsell,
+    offlineBannerDismissed, setOfflineBannerDismissed,
     showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
     setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
@@ -51,7 +60,22 @@ export function HomeSurface() {
 
   const [runProject, setRunProject] = useState("");
   const runProjects = usePlatformProjects(platform, homeDataRefresh);
-  const features = useMemo(() => featureFromModules(modules), [modules]);
+  const features = entitlementFeatures;
+  const actionsEnabled = canExecuteHomeActions(entitlementPhase, canRunJobs);
+
+  const openLicenseSettings = () => {
+    setSettingsTab("license");
+    setSettingsOpen(true);
+  };
+
+  const docAccess = getFeatureAccess(entitlementPhase, "doc_to_bdd", features, license);
+  const mobileAccess = getFeatureAccess(entitlementPhase, "mobile_recording", features, license);
+  const legacyAccess = getFeatureAccess(entitlementPhase, "legacy_recording", features, license);
+
+  const showDocLock = shouldShowTierUpsell(entitlementPhase, docAccess, showTierUpsell);
+  const showMobileLock = shouldShowTierUpsell(entitlementPhase, mobileAccess, showTierUpsell);
+  const showLegacyLock = shouldShowTierUpsell(entitlementPhase, legacyAccess, showTierUpsell);
+
   const [softExpiryDismissed, setSoftExpiryDismissed] = useState(() => {
     if (!license?.expires_at) return false;
     try {
@@ -60,10 +84,6 @@ export function HomeSurface() {
       return false;
     }
   });
-  // Mientras se verifica la licencia por primera vez (sin caché previa), evitamos
-  // mostrar candados/insignias de "bloqueado" para no confundir al usuario; los
-  // bloqueos reales se aplican en cuanto hay un resultado de verificación.
-  const entitlementsReady = modules !== null || !modulesLoading;
 
   useEffect(() => {
     if (!license?.expires_at) return;
@@ -138,10 +158,11 @@ export function HomeSurface() {
                 type="button"
                 data-testid="elia-home-tab-req"
                 onClick={() => {
-                  if (!features.doc_to_bdd) {
-                    if (entitlementsReady) setShowLockModal("doc_to_bdd");
+                  if (docAccess === "denied" && showDocLock) {
+                    setShowLockModal("doc_to_bdd");
                     return;
                   }
+                  if (docAccess !== "granted") return;
                   setHomeTab("req");
                 }}
                 style={{
@@ -157,9 +178,9 @@ export function HomeSurface() {
                   gap: 6,
                 }}
               >
-                {entitlementsReady && !features.doc_to_bdd ? <span style={{ fontSize: 12 }}>🔒</span> : null}
+                {showDocLock ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
-                {entitlementsReady && !features.doc_to_bdd ? <TierBadge c={c} label="Tester" /> : null}
+                {showDocLock ? <TierBadge c={c} label="Tester" /> : null}
               </button>
               <button
                 type="button"
@@ -195,6 +216,13 @@ export function HomeSurface() {
                 {homeHint}
               </div>
             )}
+
+            <EntitlementBanner
+              c={c}
+              banner={entitlementBanner}
+              offlineDismissed={offlineBannerDismissed}
+              onDismissOffline={() => setOfflineBannerDismissed(true)}
+            />
 
             {license && licenseNeedsActivationBanner(license) && (
               <div
@@ -314,7 +342,14 @@ export function HomeSurface() {
                 </div>
               )}
 
-            {homeTab === "ui" && (
+
+            {isNoLicense(entitlementPhase) ? (
+              <NoLicenseOverlay c={c} license={license} onOpenLicenseSettings={openLicenseSettings}>
+                <div data-testid="elia-no-license-placeholder" style={{ minHeight: 320 }} />
+              </NoLicenseOverlay>
+            ) : null}
+
+            {!isNoLicense(entitlementPhase) && homeTab === "ui" && (
               <>
                 {/* Lock Modal */}
                 {showLockModal && (
@@ -333,20 +368,17 @@ export function HomeSurface() {
                   />
                 )}
 
-                <div
-                  style={{
-                    opacity: canRunJobs ? 1 : 0.55,
-                    pointerEvents: canRunJobs ? "auto" : "none",
-                  }}
-                >
+                <div>
 
                 {/* Segmented Control — selector de plataforma */}
                 <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                   {(["web", "mobile", "legacy"] as const).map((p) => {
                     const labels = { web: "Web", mobile: "Móvil", legacy: "Legacy" };
+                    const access =
+                      p === "mobile" ? mobileAccess : p === "legacy" ? legacyAccess : ("granted" as const);
                     const locked =
-                      entitlementsReady &&
-                      ((p === "mobile" && !features.mobile_recording) || (p === "legacy" && !features.legacy_recording));
+                      p === "mobile" ? showMobileLock : p === "legacy" ? showLegacyLock : false;
+                    const pending = access === "pending";
                     const badge = p === "mobile" ? "Tester" : p === "legacy" ? "Architect" : null;
                     const active = platform === p;
                     return (
@@ -355,6 +387,7 @@ export function HomeSurface() {
                         data-testid={`elia-platform-${p}`}
                         onClick={() => {
                           if (locked) { setShowLockModal(p); return; }
+                          if (access === "denied" || access === "pending") return;
                           setPlatform(p);
                         }}
                         style={{
@@ -362,15 +395,16 @@ export function HomeSurface() {
                           borderRadius: 8,
                           border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
                           background: active ? c.primary : c.btnGhostBg,
-                          color: active ? c.primaryFg : locked ? c.muted : c.text,
+                          color: active ? c.primaryFg : locked || pending ? c.muted : c.text,
                           fontWeight: active ? 700 : 400,
                           cursor: "pointer",
-                          opacity: locked ? 0.6 : 1,
+                          opacity: locked ? 0.6 : pending ? 0.5 : 1,
                           fontSize: 14,
                           display: "flex", alignItems: "center", gap: 5,
                         }}
                       >
                         {locked && <span style={{ fontSize: 12 }}>🔒</span>}
+                        {pending && !locked && <span style={{ fontSize: 10, opacity: 0.7 }}>…</span>}
                         {labels[p]}
                         {locked && badge ? <TierBadge c={c} label={badge} /> : null}
                       </button>
@@ -470,9 +504,9 @@ export function HomeSurface() {
                       <input
                         type="checkbox"
                         checked={autoLinkToScenario}
-                        disabled={!canRunJobs}
+                        disabled={!actionsEnabled}
                         onChange={async (e) => {
-                          if (!canRunJobs) return;
+                          if (!actionsEnabled) return;
                           const checked = e.target.checked;
                           setAutoLinkToScenario(checked);
                           if (checked) {
@@ -498,7 +532,7 @@ export function HomeSurface() {
                     {autoLinkToScenario && (
                       <select
                         value={autoLinkScenarioRef}
-                        disabled={!canRunJobs}
+                        disabled={!actionsEnabled}
                         onChange={(e) => setAutoLinkScenarioRef(e.target.value)}
                         style={{
                           marginTop: 8,
@@ -531,7 +565,7 @@ export function HomeSurface() {
                   <button
                     data-testid="elia-btn-record"
                     disabled={
-                      (license ? !license.can_run_jobs : false) ||
+                      !actionsEnabled ||
                       (platform === "web" &&
                         (recorderPreflightLoading || (recorderPreflight != null && !recorderPreflight.ok))) ||
                       (platform === "mobile" &&
@@ -545,7 +579,7 @@ export function HomeSurface() {
                     style={{
                       padding: "10px 14px", borderRadius: 10,
                       background:
-                        license && !license.can_run_jobs
+                        !actionsEnabled
                           ? c.buttonDisabledBg
                           : platform === "web" && recorderPreflight && !recorderPreflight.ok
                             ? c.buttonDisabledBg
@@ -554,7 +588,7 @@ export function HomeSurface() {
                               : c.primary,
                       color: c.primaryFg, border: "none",
                       cursor:
-                        (license && !license.can_run_jobs) ||
+                        !actionsEnabled ||
                         (platform === "web" && recorderPreflight && !recorderPreflight.ok) ||
                         (platform === "mobile" && mobilePreflight && !mobilePreflight.ok)
                           ? "not-allowed"
@@ -565,7 +599,7 @@ export function HomeSurface() {
                   </button>
                   <button
                     disabled={
-                      (license ? !license.can_run_jobs : false) ||
+                      !actionsEnabled ||
                       (platform === "mobile" && !features.mobile_recording) ||
                       (platform === "legacy" && !features.legacy_recording)
                     }
@@ -578,22 +612,22 @@ export function HomeSurface() {
                       padding: "10px 14px", borderRadius: 10,
                       background: c.btnGhostBg, color: c.text,
                       border: `1px solid ${c.btnGhostBorder}`,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
+                      opacity: !actionsEnabled ? 0.5 : 1,
                     }}
                   >
                     Convertir a Behave
                   </button>
                   {platform === "web" && (
                   <button
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={!actionsEnabled}
                     onClick={() => void startJob("puppeteer_to_step_by_step")}
                     style={{
                       padding: "10px 14px", borderRadius: 10,
                       background: c.btnGhostBg, color: c.text,
                       border: `1px solid ${c.btnGhostBorder}`,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
-                      opacity: license && !license.can_run_jobs ? 0.5 : 1,
+                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
+                      opacity: !actionsEnabled ? 0.5 : 1,
                     }}
                   >
                     Convertir a step by step
@@ -625,7 +659,7 @@ export function HomeSurface() {
                     c={c}
                     platform={platform}
                     project={runProject}
-                    canRunJobs={canRunJobs}
+                    canRunJobs={actionsEnabled}
                     onShowError={showHomeError}
                     showLocust={false}
                   />
@@ -634,15 +668,15 @@ export function HomeSurface() {
               </>
             )}
 
-            {homeTab === "req" && (
+            {!isNoLicense(entitlementPhase) && homeTab === "req" && (
               <div
                 style={{
                   background: c.neutralBg,
                   border: `1px solid ${c.border}`,
                   borderRadius: 14,
                   padding: 14,
-                  opacity: canRunJobs ? 1 : 0.55,
-                  pointerEvents: canRunJobs ? "auto" : "none",
+                  opacity: docAccess === "pending" ? 0.55 : 1,
+                  pointerEvents: docAccess === "pending" ? "none" : "auto",
                 }}
               >
                 <div style={{ fontWeight: 800, color: c.text, marginBottom: 6 }}>Inteligencia de Requerimientos</div>
@@ -758,9 +792,9 @@ export function HomeSurface() {
                   <input
                     type="checkbox"
                     checked={linkRecordings}
-                    disabled={!canRunJobs}
+                    disabled={!actionsEnabled}
                     onChange={async (e) => {
-                      if (!canRunJobs) return;
+                      if (!actionsEnabled) return;
                       const checked = e.target.checked;
                       setLinkRecordings(checked);
                       if (checked) {
@@ -854,13 +888,13 @@ export function HomeSurface() {
                 <div style={{ marginTop: 4 }}>
                   <button
                     data-testid="elia-btn-doc-bdd"
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={!actionsEnabled}
                     onClick={() => void startJob("doc_to_bdd")}
                     style={{
                       padding: "10px 20px", borderRadius: 10,
-                      background: license && !license.can_run_jobs ? c.buttonDisabledBg : c.primary,
+                      background: !actionsEnabled ? c.buttonDisabledBg : c.primary,
                       color: c.primaryFg, border: "none", fontWeight: 600, fontSize: 14,
-                      cursor: license && !license.can_run_jobs ? "not-allowed" : "pointer",
+                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
                     }}
                   >
                     Procesar y Convertir a BDD
@@ -888,7 +922,7 @@ export function HomeSurface() {
                   </select>
                   <OutlinedButton
                     c={c}
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={!actionsEnabled}
                     onClick={() => void startJob("elia_jira_smoke")}
                     testId="elia-btn-jira-smoke"
                   >
@@ -896,7 +930,7 @@ export function HomeSurface() {
                   </OutlinedButton>
                   <OutlinedButton
                     c={c}
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={!actionsEnabled}
                     onClick={() => void startJob("elia_value_edge_smoke")}
                     testId="elia-btn-ve-smoke"
                   >
@@ -904,7 +938,7 @@ export function HomeSurface() {
                   </OutlinedButton>
                   <OutlinedButton
                     c={c}
-                    disabled={license ? !license.can_run_jobs : false}
+                    disabled={!actionsEnabled}
                     onClick={() => void startJob("elia_gherkin_batch")}
                     testId="elia-btn-gherkin-batch"
                   >
@@ -913,12 +947,16 @@ export function HomeSurface() {
                 </SecondaryToolbar>
               </div>
             )}
-            {homeTab === "api" && (
+            {!isNoLicense(entitlementPhase) && homeTab === "api" && (
               <ApiSurface
                 c={c}
                 modules={modules}
                 modulesLoading={modulesLoading}
                 canRunJobs={canRunJobs}
+                entitlementPhase={entitlementPhase}
+                entitlementFeatures={entitlementFeatures}
+                showTierUpsell={showTierUpsell}
+                license={license}
                 onShowError={showHomeError}
                 setHomeHint={setHomeHint}
               />

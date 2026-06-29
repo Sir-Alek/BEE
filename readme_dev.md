@@ -224,7 +224,7 @@ Módulos Python en la raíz del paquete **`core/`** (mismo nivel que los demás 
 
 ## Modelo Gemma (GGUF, opcional)
 
-Coloca el `.gguf` bajo `resources/models/gemma/` (los modelos grandes suelen estar en `.gitignore`). La resolución de ruta está en `core/gemma_model_paths.py`; inferencia con `llama-cpp-python` en `core/gemma_inference.py`. Variables útiles: `ELIA_LLAMA_N_CTX`, `ELIA_LLAMA_N_GPU_LAYERS`.
+Coloca los `.gguf` bajo `resources/models/qwen/` (lite/ o standard/) o descárgalos desde Configuración → Inteligencia. Manifest: `resources/models/models_manifest.json`. Runtime: `core/ai/` (inferencia en `core/gemma_inference.py` como shim). Perfiles: **Standard** (>8 GB RAM, ≥5 GB libres), **Lite** (≤8 GB, ≥4 GB libres). Variables: `ELIA_LLAMA_N_CTX`, `ELIA_LLAMA_N_GPU_LAYERS`, `ELIA_AI_LITE_MIN_RAM_FREE_GB`, `ELIA_AI_STANDARD_MIN_RAM_FREE_GB`.
 
 ## Interfaz web (recordatorio para desarrollo)
 

@@ -58,7 +58,7 @@ def infer_api_assertions(req: ApiRequest, *, use_ai: bool = False) -> List[ApiAs
         'Return ONLY: {"assertions":[{"kind":"status"|"jsonpath","expression":"","expected":"..."}]}\n'
         "Max 4 assertions. Prefer status code and top-level JSON keys."
     )
-    data = run_llama_json_prompt(prompt, max_tokens=384, temperature=0.15)
+    data = run_llama_json_prompt(prompt, max_tokens=384, temperature=0.15, task="api_assertion")
     if not isinstance(data, dict):
         return _heuristic_assertions(req)
 

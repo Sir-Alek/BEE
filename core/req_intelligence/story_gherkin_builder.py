@@ -390,7 +390,7 @@ class StoryGherkinBuilder:
             "Devuelve JSON: {\"keyword\": \"given\" | \"when\" | \"then\" | \"and\"}\n"
             f"Paso: {step_text[:200]}\n"
         )
-        data = run_llama_json_prompt(prompt, max_tokens=32, temperature=0.05)
+        data = run_llama_json_prompt(prompt, max_tokens=32, temperature=0.05, task="gherkin_classify")
         if not data:
             return None
         kw = str(data.get("keyword", "")).strip().lower()
@@ -454,7 +454,7 @@ class StoryGherkinBuilder:
             "- Máximo 130 caracteres por campo de texto\n"
         )
 
-        result = run_llama_json_prompt(prompt, max_tokens=350, temperature=0.1)
+        result = run_llama_json_prompt(prompt, max_tokens=350, temperature=0.1, task="gherkin_generate")
         if not result:
             return None
 

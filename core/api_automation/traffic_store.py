@@ -246,31 +246,34 @@ def ingest_capture_dict(data: Dict[str, Any], *, source_url: str = "") -> ApiTra
     )
 
 
-def list_scenarios(project: str, *, collection_id: Optional[str] = None) -> List[Dict[str, str]]:
+def list_scenarios(
+    project: str,
+    *,
+    collection_id: Optional[str] = None,
+    collections: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, str]]:
+    from core.api_automation.scenario_index import display_name_for_scenario, ensure_index
+
     ensure_api_project(project)
     out: List[Dict[str, str]] = []
-    collections = list_collections(project)
-    allowed = {c["id"] for c in collections}
+    if collections is None:
+        collections = list_collections(project)
+    name_by_id = {str(c["id"]): str(c.get("name") or c["id"]) for c in collections}
+    allowed = set(name_by_id)
     targets = [collection_id] if collection_id else sorted(allowed)
+    index = ensure_index(project)
     for cid in targets:
         if cid not in allowed:
             continue
         sdir = collection_scenarios_dir(project, cid)
         if not sdir.is_dir():
             continue
-        cname = get_collection_name(project, cid)
+        cname = name_by_id.get(cid, cid)
         for path in sorted(sdir.glob("*.json")):
-            display_name = path.stem
-            try:
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    raw_name = str(data.get("name") or "").strip()
-                    if raw_name:
-                        display_name = raw_name
-            except (OSError, json.JSONDecodeError, TypeError):
-                pass
             sid = scenario_ref(cid, path.name)
+            display_name = display_name_for_scenario(
+                project, sid, path_stem=path.stem, index=index
+            )
             out.append(
                 {
                     "id": sid,
@@ -317,7 +320,14 @@ def save_scenario(
     path = target / fname
     with open(path, "w", encoding="utf-8") as f:
         json.dump(request.to_dict(), f, ensure_ascii=False, indent=2)
-    return scenario_ref(cid, fname)
+    sid = scenario_ref(cid, fname)
+    try:
+        from core.api_automation.scenario_index import upsert_scenario
+
+        upsert_scenario(project, sid, name=str(request.name or path.stem))
+    except Exception:
+        pass
+    return sid
 
 
 def delete_scenario(project: str, scenario_id: str) -> None:
@@ -326,6 +336,12 @@ def delete_scenario(project: str, scenario_id: str) -> None:
     if not path.is_file():
         raise FileNotFoundError(scenario_id)
     path.unlink()
+    try:
+        from core.api_automation.scenario_index import remove_scenario
+
+        remove_scenario(project, scenario_id)
+    except Exception:
+        pass
 
 
 def clone_scenario(project: str, scenario_id: str, *, new_name: Optional[str] = None) -> str:

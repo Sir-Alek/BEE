@@ -76,19 +76,73 @@ Feature: Gestión de Usuarios
 """.strip()
 
 _SYSTEM_PROMPT = (
-    "Eres un SDET experto en Behavior-Driven Development (BDD). "
-    "Conviertes requerimientos de software en escenarios BDD en español.\n"
+    "Eres un SDET experto en Behavior-Driven Development (BDD) con Behave (Python).\n"
+    "Conviertes requerimientos de software en escenarios BDD.\n"
     "IMPORTANTE — responde SOLO con un JSON válido con estos campos:\n"
     '  "analisis_previo": texto breve donde mapeas requerimientos → pasos de negocio (Chain of Thought).\n'
     '  "scenario_title": nombre del escenario sin prefijos «Verificar:» ni IDs de caso.\n'
     '  "steps": lista de objetos {"keyword":"Given|When|Then|And|But","text":"..."}\n'
     "REGLAS para steps:\n"
-    "1. Lenguaje de negocio; PROHIBIDO selectores HTML, ids técnicos o nombres de botones del DOM.\n"
-    "2. Estructura: ≤1 Given, exactamente 1 When, ≤1 And, exactamente 1 Then; orden Given→When→And?→Then.\n"
-    "3. Máximo 120 caracteres por paso.\n"
-    "4. Usa analisis_previo para razonar ANTES de redactar los steps.\n\n"
+    "1. Lenguaje de negocio en el texto del paso (español u otro idioma del requerimiento).\n"
+    "2. OBLIGATORIO: keyword en inglés (Given, When, Then, And, But) — convención Behave.\n"
+    "3. PROHIBIDO selectores HTML, ids técnicos o nombres de botones del DOM.\n"
+    "4. Estructura: ≤1 Given, exactamente 1 When, ≤1 And, exactamente 1 Then; orden Given→When→And?→Then.\n"
+    "5. Máximo 120 caracteres por paso.\n"
+    "6. Usa analisis_previo para razonar ANTES de redactar los steps.\n\n"
     f"EJEMPLOS DE REFERENCIA:\n{_FEW_SHOT_EXAMPLES}\n"
 )
+
+
+_GHERKIN_KW_EN = {
+    "given": "Given",
+    "when": "When",
+    "then": "Then",
+    "and": "And",
+    "but": "But",
+    "dado": "Given",
+    "cuando": "When",
+    "entonces": "Then",
+    "y": "And",
+    "pero": "But",
+}
+
+
+def _gherkin_keyword_instruction() -> str:
+    try:
+        from core.ai_policy import load_preferences
+
+        if load_preferences().get("gherkin_keywords_english", True):
+            return (
+                "Usa SIEMPRE keywords Gherkin en inglés (Given/When/Then/And/But); "
+                "el texto del paso puede estar en español."
+            )
+    except Exception:
+        pass
+    return "Usa keywords Gherkin en inglés (Given/When/Then/And/But) por compatibilidad con Behave."
+
+
+def _normalize_gherkin_keywords(text: str) -> str:
+    """Normaliza keywords a inglés (Behave) sin alterar el cuerpo del paso."""
+    out: List[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        m_kw = re.match(
+            r"(Given|When|Then|And|But|Dado|Cuando|Entonces|Y|Pero)\s+(.*)",
+            stripped,
+            re.IGNORECASE,
+        )
+        if m_kw:
+            raw_kw = m_kw.group(1).lower()
+            en = _GHERKIN_KW_EN.get(raw_kw, m_kw.group(1).capitalize())
+            out.append(f"{indent}{en} {m_kw.group(2).strip()}")
+            continue
+        out.append(line)
+    result = "\n".join(out)
+    return result + ("\n" if text.endswith("\n") else "")
 
 
 def _resolve_gbnf_path() -> Optional[str]:
@@ -136,8 +190,10 @@ def _memory_few_shot_block(examples: List[Dict[str, str]]) -> str:
 def _build_prompt(chunk: DocChunk, *, memory_block: str = "") -> str:
     """Construye el prompt para un DocChunk específico."""
     mem = f"{memory_block}\n" if memory_block else ""
+    gherkin_rule = _gherkin_keyword_instruction()
     return (
         f"{_SYSTEM_PROMPT}\n\n"
+        f"CONVENCIÓN GHERKIN: {gherkin_rule}\n\n"
         f"{mem}"
         "=== NUEVO REQUERIMIENTO A CONVERTIR ===\n"
         f"Título: {chunk.title}\n"
@@ -169,7 +225,8 @@ def _scenario_display_name(chunk: DocChunk) -> str:
 
 
 def _sanitize_gherkin_text(text: str) -> str:
-    """Quita prefijos redundantes en Scenario: y Given producidos por heurística o LLM."""
+    """Quita prefijos redundantes en Scenario: y Given; normaliza keywords a inglés."""
+    text = _normalize_gherkin_keywords(text)
     out: List[str] = []
     for line in text.splitlines():
         stripped = line.strip()
@@ -444,7 +501,7 @@ class BDDDocConverter:
 
         try:
             from core import gemma_inference
-            from core.elia_memory import append_correction, recent_examples_for_prompt
+            from core.elia_memory import append_correction, recent_examples_for_prompt, should_learn_correction
             from core.elia_memory_crypto import MANUAL_EDIT_FROM_ATTEMPT, MAX_AI_REVIEW_ATTEMPTS
 
             if not gemma_inference.is_ai_runtime_configured():
@@ -488,8 +545,9 @@ class BDDDocConverter:
                 if not ft:
                     ft = last_rendered
                 edited = bool(review.get("edited"))
-                if edited or ft != last_rendered.strip():
-                    append_correction(script_snippet=excerpt, feature_text=ft)
+                changed = ft != last_rendered.strip()
+                if should_learn_correction(edited=edited, content_changed=changed, attempt=attempt):
+                    append_correction(script_snippet=excerpt, feature_text=ft, source="doc_to_bdd")
                 return ft
             if action == "reject":
                 if attempt >= MAX_AI_REVIEW_ATTEMPTS:
@@ -553,7 +611,9 @@ class BDDDocConverter:
             '{"analisis_previo":"..."}\n\n'
             f"Título: {chunk.title}\n{chunk.content}\n"
         )
-        analysis_data = run_llama_json_prompt(analysis_prompt, max_tokens=320, temperature=temperature)
+        analysis_data = run_llama_json_prompt(
+            analysis_prompt, max_tokens=320, temperature=temperature, task="doc_to_bdd"
+        )
         analysis = str((analysis_data or {}).get("analisis_previo") or "").strip()
 
         steps_prompt = (

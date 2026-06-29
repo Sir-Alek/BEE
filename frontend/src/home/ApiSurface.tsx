@@ -60,15 +60,26 @@ import {
   useApiSurfacePersist,
   type ApiSurfacePersistedFields,
 } from "./api/useApiSurfacePersist";
-import { featureFromModules } from "../app/entitlements";
+import {
+  canExecuteHomeActions,
+  getFeatureAccess,
+  shouldShowTierUpsell,
+  type EntitlementPhase,
+} from "../app/entitlementPhase";
+import type { LicenseState } from "../app/licenseUtils";
+import { FeatureGate } from "../components/FeatureGate";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
-import type { ModulesStatus } from "../types";
+import type { FeatureFlags, ModulesStatus } from "../types";
 
 type Props = {
   c: Record<string, string>;
   modules: ModulesStatus | null;
   modulesLoading?: boolean;
   canRunJobs: boolean;
+  entitlementPhase: EntitlementPhase;
+  entitlementFeatures: FeatureFlags;
+  showTierUpsell: boolean;
+  license: LicenseState | null;
   onShowError: (msg: string) => void;
   setHomeHint: (msg: string | null) => void;
 };
@@ -80,11 +91,23 @@ type ApiSubTab = "postman" | "load";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
 export function ApiSurface(props: Props) {
-  const { c, modules, modulesLoading, canRunJobs, onShowError, setHomeHint } = props;
+  const {
+    c,
+    modules,
+    modulesLoading,
+    canRunJobs,
+    entitlementPhase,
+    entitlementFeatures,
+    showTierUpsell,
+    license,
+    onShowError,
+    setHomeHint,
+  } = props;
   const [projects, setProjects] = useState<string[]>([]);
   const [project, setProject] = useState(() => loadApiSurfacePersistProject() || "DefaultApi");
   const [newProject, setNewProject] = useState("");
   const [scenarios, setScenarios] = useState<ApiScenarioRow[]>([]);
+  const [scenariosLoading, setScenariosLoading] = useState(false);
   const [collections, setCollections] = useState<ApiCollectionRow[]>([]);
   const [activeCollectionId, setActiveCollectionId] = useState("_default");
   const [captures, setCaptures] = useState<{ id: string; name: string; path: string }[]>([]);
@@ -138,9 +161,33 @@ export function ApiSurface(props: Props) {
   }>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [suiteHistoryRefresh, setSuiteHistoryRefresh] = useState(0);
-  const features = useMemo(() => featureFromModules(modules), [modules]);
-  // Evita mostrar candados/upsell mientras se verifica la licencia por primera vez.
-  const entitlementsReady = modules !== null || !modulesLoading;
+  const features = entitlementFeatures;
+  const actionsEnabled = canExecuteHomeActions(entitlementPhase, canRunJobs);
+  const postmanAccess = getFeatureAccess(entitlementPhase, "api_postman_suites", features, license);
+  const locustAccess = getFeatureAccess(entitlementPhase, "api_locust", features, license);
+  const showPostmanUpsell = shouldShowTierUpsell(entitlementPhase, postmanAccess, showTierUpsell);
+
+  const upsellButton = (tier: "api_postman" | "api_locust", message: string) => (
+    <button
+      type="button"
+      onClick={() => setUpsell(tier)}
+      style={{
+        padding: "12px 18px",
+        borderRadius: 10,
+        border: `1px solid ${c.border}`,
+        background: c.surface,
+        color: c.text,
+        cursor: "pointer",
+        fontWeight: 700,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        boxShadow: c.shadow,
+      }}
+    >
+      🔒 {message}
+    </button>
+  );
 
   const envVarNames = useMemo(() => {
     try {
@@ -178,6 +225,7 @@ export function ApiSurface(props: Props) {
 
   const refreshScenarios = () => {
     if (!project.trim()) return;
+    setScenariosLoading(true);
     void getApiScenarios(project)
       .then((r) => {
         const cols = (r.collections || []).map((c) => ({
@@ -202,7 +250,8 @@ export function ApiSurface(props: Props) {
           setActiveCollectionId(cols[0]?.id || "_default");
         }
       })
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
+      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+      .finally(() => setScenariosLoading(false));
   };
 
   const refreshCaptures = () => {
@@ -326,53 +375,37 @@ export function ApiSurface(props: Props) {
       .catch(() => undefined);
   }, [loadRunFinished, runId]);
 
-  if (!features.api_http_single) {
+  const httpAccess = getFeatureAccess(entitlementPhase, "api_http_single", features, license);
+
+  if (httpAccess === "pending") {
+    return (
+      <div
+        data-testid="elia-api-http-pending"
+        style={{ fontSize: 13, color: c.muted, display: "flex", alignItems: "center", gap: 8 }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            border: `2px solid ${c.border}`,
+            borderTopColor: c.primary,
+            animation: "elia-spin 0.8s linear infinite",
+          }}
+        />
+        Cargando módulo API…
+      </div>
+    );
+  }
+
+  if (httpAccess === "denied") {
     return (
       <div style={{ fontSize: 14, color: c.muted }}>
         El módulo de pruebas API requiere licencia vigente con acceso HTTP habilitado.
       </div>
     );
   }
-
-  const lockOverlay = (locked: boolean, tier: "api_postman" | "api_locust", message: string, child: React.ReactNode) => {
-    if (!locked) return child;
-    return (
-      <div style={{ position: "relative" }}>
-        <div style={{ opacity: 0.45, pointerEvents: "none" }}>{child}</div>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(0,0,0,0.08)",
-            borderRadius: 12,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setUpsell(tier)}
-            style={{
-              padding: "12px 18px",
-              borderRadius: 10,
-              border: `1px solid ${c.border}`,
-              background: c.surface,
-              color: c.text,
-              cursor: "pointer",
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              boxShadow: c.shadow,
-            }}
-          >
-            🔒 {message}
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   const headersToRecord = (rows: HeaderRow[]) =>
     Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]));
@@ -898,17 +931,29 @@ export function ApiSurface(props: Props) {
           data-testid="elia-api-postman-layout"
           style={{
             display: "grid",
-            gridTemplateColumns:
-              features.api_postman_suites || !entitlementsReady ? "minmax(220px, 28%) 1fr" : "1fr",
+            gridTemplateColumns: "minmax(220px, 28%) 1fr",
             gap: 14,
             alignItems: "start",
           }}
         >
-          {features.api_postman_suites || !entitlementsReady ? (
+          <FeatureGate
+            c={c}
+            phase={entitlementPhase}
+            feature="api_postman_suites"
+            features={features}
+            license={license}
+            showTierUpsell={showTierUpsell}
+            minHeight="min(62vh, 640px)"
+            upsellOverlay={upsellButton(
+              "api_postman",
+              "Desbloquea la importación de colecciones con ELIA Tester",
+            )}
+          >
             <ApiPostmanSidebar
               c={c}
               busy={busy}
-              canRunJobs={canRunJobs}
+              canRunJobs={actionsEnabled}
+              scenariosLoading={scenariosLoading}
               collections={collections}
               scenarios={scenarios}
               activeScenarioId={activeScenarioId}
@@ -923,42 +968,15 @@ export function ApiSurface(props: Props) {
               onRenameScenario={handleRenameScenario}
               onDeleteScenario={handleDeleteScenario}
               onDeleteCollection={handleDeleteCollection}
-              onCloneScenario={features.api_postman_suites ? handleCloneScenario : undefined}
+              onCloneScenario={postmanAccess === "granted" ? handleCloneScenario : undefined}
               webOriginAvailable={webOriginAvailable}
               onSyncFromWeb={handleSyncFromWeb}
             />
-          ) : (
-            lockOverlay(
-              true,
-              "api_postman",
-              "Desbloquea la importación de colecciones con ELIA Tester",
-              <ApiPostmanSidebar
-                c={c}
-                busy={busy}
-                canRunJobs={canRunJobs}
-                collections={collections}
-                scenarios={scenarios}
-                activeScenarioId={activeScenarioId}
-                activeCollectionId={activeCollectionId}
-                onActiveCollectionChange={setActiveCollectionId}
-                captures={captures}
-                importKind={importKind}
-                onImportKindChange={setImportKind}
-                onImportFile={handleImportFile}
-                onImportCapture={handleImportCapture}
-                onLoadScenario={handleLoadScenario}
-                onRenameScenario={handleRenameScenario}
-                onDeleteScenario={handleDeleteScenario}
-                onDeleteCollection={handleDeleteCollection}
-                webOriginAvailable={webOriginAvailable}
-                onSyncFromWeb={handleSyncFromWeb}
-              />,
-            )
-          )}
+          </FeatureGate>
           <ApiPostmanWorkspace
             c={c}
             busy={busy}
-            canRunJobs={canRunJobs}
+            canRunJobs={actionsEnabled}
             pane={postmanPane}
             onPaneChange={setPostmanPane}
             envVarsText={envVarsText}
@@ -990,7 +1008,13 @@ export function ApiSurface(props: Props) {
             body={body}
             onBodyChange={setBody}
             onSend={handleSend}
-            onSaveScenario={features.api_postman_suites ? handleSaveScenario : () => setUpsell("api_postman")}
+            onSaveScenario={
+              postmanAccess === "granted"
+                ? handleSaveScenario
+                : () => {
+                    if (showPostmanUpsell) setUpsell("api_postman");
+                  }
+            }
             preRequestScript={preRequestScript}
             onPreRequestScriptChange={setPreRequestScript}
             postRequestScript={postRequestScript}
@@ -1001,7 +1025,15 @@ export function ApiSurface(props: Props) {
         </div>
       ) : (
         <>
-          {features.api_postman_suites || !entitlementsReady ? (
+          <FeatureGate
+            c={c}
+            phase={entitlementPhase}
+            feature="api_postman_suites"
+            features={features}
+            license={license}
+            showTierUpsell={showTierUpsell}
+            upsellOverlay={upsellButton("api_postman", "Desbloquea suites funcionales con ELIA Tester")}
+          >
             <>
               <ApiSection c={c} title="Datos CSV (data-driven)">
                 <DataCsvPanel c={c} project={project} busy={busy} onError={onShowError} onHint={setHomeHint} />
@@ -1070,7 +1102,7 @@ export function ApiSurface(props: Props) {
                             />
                             {s.name}
                           </label>
-                          {features.api_locust ? (
+                          {locustAccess === "granted" ? (
                             <input
                               type="number"
                               min={1}
@@ -1106,7 +1138,7 @@ export function ApiSurface(props: Props) {
                   scenarioIds={scenarios.filter((s) => selectedScenarios[s.id]).map((s) => s.id)}
                   scenarios={scenarios}
                   envVarNames={envVarNames}
-                  canRun={canRunJobs}
+                  canRun={actionsEnabled}
                   busy={busy}
                   onError={onShowError}
                   onHint={(msg) => {
@@ -1127,22 +1159,17 @@ export function ApiSurface(props: Props) {
                 />
               </ApiSection>
             </>
-          ) : (
-            lockOverlay(
-              true,
-              "api_postman",
-              "Desbloquea suites funcionales con ELIA Tester",
-              <div style={{ fontSize: 13, color: c.muted, padding: 12 }}>
-                Las suites encadenadas, CSV data-driven e historial requieren licencia Tester.
-              </div>,
-            )
-          )}
+          </FeatureGate>
 
-          {lockOverlay(
-            !features.api_locust,
-            "api_locust",
-            "Desbloquea pruebas de carga con ELIA Architect",
-            (
+          <FeatureGate
+            c={c}
+            phase={entitlementPhase}
+            feature="api_locust"
+            features={features}
+            license={license}
+            showTierUpsell={showTierUpsell}
+            upsellOverlay={upsellButton("api_locust", "Desbloquea pruebas de carga con ELIA Architect")}
+          >
               <ApiSection c={c} title="Prueba de carga (Locust)">
                 <div style={{ fontSize: 13, color: c.muted, marginBottom: 10 }}>
                   Métricas en RAM/consola. CSV Locust opt-in automático para dashboard. PDF/HTML solo bajo demanda.
@@ -1268,7 +1295,7 @@ export function ApiSurface(props: Props) {
                   ) : null}
                   <button
                     type="button"
-                    disabled={!canRunJobs || busy}
+                    disabled={!actionsEnabled || busy}
                     onClick={handleRunLocust}
                     style={apiBtn(c, c.primary, c.primaryFg)}
                   >
@@ -1318,8 +1345,7 @@ export function ApiSurface(props: Props) {
                   </div>
                 ) : null}
               </ApiSection>
-            ),
-          )}
+          </FeatureGate>
         </>
       )}
     </div>

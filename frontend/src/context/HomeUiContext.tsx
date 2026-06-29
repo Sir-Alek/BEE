@@ -1,8 +1,9 @@
 import React, { createContext, useContext } from "react";
 import type { AiCapabilitiesResponse } from "../api";
+import type { EntitlementBanner, EntitlementPhase } from "../app/entitlementPhase";
 import type { LicenseState } from "../app/licenseUtils";
 import type { ConvertJobMode } from "../recording/types";
-import type { LoadedDoc, ModulesStatus, RecordingRef, ScenarioRef } from "../types";
+import type { FeatureFlags, LoadedDoc, ModulesStatus, RecordingRef, ScenarioRef } from "../types";
 
 export type HomeUiContextValue = {
   c: Record<string, string>;
@@ -14,12 +15,19 @@ export type HomeUiContextValue = {
   setHomeHint: React.Dispatch<React.SetStateAction<string | null>>;
   aiCaps: AiCapabilitiesResponse | null;
   license: LicenseState | null;
+  licenseLoading: boolean;
   setSettingsOpen: (open: boolean) => void;
   setSettingsTab: (tab: import("../app/settingsTabs").SettingsTabId) => void;
   setLicenseActivateMsg: (msg: string | null) => void;
   canRunJobs: boolean;
   modules: ModulesStatus | null;
   modulesLoading: boolean;
+  entitlementPhase: EntitlementPhase;
+  entitlementFeatures: FeatureFlags;
+  entitlementBanner: EntitlementBanner;
+  showTierUpsell: boolean;
+  offlineBannerDismissed: boolean;
+  setOfflineBannerDismissed: React.Dispatch<React.SetStateAction<boolean>>;
   showLockModal: string | null;
   setShowLockModal: (v: string | null) => void;
   showHomeError: (msg: string, opts?: { mobileInline?: boolean }) => void;

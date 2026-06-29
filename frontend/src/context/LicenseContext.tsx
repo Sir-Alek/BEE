@@ -3,6 +3,7 @@ import type { LicenseState } from "../app/licenseUtils";
 
 export type LicenseContextValue = {
   license: LicenseState | null;
+  licenseLoading: boolean;
   setLicense: React.Dispatch<React.SetStateAction<LicenseState | null>>;
   activationKey: string;
   setActivationKey: React.Dispatch<React.SetStateAction<string>>;

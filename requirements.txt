@@ -81,8 +81,9 @@ matplotlib==3.10.3
 # --- Sistema ---
 psutil==7.0.0
 
-# --- IA local (opcional; «Activar IA» en conversión Behave) ---
+# --- IA local (opcional; Qwen GGUF + descarga Hugging Face) ---
 llama-cpp-python==0.3.20
+huggingface_hub==0.36.2
 
 # --- Empaquetado ---
 pyinstaller==6.19.0

@@ -1062,7 +1062,7 @@ class WebCaptureBehaveBuilder:
         if self.use_ai:
             try:
                 from core import gemma_inference
-                from core.elia_memory import append_correction, recent_examples_for_prompt
+                from core.elia_memory import append_correction, recent_examples_for_prompt, should_learn_correction
                 from core.elia_memory_crypto import MANUAL_EDIT_FROM_ATTEMPT, MAX_AI_REVIEW_ATTEMPTS
 
                 if gemma_inference.is_ai_runtime_configured():
@@ -1107,9 +1107,12 @@ class WebCaptureBehaveBuilder:
                             if not ft:
                                 ft = rendered
                             edited = bool(review.get("edited"))
-                            if edited or ft != rendered.strip():
+                            changed = ft != rendered.strip()
+                            if should_learn_correction(
+                                edited=edited, content_changed=changed, attempt=attempt
+                            ):
                                 append_correction(
-                                    script_snippet=recording_excerpt, feature_text=ft
+                                    script_snippet=recording_excerpt, feature_text=ft, source="web_capture"
                                 )
                             return ft
                         if action == "reject":

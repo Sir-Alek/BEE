@@ -377,7 +377,9 @@ def _gemma_heal(
     if not data:
         from core.gemma_inference import run_llama_json_prompt
 
-        data = run_llama_json_prompt(prompt, max_tokens=256, temperature=temperature)
+        data = run_llama_json_prompt(
+            prompt, max_tokens=256, temperature=temperature, task="locator_heal"
+        )
     if not data:
         return None
 

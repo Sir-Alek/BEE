@@ -85,16 +85,45 @@ class TestAiPolicy(unittest.TestCase):
 
             with mock.patch("psutil.virtual_memory", return_value=VM()):
                 with mock.patch(
-                    "core.gemma_model_paths.get_gemma_model_info",
-                    return_value={"exists": True, "size_bytes": 1},
+                    "core.ai.model_paths.get_primary_model_info",
+                    return_value={"exists": True, "size_bytes": 1, "path": "/x", "frozen": False},
                 ):
                     with mock.patch(
-                        "core.gemma_inference.is_ai_runtime_configured",
+                        "core.ai.model_manager.is_ai_runtime_configured",
+                        return_value=True,
+                    ):
+                        with mock.patch(
+                            "core.ai.model_paths.is_profile_runtime_ready",
+                            return_value=True,
+                        ):
+                            cap = ai_policy.assess_capability()
+        self.assertFalse(cap["ram_ok"])
+        self.assertFalse(cap["capable"])
+
+
+    def test_assess_capability_standard_needs_5gb_free(self) -> None:
+        class VM:
+            total = 16 * 1024**3
+            available = 4 * 1024**3
+
+        with mock.patch("psutil.virtual_memory", return_value=VM()):
+            with mock.patch(
+                "core.ai.model_paths.get_primary_model_info",
+                return_value={"exists": True, "size_bytes": 1, "path": "/x", "frozen": False},
+            ):
+                with mock.patch(
+                    "core.ai.model_manager.is_ai_runtime_configured",
+                    return_value=True,
+                ):
+                    with mock.patch(
+                        "core.ai.model_paths.is_profile_runtime_ready",
                         return_value=True,
                     ):
                         cap = ai_policy.assess_capability()
+        self.assertEqual(cap["profile"], "standard")
         self.assertFalse(cap["ram_ok"])
         self.assertFalse(cap["capable"])
+        self.assertEqual(cap["ram_min_free_gb"], 5.0)
 
 
 if __name__ == "__main__":

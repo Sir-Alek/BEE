@@ -4,6 +4,61 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.10.10] - 2026-06-28
+
+### Añadido
+
+- Validación progresiva de accesos por nivel: Se implementó un nuevo motor de permisos que gestiona de manera fluida la carga de la interfaz en fases ordenadas. El núcleo principal de tu plan se habilita inmediatamente en cuanto se confirma la validez de la licencia, mientras que las herramientas avanzadas muestran un estado de transición optimizado en lo que reciben la configuración del servidor, evitando bloqueos visuales en el arranque.
+- Componentes visuales de acceso unificados: Introducción de elementos de control integrados (como indicadores de carga inteligente, paneles informativos de nivel y pantallas claras de asistencia) para guiar al usuario de forma transparente sobre las funciones disponibles según su suscripción activa.
+- Protección de sincronización de licencias: Nueva memoria caché local que invalida de forma automática configuraciones antiguas al detectar un cambio de plan, asegurando que los permisos visuales de la interfaz coincidan exactamente con el nivel de suscripción vigente y previniendo elevaciones de privilegios erróneas.
+- Exploración de escenarios ultra-rápida: Se añadió un índice optimizado de pruebas de servicios que lee metadatos resumidos en lugar de procesar archivos individuales completos. Esto acelera notablemente la velocidad de respuesta en proyectos grandes con un alto volumen de colecciones.
+- Navegación asistida en el Cliente API: Incorporamos un sistema de carga visual en el panel lateral que se activa mientras se obtienen los escenarios de servicios, sincronizado de forma de un endpoint dedicado para filtrar búsquedas por colección.
+- Preferencias de lenguaje y aprendizaje inteligente: Nuevo panel dentro del menú de Configuración → Inteligencia para configurar el uso preferente de palabras clave Gherkin en inglés, adaptando el sistema para asimilar correcciones automáticas basadas en tus reintentos de edición de manera personalizada.
+- Control avanzado de la memoria de la IA local: Ahora puedes vaciar, exportar de forma cifrada o importar (reemplazar o fusionar) tus ejemplos de aprendizaje directamente desde la configuración de la interfaz. El sistema respeta rigurosamente tus preferencias y guarda las correcciones únicamente cuando decides realizar modificaciones explícitas en tus flujos de negocio.
+- Herramientas de diagnóstico de interfaz: Se añadió un comando de autochequeo ejecutable en el entorno de diseño para validar el comportamiento correcto de las fases de acceso visual.
+
+### Cambiado
+
+- Arranque limpio y libre de avisos prematuros: Durante la verificación inicial de la licencia, la interfaz se mantiene en un estado neutro y estético sin desplegar alertas visuales o mensajes comerciales invasivos. Las opciones de actualización aparecen exclusivamente cuando el estado del plan está plenamente confirmado en el equipo y una función es explícitamente denegada.
+- Control inteligente de acciones en pantalla: Las funciones principales de grabación, conversión, gestión de requerimientos y pruebas de API ahora responden de forma coordinada a la fase de validación del sistema, manteniéndose protegidas durante la comprobación inicial y habilitándose de inmediato al confirmar un acceso válido.
+- Modo desconectado con respaldo automático: Si la sincronización de red con el servidor de módulos llega a interrumpirse, la aplicación desplegará un banner informativo de uso de la última configuración local conocida en memoria. El sistema aplicará las restricciones correspondientes a tu nivel y realizará reintentos de conexión automáticos en cuanto la ventana recupere el foco de atención del usuario.
+- Acceso inmediato al programa Beta: Optimizamos el proceso de verificación para el canal de pruebas, permitiendo un ingreso instantáneo a todas las capacidades y herramientas avanzadas sin tiempos de espera intermedios entre módulos.
+- Estandarización de palabras clave Gherkin: El convertidor de requerimientos y el motor de captura web ahora priorizan la generación de términos de negocio (Given/When/Then) en inglés para alinearse perfectamente con los estándares globales de automatización, manteniendo la flexibilidad de conservar los textos descriptivos de los pasos en español.
+
+### Corregido
+
+- Eliminación de falsos bloqueos al inicio: Se corrigió un comportamiento visual intermitente para asegurar que los indicadores de restricción u opacidad no aparezcan prematuramente mientras el sistema procesa la respuesta de activación al arrancar la aplicación.
+- Consistencia estricta en cambios de nivel: Se solucionó un desfase en la memoria local para garantizar que la interfaz refleje de inmediato cualquier ajuste o reducción de nivel de suscripción contratado, evitando accesos indebidos por encima del plan confirmado.
+- Reducción de latencia en proyectos masivos: Se resolvió la lentitud de lectura en disco al explorar grandes volúmenes de servicios gracias a la optimización del nuevo indexador y la eliminación de consultas redundantes en el almacenamiento local.
+
+### Robustez del Sistema
+
+- Verificación de seguridad y estabilidad reforzada: Ampliamos los de control automatizados internos para validar los ciclos de aprendizaje de la IA, el indexador de servicios masivos, los estilos de Gherkin y el motor de permisos de usuario. Asimismo, el núcleo de seguridad de la aplicación actúa como la autoridad final, bloqueando cualquier ejecución real en segundo plano ante accesos inválidos, independientemente de los estados de transición visual de la interfaz.
+
+## [0.10.0] - 2026-06-27
+
+### Añadido
+
+- Nuevo motor de IA local adaptativo (Perfiles Standard y Lite): Se renovó por completo el núcleo de inteligencia artificial local, introduciendo los perfiles de rendimiento ELIA Standard y ELIA Lite. La aplicación ahora detecta automáticamente la memoria RAM de tu equipo para asignarte el perfil óptimo (Standard para equipos con más de 8 GB; Lite para configuraciones de 8 GB o menos). El perfil Standard alterna inteligentemente los recursos en memoria según la tarea activa para maximizar la precisión, mientras que el perfil Lite unifica los procesos para asegurar una fluidez total en equipos con recursos moderados.
+- Asistente de configuración inicial: Nuevo asistente interactivo para el primer arranque que te guía paso a paso en la descarga e instalación segura de los nuevos componentes de IA desde el repositorio oficial. Cuenta con verificación automática de integridad, detección de copias locales manuales y la opción de «Configurar más tarde». El sistema recuerda tu progreso entre sesiones y omitirá esta ventana de forma transparente una vez que los componentes estén listos.
+- Panel de Inteligencia renovado: El menú de Configuración → Inteligencia ahora permite consultar tu perfil recomendado, gestionar descargas asistidas y reabrir el asistente de configuración en cualquier momento. El estado actual se muestra de forma clara y limpia (Lite/Standard) sin sobrecargar la interfaz con nomenclaturas técnicas complicadas.
+- Gestor de descargas optimizado: Se incorporó un sistema de transferencia en segundo plano que te permite descargar las actualizaciones del motor de inteligencia sin interrumpir tus flujos de trabajo, ofreciendo un monitoreo de progreso preciso en tiempo real.
+
+### Cambiado
+
+- Evolución masiva del motor de Inteligencia Artificial: Esta versión introduce una actualización mayor en el núcleo de IA local que sustituye al motor anterior por completo. Los archivos previos ya no serán utilizados, por lo que es necesario descargar los componentes del nuevo perfil (a través del asistente, el menú de configuración o mediante los pasos de copia manual detallados en el archivo técnico complementario para la campaña de Julio 2026).
+- Políticas inteligentes de consumo de hardware: Para garantizar que tu computadora nunca sufra ralentizaciones, el perfil Standard requiere un mínimo de 5 GB de memoria libre y el perfil Lite exige 4 GB libres para operar. Si tu equipo se encuentra temporalmente por debajo de estos límites, la IA se pausará automáticamente y activará de forma segura nuestro sistema de respaldo heurístico tradicional.
+- Distribución eficiente de tareas de QA: El sistema ahora enruta automáticamente cada acción (como la conversión de documentos a BDD, la autoreparación de selectores o las validaciones de API) hacia el componente interno más eficiente según tu perfil activo, incorporando un indicador visual de procesamiento avanzado («Pensando») únicamente en tareas de análisis profundo.
+- Interfaz totalmente neutral y profesional: Se unificaron todos los textos, alertas y mensajes del sistema para utilizar un lenguaje neutral enfocado en las capacidades del producto, manteniendo la pantalla limpia de marcas comerciales externas y concentrando las especificaciones detalladas en la documentación técnica de soporte.
+
+### Corregido
+
+- Compatibilidad garantizada con versiones previas: Se integraron capas transparentes de compatibilidad interna para asegurar que todos los proyectos de automatización, escenarios y flujos creados bajo el motor anterior sigan operando y delegando sus tareas de forma perfecta hacia el nuevo núcleo.
+
+### Robustez del Sistema
+
+- Validaciones de estabilidad ampliadas: Se expandió la cobertura de controles de calidad internos para certificar la precisión en la lectura de memoria RAM, la estabilidad del asistente de configuración y el comportamiento correcto de las políticas de respaldo automático antes del despliegue masivo.
+
 ## [0.9.78] - 2026-06-26
 
 ### Añadido

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "typecheck": "tsc --noEmit",
+    "test:entitlements": "npx --yes tsx src/app/entitlementPhase.selfcheck.ts",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173"
   },
