@@ -52,7 +52,7 @@ export function HomeSurface() {
     deviceMode, setDeviceMode, deviceId, setDeviceId, mobileDevices, mobileDevicesLoading,
     mobileDevicesError, refreshMobileDevices, mobileAvds, mobileAvdsLoading, mobileAvdsError,
     selectedAvd, setSelectedAvd, refreshMobileAvds, emulatorStarting, handleStartEmulator,
-    emulatorMessage, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
+    emulatorMessage, emulatorMessageTone, mobileFieldError, appPackage, setAppPackage, appActivity, setAppActivity,
     appSource, setAppSource, deviceManualMode, setDeviceManualMode,
     detectingForegroundApp, detectForegroundApp, apkPath, setApkPath, setMobileFieldError,
     windowName, setWindowName, exePath, setExePath,
@@ -463,6 +463,7 @@ export function HomeSurface() {
                     emulatorStarting={emulatorStarting}
                     onStartEmulator={() => void handleStartEmulator()}
                     emulatorMessage={emulatorMessage}
+                    emulatorMessageTone={emulatorMessageTone}
                     mobileFieldError={mobileFieldError}
                     appPackage={appPackage}
                     onAppPackageChange={setAppPackage}

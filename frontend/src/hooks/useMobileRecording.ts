@@ -15,17 +15,21 @@ import { shouldAutoOpenMobileEnv } from "../mobileEnvUi";
 
 export type ShowHomeErrorFn = (message: string, opts?: { mobileInline?: boolean }) => void;
 
+export type EmulatorMessageTone = "loading" | "success" | "error" | "info";
+
 export type UseMobileRecordingOptions = {
   isHomeSurface: boolean;
   homeTab: "ui" | "req" | "api";
   platform: "web" | "mobile" | "legacy";
-  canRunJobs: boolean;
+  actionsEnabled: boolean;
   onShowError: ShowHomeErrorFn;
   onSetHomeHint: (hint: string | null) => void;
 };
 
+const TRANSIENT_HINT_MS = 3500;
+
 export function useMobileRecording(options: UseMobileRecordingOptions) {
-  const { isHomeSurface, homeTab, platform, canRunJobs, onShowError, onSetHomeHint } = options;
+  const { isHomeSurface, homeTab, platform, actionsEnabled, onShowError, onSetHomeHint } = options;
 
   const [apkPath, setApkPath] = useState("");
   const [deviceId, setDeviceId] = useState("");
@@ -42,6 +46,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
   const [mobileEnvOpen, setMobileEnvOpen] = useState(false);
   const [emulatorStarting, setEmulatorStarting] = useState(false);
   const [emulatorMessage, setEmulatorMessage] = useState<string | null>(null);
+  const [emulatorMessageTone, setEmulatorMessageTone] = useState<EmulatorMessageTone>("info");
   const [mobileFieldError, setMobileFieldError] = useState<string | null>(null);
   const [detectingForegroundApp, setDetectingForegroundApp] = useState(false);
   const [appiumStatus, setAppiumStatus] = useState<MobileAppiumStatusResponse | null>(null);
@@ -114,7 +119,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
   }, []);
 
   useEffect(() => {
-    if (!isHomeSurface || homeTab !== "ui" || platform !== "mobile" || !canRunJobs) return;
+    if (!isHomeSurface || homeTab !== "ui" || platform !== "mobile" || !actionsEnabled) return;
     let alive = true;
     setMobilePreflightLoading(true);
     void (async () => {
@@ -143,7 +148,13 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     return () => {
       alive = false;
     };
-  }, [isHomeSurface, homeTab, platform, canRunJobs, refreshMobileDevices, refreshMobileAvds, refreshAppiumStatus]);
+  }, [isHomeSurface, homeTab, platform, actionsEnabled, refreshMobileDevices, refreshMobileAvds, refreshAppiumStatus]);
+
+  useEffect(() => {
+    if (platform !== "mobile" || deviceMode !== "emulator" || !actionsEnabled) return;
+    void refreshMobileAvds();
+    void refreshMobileDevices();
+  }, [deviceMode, platform, actionsEnabled, refreshMobileAvds, refreshMobileDevices]);
 
   useEffect(() => {
     if (shouldAutoOpenMobileEnv(mobilePreflight)) {
@@ -156,24 +167,55 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     void refreshMobileDevices();
   }, [deviceMode, platform, refreshMobileDevices]);
 
+  const showTransientHint = useCallback(
+    (message: string) => {
+      onSetHomeHint(message);
+      window.setTimeout(() => onSetHomeHint(null), TRANSIENT_HINT_MS);
+    },
+    [onSetHomeHint],
+  );
+
   const handleStartEmulator = useCallback(async () => {
-    if (!selectedAvd.trim()) {
-      setEmulatorMessage("Selecciona un AVD.");
+    if (!actionsEnabled) {
+      onShowError("Activa tu licencia para iniciar el emulador.", { mobileInline: true });
       return;
     }
+    if (!selectedAvd.trim()) {
+      setEmulatorMessageTone("error");
+      setEmulatorMessage("Selecciona un AVD en la lista.");
+      return;
+    }
+    setDeviceMode("emulator");
     setEmulatorStarting(true);
-    setEmulatorMessage("Iniciando emulador…");
+    setEmulatorMessageTone("loading");
+    setEmulatorMessage("Iniciando emulador… (puede tardar unos minutos en el primer arranque)");
     try {
       const res = await startMobileEmulator({ avd: selectedAvd.trim(), wait_boot: true });
-      if (res.device_id) setDeviceId(res.device_id);
-      setEmulatorMessage(res.message || (res.ok ? "Emulador listo." : "No se pudo iniciar el emulador."));
+      if (res.device_id) {
+        setDeviceId(res.device_id);
+        setDeviceManualMode(false);
+      }
+      const detail = [res.message, res.hint].filter(Boolean).join(" ");
+      if (res.ok) {
+        setEmulatorMessageTone("success");
+        setEmulatorMessage(detail || "Emulador listo.");
+        showTransientHint(detail || "Emulador listo.");
+      } else {
+        const msg = detail || "No se pudo iniciar el emulador.";
+        setEmulatorMessageTone("error");
+        setEmulatorMessage(msg);
+        onShowError(msg, { mobileInline: true });
+      }
       await refreshMobileDevices();
     } catch (e) {
-      setEmulatorMessage(e instanceof Error ? e.message : "Error al iniciar el emulador.");
+      const msg = e instanceof Error ? e.message : "Error al iniciar el emulador.";
+      setEmulatorMessageTone("error");
+      setEmulatorMessage(msg);
+      onShowError(msg, { mobileInline: true });
     } finally {
       setEmulatorStarting(false);
     }
-  }, [refreshMobileDevices, selectedAvd]);
+  }, [actionsEnabled, onShowError, refreshMobileDevices, selectedAvd, showTransientHint]);
 
   const detectForegroundApp = useCallback(async (): Promise<{ package: string; activity: string } | null> => {
     if (!deviceId.trim()) {
@@ -208,6 +250,10 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
   }, [deviceId, onShowError, onSetHomeHint]);
 
   const handleStartAppium = useCallback(async () => {
+    if (!actionsEnabled) {
+      onShowError("Activa tu licencia para iniciar Appium.", { mobileInline: true });
+      return;
+    }
     setAppiumStarting(true);
     setMobileFieldError(null);
     try {
@@ -215,7 +261,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
       await refreshAppiumStatus();
       await refreshMobilePreflight();
       if (res.ok && res.running) {
-        onSetHomeHint(res.message || "Appium listo.");
+        showTransientHint(res.message || "Appium listo.");
       } else {
         onShowError(res.message || "No se pudo iniciar Appium.", { mobileInline: true });
       }
@@ -224,7 +270,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     } finally {
       setAppiumStarting(false);
     }
-  }, [refreshAppiumStatus, refreshMobilePreflight, onShowError, onSetHomeHint]);
+  }, [actionsEnabled, refreshAppiumStatus, refreshMobilePreflight, onShowError, showTransientHint]);
 
   return {
     apkPath,
@@ -250,6 +296,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     emulatorStarting,
     handleStartEmulator,
     emulatorMessage,
+    emulatorMessageTone,
     mobileFieldError,
     setMobileFieldError,
     detectingForegroundApp,

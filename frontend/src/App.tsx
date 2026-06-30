@@ -17,7 +17,7 @@ import { useJobProgress } from "./job/useJobProgress";
 import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
-import { resolveEntitlements } from "./app/entitlementPhase";
+import { resolveEntitlements, canExecuteHomeActions } from "./app/entitlementPhase";
 import { cacheTierMismatch, invalidateModulesCache, readCachedModules, writeCachedModules } from "./app/modulesCache";
 import {
   inferBehaveProjectFromProgress,
@@ -112,6 +112,20 @@ export default function App() {
     fpCopyAck, setFpCopyAck, licenseFpVisible, setLicenseFpVisible, canRunJobs, licenseLoading, refreshLicense,
   } = licenseState;
 
+  const entitlement = useMemo(
+    () =>
+      resolveEntitlements({
+        licenseLoading,
+        license,
+        modulesLoading,
+        modules,
+        modulesFetchFailed,
+        cachedModules: readCachedModules(),
+      }),
+    [licenseLoading, license, modulesLoading, modules, modulesFetchFailed],
+  );
+  const mobileActionsEnabled = canExecuteHomeActions(entitlement.phase, canRunJobs);
+
   const connectorState = useConnectors({ isHomeSurface });
   const {
     connectorProfiles, setConnectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -145,7 +159,7 @@ export default function App() {
     isHomeSurface,
     homeTab,
     platform,
-    canRunJobs,
+    actionsEnabled: mobileActionsEnabled,
     onShowError: showHomeError,
     onSetHomeHint: setHomeHint,
   });
@@ -156,7 +170,7 @@ export default function App() {
     mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
     mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd,
     refreshMobileAvds, mobilePreflight, mobilePreflightLoading, mobileEnvOpen, setMobileEnvOpen,
-    emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
+    emulatorStarting, handleStartEmulator, emulatorMessage, emulatorMessageTone, mobileFieldError, setMobileFieldError,
     detectingForegroundApp, detectForegroundApp, appiumStatus, appiumStarting, handleStartAppium,
     refreshAppiumStatus, refreshMobilePreflight, appPackage, setAppPackage, appActivity, setAppActivity,
     appSource, setAppSource, deviceManualMode, setDeviceManualMode,
@@ -312,19 +326,6 @@ export default function App() {
     window.addEventListener("focus", retry);
     return () => window.removeEventListener("focus", retry);
   }, [isHomeSurface, modulesFetchFailed, canRunJobs]);
-
-  const entitlement = useMemo(
-    () =>
-      resolveEntitlements({
-        licenseLoading,
-        license,
-        modulesLoading,
-        modules,
-        modulesFetchFailed,
-        cachedModules: readCachedModules(),
-      }),
-    [licenseLoading, license, modulesLoading, modules, modulesFetchFailed],
-  );
 
   useEffect(() => {
     if (!isHomeSurface || homeTab !== "ui" || platform !== "web" || !canRunJobs) return;
@@ -585,18 +586,17 @@ export default function App() {
 
   useEffect(() => {
     if (!homeHint) return;
-    const poll = window.setInterval(() => {
-      if (flowTabRef.current?.closed) {
-        flowTabRef.current = null;
-        setHomeHint(null);
-      }
-    }, 400);
-    return () => window.clearInterval(poll);
-  }, [homeHint]);
-
-  useEffect(() => {
-    if (!homeHint) return;
-    const t = window.setTimeout(() => setHomeHint(null), 5 * 60 * 1000);
+    const persistent = homeHint.includes("otra pestaña");
+    if (persistent) {
+      const poll = window.setInterval(() => {
+        if (flowTabRef.current?.closed) {
+          flowTabRef.current = null;
+          setHomeHint(null);
+        }
+      }, 400);
+      return () => window.clearInterval(poll);
+    }
+    const t = window.setTimeout(() => setHomeHint(null), 4000);
     return () => window.clearTimeout(t);
   }, [homeHint]);
 
@@ -695,7 +695,7 @@ export default function App() {
       refreshAppiumStatus, refreshMobilePreflight, deviceMode, setDeviceMode, deviceId, setDeviceId,
       mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, setSelectedAvd, refreshMobileAvds,
-      emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, setMobileFieldError,
+      emulatorStarting, handleStartEmulator, emulatorMessage, emulatorMessageTone, mobileFieldError, setMobileFieldError,
       appPackage, setAppPackage, appActivity, setAppActivity, apkPath, setApkPath,
       appSource, setAppSource, deviceManualMode, setDeviceManualMode,
       detectingForegroundApp, detectForegroundApp,
@@ -706,7 +706,7 @@ export default function App() {
       handleStartAppium, refreshAppiumStatus, refreshMobilePreflight, deviceMode, deviceId,
       mobileDevices, mobileDevicesLoading, mobileDevicesError, refreshMobileDevices,
       mobileAvds, mobileAvdsLoading, mobileAvdsError, selectedAvd, refreshMobileAvds,
-      emulatorStarting, handleStartEmulator, emulatorMessage, mobileFieldError, appPackage,
+      emulatorStarting, handleStartEmulator, emulatorMessage, emulatorMessageTone, mobileFieldError, appPackage,
       appActivity, apkPath, appSource, deviceManualMode, detectingForegroundApp, detectForegroundApp, setMobileFieldError,
     ],
   );

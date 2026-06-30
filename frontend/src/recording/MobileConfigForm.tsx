@@ -5,6 +5,8 @@ import type {
   MobilePreflightResponse,
 } from "../api";
 import { FieldLabel, SegmentedTabs } from "../components/ui";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
+import type { EmulatorMessageTone } from "../hooks/useMobileRecording";
 import {
   formatPreflightItemMessage,
   friendlyAvdsError,
@@ -43,6 +45,7 @@ export type MobileConfigFormProps = {
   emulatorStarting: boolean;
   onStartEmulator: () => void;
   emulatorMessage: string | null;
+  emulatorMessageTone: EmulatorMessageTone;
   mobileFieldError: string | null;
   appSource: "installed" | "apk";
   onAppSourceChange: (value: "installed" | "apk") => void;
@@ -97,6 +100,7 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     emulatorStarting,
     onStartEmulator,
     emulatorMessage,
+    emulatorMessageTone,
     mobileFieldError,
     appSource,
     onAppSourceChange,
@@ -140,7 +144,12 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
       {mobilePreflightLoading && (
-        <div style={{ fontSize: 12, color: c.muted }}>Comprobando entorno Android…</div>
+        <LoadingStatusRow
+          c={c}
+          text="Comprobando entorno Android…"
+          testId="elia-mobile-preflight-loading"
+          loading
+        />
       )}
 
       {!mobilePreflightLoading && mobilePreflight && mobilePreflight.items.length > 0 && (
@@ -370,7 +379,7 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               type="button"
               data-testid="elia-mobile-start-emulator"
               disabled={emulatorStarting || !selectedAvd.trim()}
-              onClick={onStartEmulator}
+              onClick={() => onStartEmulator()}
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -405,7 +414,19 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
             <div style={{ fontSize: 11, color: c.errorTitle }}>{friendlyAvdsError(mobileAvdsError)}</div>
           )}
           {emulatorMessage && (
-            <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>{emulatorMessage}</div>
+            <LoadingStatusRow
+              c={c}
+              text={emulatorMessage}
+              testId="elia-mobile-emulator-status"
+              loading={emulatorStarting || emulatorMessageTone === "loading"}
+              tone={
+                emulatorMessageTone === "error"
+                  ? "error"
+                  : emulatorMessageTone === "success"
+                    ? "success"
+                    : "neutral"
+              }
+            />
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select

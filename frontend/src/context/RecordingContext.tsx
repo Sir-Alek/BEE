@@ -43,6 +43,7 @@ export type RecordingContextValue = {
   emulatorStarting: boolean;
   handleStartEmulator: () => void;
   emulatorMessage: string | null;
+  emulatorMessageTone: "loading" | "success" | "error" | "info";
   mobileFieldError: string | null;
   setMobileFieldError: (v: string | null) => void;
   appPackage: string;
