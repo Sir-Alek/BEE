@@ -57,6 +57,48 @@ class TestFastApiMobile(ApiTestCase):
         self.assert_status(code, 200, body)
         self.assertTrue(body.get("running"))
 
+    @patch("core.ui_automation.mobile_avd_wizard.wizard_capabilities")
+    def test_avd_wizard_capabilities(self, mock_caps) -> None:
+        mock_caps.return_value = {
+            "orchestration_allowed": False,
+            "orchestration_tier": "architect",
+            "cmdline_tools_ok": True,
+            "avd_count": 0,
+            "avds": [],
+            "has_online_emulator": False,
+            "studio_available": True,
+            "disk_ok": True,
+            "templates": [],
+            "job": {"active": False, "done": False, "ok": False, "phase": "", "message": ""},
+        }
+        with elia_test_app() as (api, _jm):
+            code, body = api.get_json("/api/mobile/avd/wizard/capabilities")
+        self.assert_status(code, 200, body)
+        self.assertTrue(body.get("ok"))
+        self.assertFalse(body.get("orchestration_allowed"))
+
+    @patch("core.elia_license.get_license_status")
+    @patch("core.ui_automation.mobile_avd_wizard.start_orchestration")
+    def test_avd_wizard_start_forbidden_for_tester(self, mock_start, mock_st) -> None:
+        mock_st.return_value = type(
+            "S",
+            (),
+            {"tier_name": "tester", "is_beta": False},
+        )()
+        with elia_test_app() as (api, _jm):
+            code, body = api.post_json("/api/mobile/avd/wizard/start", {"template_id": "standard"})
+        self.assertEqual(code, 403)
+        mock_start.assert_not_called()
+
+    @patch("core.ui_automation.mobile_avd_wizard.open_android_studio")
+    def test_avd_open_studio(self, mock_open) -> None:
+        mock_open.return_value = {"ok": True, "message": "Android Studio abierto."}
+        with elia_test_app() as (api, _jm):
+            code, body = api.post_json("/api/mobile/avd/wizard/open-studio", {})
+        self.assert_status(code, 200, body)
+        self.assertTrue(body.get("ok"))
+        mock_open.assert_called_once_with(path=None, save=False)
+
 
 if __name__ == "__main__":
     unittest.main()

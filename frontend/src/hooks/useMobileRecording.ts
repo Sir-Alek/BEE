@@ -83,7 +83,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     }
   }, [deviceMode, deviceManualMode]);
 
-  const refreshMobileAvds = useCallback(async () => {
+  const refreshMobileAvds = useCallback(async (preferAvdName?: string) => {
     setMobileAvdsLoading(true);
     setMobileAvdsError(null);
     try {
@@ -91,7 +91,10 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
       const avds = res.avds ?? [];
       setMobileAvds(avds);
       if (res.error) setMobileAvdsError(res.error);
-      setSelectedAvd((prev) => (prev && avds.includes(prev) ? prev : avds[0] ?? ""));
+      setSelectedAvd((prev) => {
+        if (preferAvdName && avds.includes(preferAvdName)) return preferAvdName;
+        return prev && avds.includes(prev) ? prev : avds[0] ?? "";
+      });
     } catch {
       setMobileAvds([]);
       setMobileAvdsError("No se pudo listar AVDs del SDK.");
@@ -157,6 +160,12 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
   }, [deviceMode, platform, actionsEnabled, refreshMobileAvds, refreshMobileDevices]);
 
   useEffect(() => {
+    if (platform !== "mobile" || deviceMode !== "emulator") return;
+    if (mobileAvds.length === 0 || selectedAvd.trim()) return;
+    setSelectedAvd(mobileAvds[0]);
+  }, [platform, deviceMode, mobileAvds, selectedAvd]);
+
+  useEffect(() => {
     if (shouldAutoOpenMobileEnv(mobilePreflight)) {
       setMobileEnvOpen(true);
     }
@@ -175,22 +184,33 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     [onSetHomeHint],
   );
 
-  const handleStartEmulator = useCallback(async () => {
+  const handleStartEmulator = useCallback(async (avdOverride?: string) => {
+    const avd = (avdOverride ?? selectedAvd).trim();
     if (!actionsEnabled) {
       onShowError("Activa tu licencia para iniciar el emulador.", { mobileInline: true });
       return;
     }
-    if (!selectedAvd.trim()) {
+    if (!avd) {
+      const msg =
+        mobileAvds.length === 0 && mobileDevices.some((d) => d.kind === "emulator" && d.state === "device")
+          ? "Hay un emulador en adb. Selecciónalo en «Emulador en adb»; no hace falta iniciar otro."
+          : mobileAvds.length === 0
+            ? "No hay AVDs en el catálogo del SDK. Crea uno en Android Studio o arranca un emulador manualmente."
+            : "Selecciona un AVD en la lista antes de iniciar.";
       setEmulatorMessageTone("error");
-      setEmulatorMessage("Selecciona un AVD en la lista.");
+      setEmulatorMessage(msg);
+      onShowError(msg, { mobileInline: true });
       return;
+    }
+    if (!selectedAvd.trim() || selectedAvd !== avd) {
+      setSelectedAvd(avd);
     }
     setDeviceMode("emulator");
     setEmulatorStarting(true);
     setEmulatorMessageTone("loading");
     setEmulatorMessage("Iniciando emulador… (puede tardar unos minutos en el primer arranque)");
     try {
-      const res = await startMobileEmulator({ avd: selectedAvd.trim(), wait_boot: true });
+      const res = await startMobileEmulator({ avd, wait_boot: true });
       if (res.device_id) {
         setDeviceId(res.device_id);
         setDeviceManualMode(false);
@@ -215,7 +235,7 @@ export function useMobileRecording(options: UseMobileRecordingOptions) {
     } finally {
       setEmulatorStarting(false);
     }
-  }, [actionsEnabled, onShowError, refreshMobileDevices, selectedAvd, showTransientHint]);
+  }, [actionsEnabled, mobileAvds.length, mobileDevices, onShowError, refreshMobileDevices, selectedAvd, showTransientHint]);
 
   const detectForegroundApp = useCallback(async (): Promise<{ package: string; activity: string } | null> => {
     if (!deviceId.trim()) {

@@ -80,6 +80,7 @@ export function upsellBenefits(tier: string): string[] {
   if (norm === TIER_ARCHITECT) {
     return [
       "Todo lo incluido en ELIA Tester",
+      "Orquestación automática de AVD locales (un clic)",
       "Automatización Legacy (escritorio / pywinauto)",
       "Pruebas de carga Locust, reportes PDF/HTML y SLA",
       "Controladores lógicos (If/Loop), gRPC, JDBC y carga distribuida local",
@@ -88,6 +89,14 @@ export function upsellBenefits(tier: string): string[] {
     ];
   }
   return [];
+}
+
+export function avdOrchestrationAllowed(
+  license: { tier?: string | null; is_beta?: boolean } | null | undefined,
+): boolean {
+  if (!license) return false;
+  if (license.is_beta) return true;
+  return normalizeTier(license.tier ?? "") === TIER_ARCHITECT;
 }
 
 export function hasFeature(modules: FeatureFlags | null | undefined, key: keyof FeatureFlags): boolean {

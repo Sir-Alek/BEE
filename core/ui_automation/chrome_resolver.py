@@ -152,6 +152,22 @@ def resolve_chrome_for_recording(
     *,
     allow_chromium_fallback: Optional[bool] = None,
 ) -> ChromeResolveResult:
+    from core.tool_paths import get_tool_path
+
+    override = get_tool_path("chrome")
+    if override and _exists_exe(override):
+        return ChromeResolveResult(ok=True, chrome_path=override, source="elia_config")
+    return resolve_chrome_for_recording_auto(
+        base_dir,
+        allow_chromium_fallback=allow_chromium_fallback,
+    )
+
+
+def resolve_chrome_for_recording_auto(
+    base_dir: Optional[str] = None,
+    *,
+    allow_chromium_fallback: Optional[bool] = None,
+) -> ChromeResolveResult:
     """
     Orden: variables de entorno → rutas estándar Windows → where chrome →
     Chromium Puppeteer (solo si allow_chromium_fallback).

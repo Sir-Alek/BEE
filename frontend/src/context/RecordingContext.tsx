@@ -39,9 +39,9 @@ export type RecordingContextValue = {
   mobileAvdsError: string | null;
   selectedAvd: string;
   setSelectedAvd: (v: string) => void;
-  refreshMobileAvds: () => Promise<void>;
+  refreshMobileAvds: (preferAvdName?: string) => Promise<void>;
   emulatorStarting: boolean;
-  handleStartEmulator: () => void;
+  handleStartEmulator: (avdOverride?: string) => void;
   emulatorMessage: string | null;
   emulatorMessageTone: "loading" | "success" | "error" | "info";
   mobileFieldError: string | null;

@@ -30,6 +30,8 @@ import { emptyAzureDevOpsCreds, emptyGitCreds, emptyJiraCreds, emptyValueEdgeCre
 import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
 import type { EliaConnectorProfile } from "../types";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
+import { ToolPathsSettingsPanel } from "./ToolPathsSettingsPanel";
 // Versión comercial (≥1.0): descomentar y usar en Licencia en lugar de BetaFeedbackLink.
 // import { SupportSettingsContact } from "../components/SupportSettingsContact";
 import { useConnectorContext } from "../context/ConnectorContext";
@@ -268,6 +270,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </span>
               </label>
             </div>
+            )}
+
+            {settingsTab === "environment" && (
+              <div
+                style={{
+                  border: `1px solid ${c.border}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 14,
+                  background: c.neutralBg,
+                }}
+              >
+                <ToolPathsSettingsPanel c={c} />
+              </div>
             )}
 
             {settingsTab === "ai" && (
@@ -2156,7 +2172,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 13, color: c.muted }}>Cargando información…</div>
+                <LoadingStatusRow
+                  c={c}
+                  text="Cargando información…"
+                  loading
+                  testId="elia-settings-license-loading"
+                />
               )}
             </div>
             )}

@@ -9,7 +9,7 @@ export const EMULATOR_MISSING_WARNING =
 
 const CORE_PREFLIGHT_IDS = new Set(["android_sdk", "adb", "emulator", "appium", "device"]);
 
-const PATH_ITEM_IDS = new Set(["android_sdk", "adb", "emulator"]);
+const PATH_ITEM_IDS = new Set(["android_sdk", "adb", "emulator", "cmdline_tools"]);
 
 /** Oculta el segmento Users/<usuario> y acorta rutas largas. */
 export function truncatePathForDisplay(raw: string): string {

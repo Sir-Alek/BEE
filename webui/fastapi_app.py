@@ -185,6 +185,28 @@ class MobileAppiumStartRequest(BaseModel):
     timeout_sec: int = Field(default=60, ge=10, le=180)
 
 
+class MobileAvdWizardStartRequest(BaseModel):
+    template_id: str = "standard"
+
+
+class MobileOpenStudioRequest(BaseModel):
+    path: Optional[str] = None
+    save: bool = False
+
+
+class ToolPathsUpdateRequest(BaseModel):
+    paths: Dict[str, Optional[str]] = Field(default_factory=dict)
+
+
+class ToolPathTestRequest(BaseModel):
+    key: str
+    path: Optional[str] = None
+
+
+class PickExecutableRequest(BaseModel):
+    title: Optional[str] = None
+
+
 def _repo_root() -> str:
     """
     Devuelve la raíz del proyecto / directorio del bundle.
@@ -257,6 +279,9 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     from webui.error_reporting import configure_execution_logging
 
     configure_execution_logging()
+    from core.tool_paths import load_tool_paths
+
+    load_tool_paths()
     app = FastAPI(title="ELIA Web UI (local)")
     jm = job_manager or JobManager()
     base_dir = _repo_root()
@@ -705,8 +730,11 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         from core.ui_automation.mobile_android import list_avds
+        from webui.error_reporting import get_execution_logger
 
         avds, err = list_avds()
+        log = get_execution_logger()
+        log.info("mobile avds list count=%s error=%s", len(avds), err or "")
         return {"ok": err is None, "avds": avds, "error": err, "android_only": True}
 
     @app.get("/api/mobile/preflight")
@@ -725,12 +753,27 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         __: None = Depends(_require_active_license),
     ) -> Dict[str, Any]:
         from core.ui_automation.mobile_android import start_emulator
+        from webui.error_reporting import get_execution_logger
 
-        return start_emulator(
+        log = get_execution_logger()
+        log.info(
+            "mobile emulator start avd=%s wait_boot=%s timeout_sec=%s",
+            req.avd,
+            req.wait_boot,
+            req.timeout_sec,
+        )
+        result = start_emulator(
             req.avd,
             wait_boot=req.wait_boot,
             timeout_sec=float(req.timeout_sec),
         )
+        log.info(
+            "mobile emulator start result ok=%s device_id=%s message=%s",
+            result.get("ok"),
+            result.get("device_id"),
+            result.get("message"),
+        )
+        return result
 
     @app.post("/api/mobile/emulator/stop")
     def mobile_emulator_stop(
@@ -769,6 +812,149 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         from core.ui_automation.mobile_android import stop_appium_server
 
         return stop_appium_server(only_if_started_by_elia=True)
+
+    def _mobile_license_tier() -> tuple:
+        from core import elia_license
+
+        st = elia_license.get_license_status()
+        return st.tier_name, bool(st.is_beta)
+
+    @app.get("/api/mobile/avd/wizard/capabilities")
+    def mobile_avd_wizard_capabilities(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_avd_wizard import wizard_capabilities
+
+        tier, is_beta = _mobile_license_tier()
+        caps = wizard_capabilities(tier=tier, is_beta=is_beta)
+        return {"ok": True, **caps}
+
+    @app.post("/api/mobile/avd/wizard/start")
+    def mobile_avd_wizard_start(
+        req: MobileAvdWizardStartRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_avd_wizard import orchestration_allowed, start_orchestration
+
+        tier, is_beta = _mobile_license_tier()
+        if not orchestration_allowed(tier, is_beta=is_beta):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "La creación automática de AVD requiere ELIA Architect. "
+                    "Configure su emulador manualmente o actualice su suscripción."
+                ),
+            )
+        return start_orchestration(req.template_id)
+
+    @app.get("/api/mobile/avd/wizard/status")
+    def mobile_avd_wizard_status(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_avd_wizard import get_job_status
+
+        return {"ok": True, "status": get_job_status()}
+
+    @app.post("/api/mobile/avd/wizard/open-studio")
+    def mobile_avd_open_studio(
+        req: MobileOpenStudioRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_avd_wizard import open_android_studio
+
+        return open_android_studio(path=req.path, save=req.save)
+
+    @app.get("/api/settings/tool-paths")
+    def settings_tool_paths_get(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.tool_paths import build_tool_paths_status
+
+        return {"ok": True, **build_tool_paths_status()}
+
+    @app.put("/api/settings/tool-paths")
+    def settings_tool_paths_put(
+        req: ToolPathsUpdateRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.tool_paths import build_tool_paths_status, save_tool_paths, validate_tool_path
+
+        cleaned: Dict[str, Optional[str]] = {}
+        for key, raw in (req.paths or {}).items():
+            if raw is None or not str(raw).strip():
+                cleaned[key] = None
+                continue
+            ok, resolved, message = validate_tool_path(key, str(raw))
+            if not ok:
+                raise HTTPException(status_code=400, detail=f"{key}: {message}")
+            cleaned[key] = resolved or str(raw).strip()
+        save_tool_paths(cleaned)
+        return {"ok": True, **build_tool_paths_status()}
+
+    @app.post("/api/settings/tool-paths/test")
+    def settings_tool_paths_test(
+        req: ToolPathTestRequest,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.tool_paths import test_tool_path_entry
+
+        return {"ok": True, **test_tool_path_entry(req.key, req.path)}
+
+    @app.post("/api/settings/tool-paths/diagnostic")
+    def settings_tool_paths_diagnostic(
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.tool_paths import run_environment_diagnostic
+
+        return {"ok": True, **run_environment_diagnostic(base_dir=base_dir)}
+
+    @app.get("/api/mobile/avd/wizard/verify")
+    def mobile_avd_wizard_verify(
+        avd_name: str,
+        _: None = Depends(_require_localhost),
+        __: None = Depends(_require_active_license),
+    ) -> Dict[str, Any]:
+        from core.ui_automation.mobile_avd_wizard import verify_avd_in_catalog
+
+        return verify_avd_in_catalog(avd_name)
+
+    @app.post("/api/system/pick-executable")
+    def system_pick_executable(
+        req: PickExecutableRequest,
+        _: None = Depends(_require_localhost),
+    ) -> Dict[str, Any]:
+        from core.system_file_picker import pick_executable_path
+
+        try:
+            path = pick_executable_path(title=req.title or "Seleccionar ejecutable")
+        except RuntimeError as exc:
+            return {"ok": False, "path": None, "message": str(exc)}
+        if not path:
+            return {"ok": False, "path": None, "message": "Selección cancelada."}
+        return {"ok": True, "path": path, "message": "Ejecutable seleccionado."}
+
+    @app.post("/api/system/pick-directory")
+    def system_pick_directory(
+        req: PickExecutableRequest,
+        _: None = Depends(_require_localhost),
+    ) -> Dict[str, Any]:
+        from core.system_file_picker import pick_directory_path
+
+        try:
+            path = pick_directory_path(title=req.title or "Seleccionar carpeta")
+        except RuntimeError as exc:
+            return {"ok": False, "path": None, "message": str(exc)}
+        if not path:
+            return {"ok": False, "path": None, "message": "Selección cancelada."}
+        return {"ok": True, "path": path, "message": "Carpeta seleccionada."}
 
     @app.post("/api/license/activate")
     def license_activate(

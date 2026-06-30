@@ -68,6 +68,7 @@ import {
 } from "../app/entitlementPhase";
 import type { LicenseState } from "../app/licenseUtils";
 import { FeatureGate } from "../components/FeatureGate";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import type { FeatureFlags, ModulesStatus } from "../types";
 
@@ -379,23 +380,12 @@ export function ApiSurface(props: Props) {
 
   if (httpAccess === "pending") {
     return (
-      <div
-        data-testid="elia-api-http-pending"
-        style={{ fontSize: 13, color: c.muted, display: "flex", alignItems: "center", gap: 8 }}
-      >
-        <span
-          aria-hidden
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: "50%",
-            border: `2px solid ${c.border}`,
-            borderTopColor: c.primary,
-            animation: "elia-spin 0.8s linear infinite",
-          }}
-        />
-        Cargando módulo API…
-      </div>
+      <LoadingStatusRow
+        c={c}
+        text="Cargando módulo API…"
+        loading
+        testId="elia-api-http-pending"
+      />
     );
   }
 

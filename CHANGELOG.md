@@ -4,6 +4,38 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
+## [0.10.11] - 2026-06-30
+
+### Añadido
+
+- Asistente de configuración de dispositivos virtuales: (Exclusivo de ELIA Architect). Nuevo flujo guiado que inspecciona automáticamente tu entorno móvil, asiste en la aceptación de licencias de desarrollo y gestiona la instalación automatizada de emuladores locales mediante plantillas optimizadas: Estándar (emulación de dispositivos modernos de última generación) y Ligera (para equipos con recursos de hardware medidos). Todo el proceso se ejecuta de forma segura en segundo plano, mostrando un indicador de progreso visual directo en la interfaz.
+- Compatibilidad y configuración manual de entornos móviles: Disponible en todos los planes comerciales. Si la detección automatizada no localiza las herramientas del sistema, la interfaz despliega un panel integrado que permite ingresar rutas personalizadas, localizar el ejecutable oficial mediante el explorador de archivos nativo del sistema operativo o guardar la ubicación preferida para futuras sesiones de trabajo de forma rápida.
+- Centro de gestión del "Entorno local": Nueva pestaña dedicada dentro del menú de configuración para definir y centralizar las rutas de todas tus herramientas clave de automatización (servicios móviles, emuladores, navegadores web y controladores). Cada campo incorpora opciones para detección automática, ajustes personalizados, exploración de archivos, pruebas de conectividad individuales y un botón global para Ejecutar diagnóstico, el cual realiza una validación completa y simultánea de todos tus componentes de prueba web y móvil.
+- Detección inteligente extendida: Optimizamos el motor de búsqueda de entornos móviles en Windows. Ahora el sistema rastrea instalaciones avanzadas (como las gestionadas por cajas de herramientas de desarrollo o variables del sistema) y, en caso de no encontrarlas, despliega un listado detallado de las rutas inspeccionadas para facilitar enormemente la asistencia de soporte.
+- Diagnósticos móviles más precisos: El asistente de preparación ahora diferencia claramente entre el catálogo de emuladores instalados y los dispositivos virtuales conectados en tiempo real. Además, verifica la presencia de los componentes de comandos esenciales y guía amigablemente al usuario hacia el asistente de configuración si detecta que la lista de dispositivos virtuales está vacía.
+- Asistencia guiada para el plan ELIA Tester: Al intentar acceder al asistente de automatización de dispositivos virtuales desde el plan Tester, la aplicación mostrará una ventana informativa clara explicando que la creación automática es una característica avanzada de ELIA Architect. Para no interrumpir tu flujo de trabajo, el panel ofrece accesos directos inmediatos para abrir el entorno de desarrollo externo, gestionar las rutas manualmente en la pestaña de entorno local o contactar al equipo para una actualización de plan.
+- Sincronización automática de emuladores: Tras concluir la creación automatizada en el plan Architect, el sistema valida inmediatamente que el nuevo emulador esté disponible y lo deja preseleccionado en el menú desplegable de la pantalla de automatización móvil para que puedas usarlo al instante.
+
+### Cambiado
+
+- Jerarquía inteligente de configuraciones: Se refinó el orden de prioridad para la lectura de herramientas: el sistema dará prioridad absoluta a los ajustes manuales definidos en el menú de Entorno local, seguido de las variables personalizadas del sistema operativo y, por último, los métodos de detección automática del producto.
+- Herramientas de entorno accesibles en todos los niveles: Los accesos directos para abrir el panel de desarrollo externo y realizar comprobaciones rápidas de estado ahora son visibles en todas las suscripciones, manteniendo la automatización de la creación de dispositivos optimizada para la edición avanzada.
+- Integración avanzada del asistente: Las capacidades del asistente móvil ahora interactúan de forma directa con tu entorno de desarrollo, detectando qué herramienta configuró el espacio de trabajo e identificando alternativas automáticas de ubicación cuando faltan componentes principales.
+
+### Corregido
+
+- Mensajes de estado interactivos en emuladores: Se solucionó un comportamiento silencioso en el botón de inicialización; ahora la interfaz muestra alertas claras y explicativas si intentas arrancar un emulador sin haber seleccionado un dispositivo virtual o si tu catálogo local no cuenta con componentes instalados.
+- Claridad en el estado de dispositivos conectados: Corregimos las alertas duplicadas para diferenciar de forma precisa cuando tu catálogo de emuladores está vacío frente a cuando ya cuentas con un dispositivo virtual activo y vinculado en segundo plano, desplegando banners informativos dinámicos de color según la situación.
+- Consistencia visual en cargas: Se unificó el indicador de espera para la comprobación del entorno móvil y se alinearon los mensajes de asistencia transitorios con el diseño global del resto de los módulos de la aplicación.
+
+### Comercial
+
+- Gestión de dispositivos virtuales por niveles: La creación y orquestación automática de entornos virtuales móviles es de uso exclusivo para el plan ELIA Architect (canal Beta incluido). Los usuarios de ELIA Tester conservan el acceso directo al entorno externo, el panel de gestión de entorno local y la configuración manual de rutas.
+
+### Robustez del Sistema
+
+- Controles de calidad internos incrementados: Expandimos la cobertura de validaciones automatizadas internas sobre el sistema de resolución de rutas, la detección inteligente de entornos de desarrollo avanzados y los mecanismos de creación de emuladores móviles para garantizar un despliegue altamente confiable antes del lanzamiento.
+
 ## [0.10.10] - 2026-06-28
 
 ### Añadido

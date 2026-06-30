@@ -313,6 +313,208 @@ export async function stopMobileEmulator(deviceId?: string): Promise<{ ok: boole
   return data;
 }
 
+export type MobileAvdTemplate = {
+  id: string;
+  label: string;
+  description: string;
+  estimated_gb: string;
+  avd_name: string;
+};
+
+export type MobileAvdWizardJobStatus = {
+  active: boolean;
+  phase: string;
+  message: string;
+  done: boolean;
+  ok: boolean;
+  error?: string | null;
+  avd_name?: string | null;
+  verified?: boolean;
+};
+
+export type MobileAvdWizardCapabilitiesResponse = {
+  ok: boolean;
+  orchestration_allowed: boolean;
+  orchestration_tier: string;
+  sdk_path?: string | null;
+  sdk_ok?: boolean;
+  cmdline_tools_ok: boolean;
+  avd_count: number;
+  avds: string[];
+  avds_error?: string | null;
+  has_online_emulator: boolean;
+  studio_available: boolean;
+  studio_path?: string | null;
+  studio_configured_by?: string | null;
+  studio_missing_sdk_ok?: boolean;
+  suggested_sdk_path?: string | null;
+  disk_free_gb?: number | null;
+  disk_ok: boolean;
+  templates: MobileAvdTemplate[];
+  job: MobileAvdWizardJobStatus;
+};
+
+export async function getMobileAvdWizardCapabilities(): Promise<MobileAvdWizardCapabilitiesResponse> {
+  const res = await fetch("/api/mobile/avd/wizard/capabilities");
+  if (!res.ok) throw new Error(`No se pudo consultar el asistente AVD: ${res.status}`);
+  return res.json();
+}
+
+export async function startMobileAvdWizard(templateId: string): Promise<{
+  ok: boolean;
+  started?: boolean;
+  message?: string;
+  status?: MobileAvdWizardJobStatus;
+}> {
+  const res = await fetch("/api/mobile/avd/wizard/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template_id: templateId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : "No autorizado";
+    throw new Error(detail);
+  }
+  return data;
+}
+
+export async function getMobileAvdWizardStatus(): Promise<{ ok: boolean; status: MobileAvdWizardJobStatus }> {
+  const res = await fetch("/api/mobile/avd/wizard/status");
+  if (!res.ok) throw new Error(`No se pudo consultar el estado AVD: ${res.status}`);
+  return res.json();
+}
+
+export async function verifyMobileAvdInCatalog(avdName: string): Promise<{
+  ok: boolean;
+  avd_name?: string;
+  avds?: string[];
+  message?: string;
+}> {
+  const res = await fetch(
+    `/api/mobile/avd/wizard/verify?avd_name=${encodeURIComponent(avdName)}`,
+  );
+  if (!res.ok) throw new Error("No se pudo verificar el catálogo AVD");
+  return res.json();
+}
+
+export async function openMobileAndroidStudio(params?: {
+  path?: string;
+  save?: boolean;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  hint?: string;
+  path?: string;
+  source?: string;
+  searched_paths?: string[];
+  sdk_ok?: boolean;
+  settings_hint?: string;
+}> {
+  const res = await fetch("/api/mobile/avd/wizard/open-studio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params ?? {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("No se pudo abrir Android Studio");
+  return data;
+}
+
+export type ToolPathEntryStatus = {
+  label: string;
+  kind: "file" | "dir";
+  override?: string | null;
+  detected?: string | null;
+  detected_source?: string | null;
+  effective?: string | null;
+  effective_source?: string | null;
+  ok: boolean;
+  message: string;
+};
+
+export type ToolPathsStatusResponse = {
+  ok: boolean;
+  version: number;
+  config_file: string;
+  paths: Record<string, ToolPathEntryStatus>;
+};
+
+export async function getToolPathsStatus(): Promise<ToolPathsStatusResponse> {
+  const res = await fetch("/api/settings/tool-paths");
+  if (!res.ok) throw new Error(`No se pudo leer entorno local: ${res.status}`);
+  return res.json();
+}
+
+export async function putToolPaths(paths: Record<string, string | null>): Promise<ToolPathsStatusResponse> {
+  const res = await fetch("/api/settings/tool-paths", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof (data as any)?.detail === "string" ? (data as any).detail : "No se pudo guardar";
+    throw new Error(detail);
+  }
+  return data;
+}
+
+export async function testToolPath(key: string, path?: string): Promise<{
+  ok: boolean;
+  key: string;
+  path?: string;
+  message: string;
+}> {
+  const res = await fetch("/api/settings/tool-paths/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, path }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("No se pudo probar la ruta");
+  return data;
+}
+
+export async function pickExecutable(title?: string): Promise<{
+  ok: boolean;
+  path?: string | null;
+  message?: string;
+}> {
+  const res = await fetch("/api/system/pick-executable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return res.json();
+}
+
+export type ToolPathsDiagnosticResponse = {
+  ok: boolean;
+  mobile: { ok: boolean; errors: string[]; warnings: string[]; items: unknown[] };
+  chrome: { ok: boolean; path?: string | null; errors: string[] };
+  tool_paths: ToolPathsStatusResponse;
+};
+
+export async function postToolPathsDiagnostic(): Promise<ToolPathsDiagnosticResponse> {
+  const res = await fetch("/api/settings/tool-paths/diagnostic", { method: "POST" });
+  if (!res.ok) throw new Error(`Diagnóstico falló: ${res.status}`);
+  return res.json();
+}
+
+export async function pickDirectory(title?: string): Promise<{
+  ok: boolean;
+  path?: string | null;
+  message?: string;
+}> {
+  const res = await fetch("/api/system/pick-directory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return res.json();
+}
+
 export async function uploadDocs(files: File[]): Promise<{ ok: boolean; files: LoadedDoc[] }> {
   const form = new FormData();
   for (const f of files) form.append("files", f);

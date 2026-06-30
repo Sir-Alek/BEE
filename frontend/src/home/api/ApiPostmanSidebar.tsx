@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { LoadingStatusRow } from "../../components/LoadingStatusRow";
 import { apiBtn, apiInputStyle } from "./apiUi";
 
 export type ApiCollectionRow = { id: string; name: string; scenario_count: number };
@@ -235,23 +236,12 @@ export function ApiPostmanSidebar(props: Props) {
           data-testid="elia-api-scenario-search"
         />
         {scenariosLoading ? (
-          <div
-            data-testid="elia-api-scenarios-loading"
-            style={{ fontSize: 12, color: c.muted, display: "flex", alignItems: "center", gap: 8 }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                border: `2px solid ${c.border}`,
-                borderTopColor: c.primary,
-                animation: "elia-spin 0.8s linear infinite",
-              }}
-            />
-            Cargando colecciones…
-          </div>
+          <LoadingStatusRow
+            c={c}
+            text="Cargando colecciones…"
+            loading
+            testId="elia-api-scenarios-loading"
+          />
         ) : grouped.length === 0 ? (
           <div style={{ fontSize: 12, color: c.muted }}>Sin colecciones. Importa JSON o guarda un escenario.</div>
         ) : (

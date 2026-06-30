@@ -68,6 +68,11 @@ export function HomeSurface() {
     setSettingsOpen(true);
   };
 
+  const openEnvironmentSettings = () => {
+    setSettingsTab("environment");
+    setSettingsOpen(true);
+  };
+
   const docAccess = getFeatureAccess(entitlementPhase, "doc_to_bdd", features, license);
   const mobileAccess = getFeatureAccess(entitlementPhase, "mobile_recording", features, license);
   const legacyAccess = getFeatureAccess(entitlementPhase, "legacy_recording", features, license);
@@ -425,6 +430,7 @@ export function HomeSurface() {
                 {platform === "mobile" && (
                   <MobileConfigForm
                     c={c}
+                    license={license}
                     mobilePreflight={mobilePreflight}
                     mobilePreflightLoading={mobilePreflightLoading}
                     mobileEnvOpen={mobileEnvOpen}
@@ -460,8 +466,14 @@ export function HomeSurface() {
                     selectedAvd={selectedAvd}
                     onSelectedAvdChange={setSelectedAvd}
                     onRefreshAvds={() => void refreshMobileAvds()}
+                    onRefreshMobileEnv={(preferAvdName) => {
+                      void refreshMobileAvds(preferAvdName);
+                      void refreshMobilePreflight();
+                      void refreshMobileDevices();
+                    }}
+                    onOpenEnvironmentSettings={openEnvironmentSettings}
                     emulatorStarting={emulatorStarting}
-                    onStartEmulator={() => void handleStartEmulator()}
+                    onStartEmulator={(avd) => void handleStartEmulator(avd)}
                     emulatorMessage={emulatorMessage}
                     emulatorMessageTone={emulatorMessageTone}
                     mobileFieldError={mobileFieldError}

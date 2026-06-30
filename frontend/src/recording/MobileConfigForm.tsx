@@ -1,9 +1,15 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type {
   MobileAppiumStatusResponse,
   MobileDeviceInfo,
   MobilePreflightResponse,
 } from "../api";
+import { openMobileAndroidStudio } from "../api";
+import { avdOrchestrationAllowed } from "../app/entitlements";
+import type { LicenseState } from "../app/licenseUtils";
+import { AvdArchitectUpsellModal } from "../components/AvdArchitectUpsellModal";
+import { AvdSetupWizardModal } from "../components/AvdSetupWizardModal";
+import { AndroidStudioPathPanel } from "../components/AndroidStudioPathPanel";
 import { FieldLabel, SegmentedTabs } from "../components/ui";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import type { EmulatorMessageTone } from "../hooks/useMobileRecording";
@@ -18,6 +24,7 @@ import {
 
 export type MobileConfigFormProps = {
   c: Record<string, string>;
+  license: LicenseState | null;
   mobilePreflight: MobilePreflightResponse | null;
   mobilePreflightLoading: boolean;
   mobileEnvOpen: boolean;
@@ -42,8 +49,10 @@ export type MobileConfigFormProps = {
   selectedAvd: string;
   onSelectedAvdChange: (value: string) => void;
   onRefreshAvds: () => void;
+  onRefreshMobileEnv: (preferAvdName?: string) => void;
+  onOpenEnvironmentSettings?: () => void;
   emulatorStarting: boolean;
-  onStartEmulator: () => void;
+  onStartEmulator: (avdOverride?: string) => void;
   emulatorMessage: string | null;
   emulatorMessageTone: EmulatorMessageTone;
   mobileFieldError: string | null;
@@ -73,6 +82,7 @@ const fieldInputStyle = (c: Record<string, string>): React.CSSProperties => ({
 export function MobileConfigForm(props: MobileConfigFormProps) {
   const {
     c,
+    license,
     mobilePreflight,
     mobilePreflightLoading,
     mobileEnvOpen,
@@ -97,6 +107,8 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     selectedAvd,
     onSelectedAvdChange,
     onRefreshAvds,
+    onRefreshMobileEnv,
+    onOpenEnvironmentSettings,
     emulatorStarting,
     onStartEmulator,
     emulatorMessage,
@@ -126,6 +138,36 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     [mobileDevices],
   );
 
+  const onlineEmulators = useMemo(
+    () => mobileDevices.filter((d) => d.kind === "emulator" && d.state === "device"),
+    [mobileDevices],
+  );
+  const hasOnlineEmulator = onlineEmulators.length > 0;
+  const primaryOnlineEmulator = onlineEmulators[0];
+
+  const avdSelectRef = useRef<HTMLSelectElement>(null);
+  const [avdWizardOpen, setAvdWizardOpen] = useState(false);
+  const [avdUpsellOpen, setAvdUpsellOpen] = useState(false);
+  const [studioHint, setStudioHint] = useState<string | null>(null);
+  const [studioPathPanelOpen, setStudioPathPanelOpen] = useState(false);
+  const [studioSdkOk, setStudioSdkOk] = useState(false);
+  const canOrchestrateAvd = avdOrchestrationAllowed(license);
+  const canPickAvd = !mobileAvdsLoading && mobileAvds.length > 0;
+  const hasSelectedAvd = Boolean(selectedAvd.trim());
+  const canLaunchNewAvd = canPickAvd && hasSelectedAvd && !emulatorStarting;
+  const showAvdCatalogEmpty =
+    !mobileAvdsLoading && mobileAvds.length === 0 && !mobileAvdsError && !hasOnlineEmulator;
+  const showAvdCatalogEmptyButEmulatorRunning =
+    !mobileAvdsLoading && mobileAvds.length === 0 && !mobileAvdsError && hasOnlineEmulator;
+
+  const handleStartEmulatorClick = () => {
+    if (hasOnlineEmulator && !canPickAvd) {
+      return;
+    }
+    const fromSelect = avdSelectRef.current?.value?.trim() ?? "";
+    onStartEmulator(fromSelect || selectedAvd.trim() || undefined);
+  };
+
   const deviceSelectValue = deviceManualMode
     ? MANUAL_DEVICE_OPTION
     : physicalDevices.some((d) => d.id === deviceId)
@@ -139,6 +181,41 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
     }
     onDeviceManualModeChange(false);
     onDeviceIdChange(value);
+  };
+
+  const handleOpenStudio = () => {
+    setStudioHint(null);
+    setStudioPathPanelOpen(false);
+    setStudioSdkOk(false);
+    void (async () => {
+      try {
+        const res = await openMobileAndroidStudio();
+        if (!res.ok) {
+          setStudioHint(res.message);
+          setStudioSdkOk(Boolean(res.sdk_ok));
+          setStudioPathPanelOpen(true);
+          return;
+        }
+        setStudioHint(res.message);
+      } catch (e: unknown) {
+        setStudioHint(String((e as Error)?.message ?? e));
+        setStudioPathPanelOpen(true);
+      }
+    })();
+  };
+
+  const handleAvdAssistantClick = () => {
+    if (canOrchestrateAvd) {
+      setAvdWizardOpen(true);
+      return;
+    }
+    setAvdUpsellOpen(true);
+  };
+
+  const handleRecheckAvdEnv = () => {
+    onRefreshAvds();
+    onRefreshMobileEnv();
+    setStudioHint("Comprobando catálogo AVD y entorno…");
   };
 
   return (
@@ -358,16 +435,121 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
 
       {deviceMode === "emulator" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {hasOnlineEmulator && primaryOnlineEmulator && (
+            <LoadingStatusRow
+              c={c}
+              testId="elia-mobile-emulator-online"
+              tone="success"
+              text={`Emulador conectado en adb (${primaryOnlineEmulator.id}). Ya puedes grabar: selecciónalo abajo si no está activo. «Iniciar emulador» solo arranca un AVD nuevo desde el catálogo del SDK.`}
+            />
+          )}
+          {showAvdCatalogEmptyButEmulatorRunning && (
+            <LoadingStatusRow
+              c={c}
+              testId="elia-mobile-avd-catalog-empty-running"
+              tone="neutral"
+              text="El catálogo de AVDs del SDK está vacío (emulator -list-avds), pero hay un emulador en ejecución. No necesitas «Iniciar emulador» para esta sesión."
+            />
+          )}
+          {showAvdCatalogEmpty && (
+            <LoadingStatusRow
+              c={c}
+              testId="elia-mobile-no-avds"
+              tone="neutral"
+              text="No hay AVDs en el catálogo del SDK. Usa «Asistente AVD», abre Android Studio o pulsa «Comprobar de nuevo»."
+            />
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              data-testid="elia-mobile-avd-assistant"
+              onClick={handleAvdAssistantClick}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${c.primary}`,
+                background: c.neutralBg,
+                color: c.text,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              Asistente AVD
+            </button>
+            <button
+              type="button"
+              data-testid="elia-mobile-open-studio"
+              onClick={handleOpenStudio}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${c.inputBorder}`,
+                background: c.inputBg,
+                color: c.text,
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Abrir Android Studio
+            </button>
+            <button
+              type="button"
+              data-testid="elia-mobile-recheck-avd"
+              onClick={handleRecheckAvdEnv}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${c.inputBorder}`,
+                background: c.inputBg,
+                color: c.text,
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Comprobar de nuevo
+            </button>
+          </div>
+          {studioHint && (
+            <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>{studioHint}</div>
+          )}
+          {studioPathPanelOpen && (
+            <AndroidStudioPathPanel
+              c={c}
+              open={studioPathPanelOpen}
+              sdkOk={studioSdkOk}
+              onOpenEnvironmentSettings={onOpenEnvironmentSettings}
+              onClose={() => setStudioPathPanelOpen(false)}
+              onOpened={(message) => {
+                setStudioHint(message);
+                setStudioPathPanelOpen(false);
+              }}
+            />
+          )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select
+              ref={avdSelectRef}
               data-testid="elia-mobile-avd-select"
               value={selectedAvd}
               onChange={(e) => onSelectedAvdChange(e.target.value)}
               disabled={mobileAvdsLoading || mobileAvds.length === 0}
               style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
+              title={
+                mobileAvds.length === 0
+                  ? hasOnlineEmulator
+                    ? "Catálogo AVD vacío; usa el emulador ya conectado en adb abajo"
+                    : "Sin AVDs en el SDK"
+                  : undefined
+              }
             >
               <option value="">
-                {mobileAvdsLoading ? "Cargando AVDs…" : "— Selecciona AVD —"}
+                {mobileAvdsLoading
+                  ? "Cargando AVDs…"
+                  : mobileAvds.length === 0
+                    ? hasOnlineEmulator
+                      ? "— Sin AVDs en catálogo (emulador ya activo) —"
+                      : "— Sin AVDs en el SDK —"
+                    : "— Selecciona AVD —"}
               </option>
               {mobileAvds.map((avd) => (
                 <option key={avd} value={avd}>
@@ -378,19 +560,33 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
             <button
               type="button"
               data-testid="elia-mobile-start-emulator"
-              disabled={emulatorStarting || !selectedAvd.trim()}
-              onClick={() => onStartEmulator()}
+              disabled={emulatorStarting || (hasOnlineEmulator && !canPickAvd) || !canLaunchNewAvd}
+              onClick={handleStartEmulatorClick}
+              title={
+                hasOnlineEmulator && !canPickAvd
+                  ? "Ya hay un emulador en adb; usa el selector de abajo"
+                  : !canPickAvd
+                    ? "Crea o importa un AVD en Android Studio y pulsa «AVDs»"
+                    : !hasSelectedAvd
+                      ? "Selecciona un AVD de la lista"
+                      : undefined
+              }
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
                 border: "none",
-                background: emulatorStarting ? c.buttonDisabledBg : c.primary,
+                background: canLaunchNewAvd ? c.primary : c.buttonDisabledBg,
                 color: c.primaryFg,
-                cursor: emulatorStarting ? "wait" : "pointer",
+                cursor: canLaunchNewAvd && !emulatorStarting ? "pointer" : "not-allowed",
                 fontSize: 13,
+                opacity: emulatorStarting ? 0.85 : 1,
               }}
             >
-              {emulatorStarting ? "Arrancando…" : "Iniciar emulador"}
+              {emulatorStarting
+                ? "Arrancando…"
+                : hasOnlineEmulator && !canPickAvd
+                  ? "Emulador activo"
+                  : "Iniciar emulador"}
             </button>
             <button
               type="button"
@@ -413,10 +609,18 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
           {friendlyAvdsError(mobileAvdsError) && (
             <div style={{ fontSize: 11, color: c.errorTitle }}>{friendlyAvdsError(mobileAvdsError)}</div>
           )}
-          {emulatorMessage && (
+          {!mobileAvdsLoading && mobileAvds.length > 0 && !hasSelectedAvd && !hasOnlineEmulator && (
             <LoadingStatusRow
               c={c}
-              text={emulatorMessage}
+              testId="elia-mobile-avd-hint"
+              tone="neutral"
+              text="Selecciona un AVD de la lista y pulsa «Iniciar emulador»."
+            />
+          )}
+          {(emulatorMessage || emulatorStarting) && (
+            <LoadingStatusRow
+              c={c}
+              text={emulatorMessage || "Iniciando emulador…"}
               testId="elia-mobile-emulator-status"
               loading={emulatorStarting || emulatorMessageTone === "loading"}
               tone={
@@ -569,6 +773,27 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
             style={fieldInputStyle(c)}
           />
         </>
+      )}
+
+      {avdUpsellOpen && (
+        <AvdArchitectUpsellModal
+          c={c}
+          onClose={() => setAvdUpsellOpen(false)}
+          onOpenStudio={handleOpenStudio}
+          onOpenEnvironmentSettings={onOpenEnvironmentSettings}
+        />
+      )}
+      {avdWizardOpen && (
+        <AvdSetupWizardModal
+          c={c}
+          open={avdWizardOpen}
+          onClose={() => setAvdWizardOpen(false)}
+          onOpenEnvironmentSettings={onOpenEnvironmentSettings}
+          onRefresh={(preferAvdName) => {
+            onRefreshAvds();
+            onRefreshMobileEnv(preferAvdName);
+          }}
+        />
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import React from "react";
 import type { RecorderPreflightResponse } from "../api";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import { FieldLabel } from "../components/ui";
 
 export function WebConfigForm(props: {
@@ -44,7 +45,12 @@ export function WebConfigForm(props: {
         />
       </div>
       {recorderPreflightLoading && (
-        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Comprobando Chrome…</div>
+        <LoadingStatusRow
+          c={c}
+          text="Comprobando Chrome…"
+          loading
+          testId="elia-web-chrome-preflight-loading"
+        />
       )}
       {!recorderPreflightLoading && recorderPreflight && !recorderPreflight.ok && (
         <div

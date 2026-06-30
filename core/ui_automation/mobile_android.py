@@ -312,6 +312,15 @@ def _popen_emulator(exe_path: str, args: List[str]) -> subprocess.Popen:
 
 
 def resolve_android_sdk() -> Tuple[Optional[str], Optional[str]]:
+    from core.tool_paths import get_tool_path
+
+    override = get_tool_path("android_sdk")
+    if override and os.path.isdir(override):
+        return override, "elia_config"
+    return resolve_android_sdk_auto()
+
+
+def resolve_android_sdk_auto() -> Tuple[Optional[str], Optional[str]]:
     for env_name in ("ELIA_ANDROID_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
         val = _get_env_var(env_name)
         if val and os.path.isdir(val):
@@ -328,7 +337,15 @@ def _resolve_from_env_or_sdk(
     env_names: Tuple[str, ...],
     sdk_relative: str,
     which_name: str,
+    *,
+    config_key: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
+    if config_key:
+        from core.tool_paths import get_tool_path
+
+        override = get_tool_path(config_key)
+        if override and os.path.isfile(override):
+            return override, "elia_config"
     for env_name in env_names:
         val = _get_env_var(env_name)
         if val and os.path.isfile(val):
@@ -349,6 +366,7 @@ def resolve_adb() -> AndroidTool:
         ("ELIA_ADB_PATH",),
         os.path.join("platform-tools", "adb.exe" if sys.platform == "win32" else "adb"),
         "adb",
+        config_key="adb",
     )
     version = None
     if path:
@@ -366,6 +384,7 @@ def resolve_emulator() -> AndroidTool:
         ("ELIA_EMULATOR_PATH",),
         os.path.join("emulator", "emulator.exe" if sys.platform == "win32" else "emulator"),
         "emulator",
+        config_key="emulator",
     )
     canonical = _canonical_emulator_exe(path) if path else None
     if path and not canonical:
@@ -411,7 +430,13 @@ def appium_url(host: Optional[str] = None, port: Optional[int] = None) -> str:
     return f"http://{host or h}:{port if port is not None else p}"
 
 
-def resolve_appium() -> AndroidTool:
+def resolve_appium(*, skip_config: bool = False) -> AndroidTool:
+    if not skip_config:
+        from core.tool_paths import get_tool_path
+
+        override = get_tool_path("appium")
+        if override and os.path.isfile(override):
+            return AndroidTool(name="appium", path=override, source="elia_config")
     candidates: List[Tuple[str, str]] = []
     env_path = (os.environ.get("ELIA_APPIUM_PATH") or "").strip()
     if env_path:
@@ -1163,24 +1188,46 @@ def run_preflight() -> MobilePreflightResult:
     items.append(
         {
             "id": "device",
-            "label": "Dispositivo Android online",
+            "label": "Dispositivo adb online",
             "ok": device_ok,
             "message": ", ".join(d.id for d in online) if online else (devices_err or "Ninguno"),
-            "hint": "Conecta USB/Wi‑Fi adb o inicia un AVD desde ELIA.",
+            "hint": "Conecta USB/Wi‑Fi adb o inicia un emulador.",
         }
     )
-    if avds:
+    if emulator.path:
+        from core.ui_automation.mobile_avd_wizard import cmdline_tools_ready
+
+        ct = cmdline_tools_ready()
         items.append(
             {
-                "id": "avds",
-                "label": "AVDs disponibles",
-                "ok": True,
-                "message": ", ".join(avds[:5]) + ("…" if len(avds) > 5 else ""),
-                "hint": None,
+                "id": "cmdline_tools",
+                "label": "SDK Command-line Tools",
+                "ok": ct["ok"],
+                "message": "sdkmanager + avdmanager" if ct["ok"] else "No detectados",
+                "hint": "Android Studio → SDK Manager → SDK Tools → Android SDK Command-line Tools.",
             }
         )
-    elif avds_err and emulator.path:
-        warnings.append(avds_err)
+        avd_catalog_ok = bool(avds)
+        items.append(
+            {
+                "id": "avd_catalog",
+                "label": "Catálogo AVD (SDK)",
+                "ok": avd_catalog_ok,
+                "message": (
+                    ", ".join(avds[:5]) + ("…" if len(avds) > 5 else "")
+                    if avds
+                    else (avds_err or "Vacío")
+                ),
+                "hint": "Usa «Asistente AVD», abre Android Studio o pulsa «Comprobar de nuevo».",
+            }
+        )
+        if not avd_catalog_ok and not device_ok:
+            warnings.append(
+                "No hay AVDs en el catálogo del SDK ni dispositivos adb online. "
+                "Crea un AVD o conecta un dispositivo físico."
+            )
+        elif avds_err and not avds:
+            warnings.append(avds_err)
 
     if sdk_src == "localappdata":
         warnings.append("SDK detectado en %LOCALAPPDATA%\\Android\\Sdk.")

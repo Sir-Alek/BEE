@@ -1,4 +1,5 @@
 import React from "react";
+import { LoadingStatusRow } from "../../components/LoadingStatusRow";
 import { apiBtn } from "./apiUi";
 
 type Props = {
@@ -63,7 +64,12 @@ export function ApiScriptsGuideModal(props: Props) {
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px 20px" }}>
           {loading ? (
-            <div style={{ fontSize: 13, color: c.muted }}>Cargando guía…</div>
+            <LoadingStatusRow
+              c={c}
+              text="Cargando guía…"
+              loading
+              testId="elia-api-scripts-guide-loading"
+            />
           ) : error ? (
             <div style={{ fontSize: 13, color: "#c0392b" }}>{error}</div>
           ) : (

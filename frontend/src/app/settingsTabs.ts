@@ -1,7 +1,8 @@
-export type SettingsTabId = "general" | "ai" | "license" | "connectors" | "about";
+export type SettingsTabId = "general" | "environment" | "ai" | "license" | "connectors" | "about";
 
 export const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
   { id: "general", label: "General" },
+  { id: "environment", label: "Entorno local" },
   { id: "ai", label: "Inteligencia" },
   { id: "connectors", label: "Conectores" },
   { id: "license", label: "Licencia" },
