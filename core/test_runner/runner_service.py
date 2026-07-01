@@ -180,6 +180,22 @@ class TestRunnerService:
                         since_ts=run.created_at,
                         generate_evidence=True,
                     )
+                if run.project_path:
+                    from core.test_runner.run_diagnostic import build_run_diagnostic, persist_run_manifest
+
+                    diagnostic = build_run_diagnostic(
+                        project_path=run.project_path,
+                        lines=run.lines,
+                        since_ts=run.created_at,
+                        return_code=run.return_code,
+                        kind=run.kind,
+                        run_id=run_id,
+                        platform=platform,
+                        project=project,
+                        finished_at=run.finished_at,
+                    )
+                    run.meta["diagnostic"] = diagnostic
+                    persist_run_manifest(run.project_path, run_id, diagnostic)
                 with self._line_cond:
                     self._line_cond.notify_all()
 
@@ -189,6 +205,19 @@ class TestRunnerService:
     def get(self, run_id: str) -> Optional[RunState]:
         with self._lock:
             return self._runs.get(run_id)
+
+    def project_has_running_job(self, platform: str, project: str) -> bool:
+        plat = (platform or "").strip().lower()
+        name = (project or "").strip()
+        if not plat or not name:
+            return False
+        with self._lock:
+            for run in self._runs.values():
+                if run.state != "running":
+                    continue
+                if run.platform == plat and run.project == name:
+                    return True
+        return False
 
     def wait_lines(self, run_id: str, since: int, timeout: float = 30.0) -> List[str]:
         deadline = time.time() + timeout

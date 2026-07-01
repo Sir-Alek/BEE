@@ -13,7 +13,9 @@ from webui.error_reporting import (
     log_execution,
     persist_job_error_snapshot,
     prune_error_reports,
+    prune_stale_execution_logs,
     sanitize_text,
+    trim_execution_log_by_age,
 )
 
 
@@ -97,6 +99,34 @@ class TestErrorReporting(unittest.TestCase):
             self.assertEqual(removed, 3)
             remaining = list(report_dir.glob("*.txt"))
             self.assertEqual(len(remaining), 2)
+
+    def test_prune_stale_execution_logs_removes_old_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stale = root / "elia_execution.log.2026-05-01"
+            stale.write_text("old", encoding="utf-8")
+            old_ts = (__import__("time").time()) - (10 * 86400)
+            os.utime(stale, (old_ts, old_ts))
+            (root / "elia_execution.log").write_text("active", encoding="utf-8")
+            with patch("webui.error_reporting.logs_dir", return_value=root):
+                removed = prune_stale_execution_logs(max_age_days=7)
+            self.assertEqual(removed, 1)
+            self.assertFalse(stale.is_file())
+            self.assertTrue((root / "elia_execution.log").is_file())
+
+    def test_trim_execution_log_by_age_drops_old_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log_path = root / "elia_execution.log"
+            old_line = "2020-01-01 10:00:00 INFO [elia.execution] old"
+            new_line = f"{__import__('datetime').datetime.now():%Y-%m-%d %H:%M:%S} INFO [elia.execution] new"
+            log_path.write_text(f"{old_line}\n{new_line}\n", encoding="utf-8")
+            with patch("webui.error_reporting.execution_log_path", return_value=log_path):
+                changed = trim_execution_log_by_age(max_age_days=7)
+            self.assertTrue(changed)
+            text = log_path.read_text(encoding="utf-8")
+            self.assertNotIn("old", text)
+            self.assertIn("new", text)
 
     def test_beta_feedback_url_env_overrides_constant(self) -> None:
         with patch.dict(os.environ, {"ELIA_BETA_FEEDBACK_URL": "https://env.example/form"}, clear=False):

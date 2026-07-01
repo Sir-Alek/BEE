@@ -1,0 +1,18 @@
+{
+  "id": "api-smoke",
+  "version": 1,
+  "kind": "single",
+  "platform": "api",
+  "name": "Smoke API (demo)",
+  "description": "Proyecto API con escenario GET de ejemplo (JSONPlaceholder). Ejecútalo desde Pruebas API en segundos.",
+  "default_project_name": "ELIA-Demo-API",
+  "estimated_minutes": 3,
+  "prerequisites": [
+    "Conexión a internet (jsonplaceholder.typicode.com)"
+  ],
+  "checklist": [
+    "Abre la pestaña Pruebas API y selecciona este proyecto",
+    "Ejecuta el escenario «GET post de ejemplo» desde Cliente API",
+    "Opcional: ejecuta Behave features/api_smoke.feature en Automatización UI (plataforma api)"
+  ]
+}

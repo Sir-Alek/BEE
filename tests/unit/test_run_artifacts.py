@@ -45,6 +45,19 @@ class TestRunArtifacts(unittest.TestCase):
             resolved = resolve_project_pdf(root, "report.pdf")
             self.assertEqual(resolved.name, "report.pdf")
 
+    def test_resolve_project_asset_png_in_subfolder(self) -> None:
+        from core.test_runner.run_artifacts import resolve_project_asset
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shot_dir = root / "outputs" / "evidences" / "demo_run"
+            shot_dir.mkdir(parents=True)
+            png = shot_dir / "FAIL_120000_step.png"
+            png.write_bytes(b"\x89PNG")
+            rel = "outputs/evidences/demo_run/FAIL_120000_step.png"
+            resolved = resolve_project_asset(root, rel)
+            self.assertEqual(resolved.name, "FAIL_120000_step.png")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,7 +61,22 @@ class PdfReportDocument(FPDF):
         return (img_index, base)
 
     @staticmethod
-    def genReport(featureName, testName, dt_format, dt_formatFin, screenshots=None):
+    def _resolve_feature_path(base_dir: str, feature_ref: str) -> str:
+        ref = (feature_ref or "").replace("\\", "/").strip()
+        candidates: list[str] = []
+        if ref.endswith(".feature"):
+            if ref.startswith("features/"):
+                candidates.append(os.path.join(base_dir, ref))
+            candidates.append(os.path.join(base_dir, "features", os.path.basename(ref)))
+        else:
+            candidates.append(os.path.join(base_dir, "features", f"{ref}.feature"))
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        return candidates[0] if candidates else os.path.join(base_dir, "features", f"{ref}.feature")
+
+    @staticmethod
+    def genReport(featureName, testName, dt_format, dt_formatFin, screenshots=None, evidence_dir_name=None):
         BASE_DIR = os.getcwd()
         statusTest = ''
         durationTest = ''
@@ -79,12 +94,6 @@ class PdfReportDocument(FPDF):
         failure_screenshots = {}
         real_steps = {}
         step_status = {}
-
-        if screenshots:
-            failure_screenshots = {
-                idx: os.path.basename(path)
-                for idx, path in enumerate(screenshots.values())
-            }
 
         current_step = -1
         error_buffer = []
@@ -149,14 +158,25 @@ class PdfReportDocument(FPDF):
                         if not any(fn(error_line) for fn in ignored_errors):
                             error_buffer.append(error_line)
 
-                    if 'Captura de fallo guardada:' in line:
-                        screenshot_name = line.split(": ")[-1].strip()
-                        failure_screenshots[current_step] = screenshot_name
+                    if 'Captura de fallo guardada' in line:
+                        screenshot_name = os.path.basename(line.split(": ")[-1].strip())
+                        if current_step >= 0:
+                            failure_screenshots[current_step] = screenshot_name
 
         except FileNotFoundError:
             print(f"ADVERTENCIA: No se encontró el archivo de log {logFile}")
 
-        file_path = os.path.join(BASE_DIR, 'features', featureName + ".feature")
+        if screenshots:
+            name_to_idx = {v: k for k, v in real_steps.items()}
+            for step_name, shot in screenshots.items():
+                shot_name = os.path.basename(str(shot))
+                idx = name_to_idx.get(step_name)
+                if idx is None and len(real_steps) == 1:
+                    idx = 0
+                if idx is not None:
+                    failure_screenshots[idx] = shot_name
+
+        file_path = PdfReportDocument._resolve_feature_path(BASE_DIR, featureName)
         steps = []
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -204,19 +224,25 @@ class PdfReportDocument(FPDF):
         lastFolderURL = os.path.join(BASE_DIR, 'outputs', 'evidences')
         evidence_dir = None
         step_images_map = defaultdict(list)
+        step_index_images = defaultdict(list)
         fail_images = {}
 
         try:
+            if evidence_dir_name:
+                preferred = os.path.join(lastFolderURL, str(evidence_dir_name))
+                if os.path.isdir(preferred):
+                    evidence_dir = preferred
+
             listFolder = [
                 os.path.join(lastFolderURL, folder)
                 for folder in os.listdir(lastFolderURL)
                 if os.path.isdir(os.path.join(lastFolderURL, folder))
             ]
 
-            if listFolder:
-                latest_folder = max(listFolder, key=os.path.getmtime)
-                evidence_dir = latest_folder
+            if evidence_dir is None and listFolder:
+                evidence_dir = max(listFolder, key=os.path.getmtime)
 
+            if evidence_dir:
                 for img in os.listdir(evidence_dir):
                     if not img.lower().endswith(('.png', '.jpg', '.jpeg')):
                         continue
@@ -240,9 +266,19 @@ class PdfReportDocument(FPDF):
                         step_key = PdfReportDocument._extract_step_key_from_image_name(img)
                         if step_key:
                             step_images_map[step_key].append(img)
+                        prefix_match = re.match(r'^(\d{2})_', img, re.IGNORECASE)
+                        if prefix_match:
+                            step_index_images[int(prefix_match.group(1)) - 1].append(img)
 
                 for step_key in step_images_map:
                     step_images_map[step_key].sort(
+                        key=lambda x: (
+                            PdfReportDocument._image_sort_key(x),
+                            os.path.getmtime(os.path.join(evidence_dir, x))
+                        )
+                    )
+                for step_idx in step_index_images:
+                    step_index_images[step_idx].sort(
                         key=lambda x: (
                             PdfReportDocument._image_sort_key(x),
                             os.path.getmtime(os.path.join(evidence_dir, x))
@@ -349,7 +385,10 @@ class PdfReportDocument(FPDF):
             else:
                 step_key = None
 
-            current_images = step_images_map.get(step_key, []) if step_key else []
+            current_images = list(step_images_map.get(step_key, [])) if step_key else []
+            for img_name in step_index_images.get(step_index, []):
+                if img_name not in current_images:
+                    current_images.append(img_name)
 
             if pdf.get_y() + 20 > pdf.h - pdf.b_margin:
                 pdf.add_page()

@@ -1045,6 +1045,14 @@ export async function getApiScriptsGuide(): Promise<{ title: string; content: st
   return res.json();
 }
 
+export async function getPlatformQuickGuide(
+  platform: "mobile" | "legacy",
+): Promise<{ title: string; content: string }> {
+  const res = await fetch(`/api/guides/${encodeURIComponent(platform)}`);
+  if (!res.ok) throw new Error(`No se pudo cargar la guía: ${res.status}`);
+  return res.json();
+}
+
 export async function getApiProjects(): Promise<{ projects: string[] }> {
   const res = await fetch("/api/api/projects");
   if (!res.ok) throw new Error(`Failed to list API projects: ${res.status}`);
@@ -1213,7 +1221,106 @@ export async function getPlatformProjects(platform: string): Promise<{ projects:
   return res.json();
 }
 
-export async function openEliaLogsFolder(): Promise<{ ok: boolean; path: string }> {
+export type ProjectTemplateInfo = {
+  id: string;
+  version: number;
+  kind: "single" | "multi" | string;
+  name: string;
+  description: string;
+  default_project_name: string;
+  estimated_minutes: number;
+  checklist: string[];
+  prerequisites: string[];
+  platform?: string;
+  components?: { template: string; platform: string; name_suffix: string }[];
+};
+
+export async function getProjectTemplates(): Promise<{ templates: ProjectTemplateInfo[] }> {
+  const res = await fetch("/api/project-templates");
+  if (!res.ok) throw new Error(`Failed to list templates: ${res.status}`);
+  return res.json();
+}
+
+export async function createProjectFromTemplate(
+  templateId: string,
+  projectName: string,
+): Promise<{
+  ok: boolean;
+  template_id: string;
+  message: string;
+  checklist: string[];
+  projects: { platform: string; project: string; path: string }[];
+}> {
+  const res = await fetch("/api/project-templates/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template_id: templateId, project_name: projectName }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.detail ?? data.message ?? `Failed to create project: ${res.status}`));
+  }
+  return data;
+}
+
+export type ProjectInfoResponse = {
+  platform: string;
+  project: string;
+  path: string;
+  from_template: boolean;
+  template_id: string | null;
+  template_version?: number | null;
+  created_at?: string | null;
+  elia_version?: string | null;
+};
+
+export async function getProjectInfo(platform: string, project: string): Promise<ProjectInfoResponse> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/info`,
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.detail ?? `Failed to get project info: ${res.status}`));
+  }
+  return data;
+}
+
+export async function renameProject(
+  platform: string,
+  project: string,
+  newName: string,
+): Promise<{ ok: boolean; project: string; platform: string }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/rename`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_name: newName }),
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.detail ?? `Failed to rename project: ${res.status}`));
+  }
+  return data;
+}
+
+export async function deleteProject(
+  platform: string,
+  project: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}`,
+    { method: "DELETE" },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.detail ?? `Failed to delete project: ${res.status}`));
+  }
+  return data;
+}
+
+export async function openEliaLogsFolder(): Promise<{ ok: boolean; path: string; hint?: string }> {
   const res = await fetch("/api/app/open-logs-folder", { method: "POST" });
   if (!res.ok) throw new Error(`Failed to open logs folder: ${res.status}`);
   return res.json();
@@ -1272,10 +1379,102 @@ export async function getTestRun(runId: string): Promise<{
   platform?: string;
   project?: string;
   project_path?: string;
+  meta?: { diagnostic?: RunDiagnosticResponse };
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   if (!res.ok) throw new Error(`Failed to get run: ${res.status}`);
   return res.json();
+}
+
+export type RunDiagnosticFailure = {
+  scenario: string;
+  feature_file?: string;
+  feature_line?: number | null;
+  hook_error?: string | null;
+  step_error?: string | null;
+  failure_reason?: string | null;
+  failed_step?: string | null;
+  failed_step_keyword?: string | null;
+  failed_step_text?: string | null;
+  exception_type?: string | null;
+  diagnostic_notes?: string[];
+  log_path?: string;
+  log_exists?: boolean;
+  primary_screenshot?: { name: string; path: string; kind: string };
+  screenshots?: Array<{ name: string; path: string; kind: string }>;
+};
+
+export type RunHistoryEntry = {
+  run_id: string;
+  finished_at: number;
+  summary: string;
+  kind?: string;
+  scenario?: string | null;
+  failure_reason?: string | null;
+  failed_step?: string | null;
+};
+
+export type RunDiagnosticResponse = {
+  ok: boolean;
+  return_code?: number | null;
+  kind?: string;
+  summary?: string;
+  failures: RunDiagnosticFailure[];
+  logs?: Array<{ name: string; path: string }>;
+  evidences?: Array<{ name: string; path: string; kind: string }>;
+};
+
+export async function getRunDiagnostic(runId: string): Promise<{ run_id: string; diagnostic: RunDiagnosticResponse }> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/diagnostic`);
+  if (!res.ok) throw new Error(`Failed to get run diagnostic: ${res.status}`);
+  return res.json();
+}
+
+export async function listProjectRunHistory(
+  platform: string,
+  project: string,
+  limit = 5,
+): Promise<{ runs: RunHistoryEntry[]; max_entries?: number }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/run-history?${params.toString()}`,
+  );
+  if (!res.ok) throw new Error(`Failed to list run history: ${res.status}`);
+  return res.json();
+}
+
+export async function getProjectRunHistoryEntry(
+  platform: string,
+  project: string,
+  runId: string,
+): Promise<{ run_id: string; diagnostic: RunDiagnosticResponse }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/run-history/${encodeURIComponent(runId)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to get run history entry: ${res.status}`);
+  return res.json();
+}
+
+export async function openProjectFile(
+  platform: string,
+  project: string,
+  path: string,
+): Promise<{ ok: boolean; path: string; hint?: string }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/open-file`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to open file: ${res.status}`);
+  return res.json();
+}
+
+export function getProjectAssetUrl(platform: string, project: string, path: string): string {
+  const params = new URLSearchParams({ path });
+  return `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/assets/file?${params.toString()}`;
 }
 
 export function getProjectReportUrl(platform: string, project: string, filename: string): string {
@@ -1292,7 +1491,7 @@ export async function openProjectFolder(
   platform: string,
   project: string,
   subpath = "outputs/pdfReports",
-): Promise<{ ok: boolean; path: string }> {
+): Promise<{ ok: boolean; path: string; hint?: string }> {
   const res = await fetch(
     `/api/projects/${encodeURIComponent(platform)}/${encodeURIComponent(project)}/open-folder`,
     {

@@ -1,0 +1,30 @@
+{
+  "id": "full-stack-demo",
+  "version": 1,
+  "kind": "multi",
+  "name": "Demo full-stack",
+  "description": "Crea dos proyectos enlazados: login web (Behave) y smoke API. Recorrido completo de ELIA en un solo paso.",
+  "default_project_name": "ELIA-Demo",
+  "estimated_minutes": 8,
+  "prerequisites": [
+    "Google Chrome instalado",
+    "Conexión a internet"
+  ],
+  "checklist": [
+    "Automatización UI → ELIA-Demo-Web: ejecuta demo_login.feature",
+    "Pruebas API → ELIA-Demo-API: ejecuta GET post de ejemplo",
+    "Explora README.md en cada proyecto para más detalle"
+  ],
+  "components": [
+    {
+      "template": "web-login",
+      "platform": "web",
+      "name_suffix": "Web"
+    },
+    {
+      "template": "api-smoke",
+      "platform": "api",
+      "name_suffix": "API"
+    }
+  ]
+}

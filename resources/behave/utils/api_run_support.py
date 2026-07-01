@@ -140,12 +140,14 @@ class RunReportPublisher:
         if not context.generate_evidence:
             return
         try:
+            feature_ref = getattr(context.feature, "filename", None) or context.feature.name
             PdfReportDocument.genReport(
-                context.feature.name,
+                feature_ref,
                 scenario.name,
                 context.start_time.strftime("%Y-%m-%d_%H-%M-%S"),
                 end_time.strftime("%Y-%m-%d_%H-%M-%S"),
                 screenshots=failure_screenshots,
+                evidence_dir_name=getattr(context, "evidence_dir", None),
             )
             logging.info("Reporte PDF API generado: %s", scenario.name)
         except Exception as e:

@@ -69,7 +69,10 @@ import {
 import type { LicenseState } from "../app/licenseUtils";
 import { FeatureGate } from "../components/FeatureGate";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
+import { ProjectManageToolbar } from "../components/ProjectManageToolbar";
+import { ProjectTemplateModal } from "../components/ProjectTemplateModal";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
+import { useHomeUiContext } from "../context/HomeUiContext";
 import type { FeatureFlags, ModulesStatus } from "../types";
 
 type Props = {
@@ -162,6 +165,8 @@ export function ApiSurface(props: Props) {
   }>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [suiteHistoryRefresh, setSuiteHistoryRefresh] = useState(0);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const { refreshHomeData } = useHomeUiContext();
   const features = entitlementFeatures;
   const actionsEnabled = canExecuteHomeActions(entitlementPhase, canRunJobs);
   const postmanAccess = getFeatureAccess(entitlementPhase, "api_postman_suites", features, license);
@@ -868,6 +873,15 @@ export function ApiSurface(props: Props) {
         >
           Crear
         </button>
+        <button
+          type="button"
+          data-testid="elia-api-new-from-template-btn"
+          disabled={busy || !actionsEnabled}
+          onClick={() => setTemplateModalOpen(true)}
+          style={apiBtn(c, undefined, c.primary, true)}
+        >
+          Desde plantilla…
+        </button>
         <label style={{ fontSize: 13, color: c.muted }}>Entorno</label>
         <select
           value={environment}
@@ -881,6 +895,26 @@ export function ApiSurface(props: Props) {
           ))}
         </select>
       </div>
+
+      {project.trim() ? (
+        <ProjectManageToolbar
+          c={c}
+          platform="api"
+          project={project}
+          disabled={!actionsEnabled || busy}
+          onProjectRenamed={(newName) => {
+            refreshHomeData();
+            refreshProjects();
+            setProject(newName);
+          }}
+          onProjectDeleted={() => {
+            refreshHomeData();
+            refreshProjects();
+            setProject("");
+          }}
+          onError={onShowError}
+        />
+      ) : null}
 
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {(
@@ -1338,6 +1372,18 @@ export function ApiSurface(props: Props) {
           </FeatureGate>
         </>
       )}
+      <ProjectTemplateModal
+        c={c}
+        open={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+        contextPlatform="api"
+        onCreated={(result) => {
+          refreshHomeData();
+          refreshProjects();
+          const apiProj = result.projects.find((p) => p.platform === "api") ?? result.projects[0];
+          if (apiProj) setProject(apiProj.project);
+        }}
+      />
     </div>
   );
 }

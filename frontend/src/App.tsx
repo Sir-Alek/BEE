@@ -747,7 +747,9 @@ export default function App() {
       setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
       setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
       availableRecordings, setAvailableScenarios, setAvailableRecordings,
-      homeDataRefresh, pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
+      homeDataRefresh, refreshHomeData: () => setHomeDataRefresh((n) => n + 1),
+      selectRunProject: (platform: string, project: string) => setPendingRunProject({ platform, project }),
+      pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
     }),
     [
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, licenseLoading, canRunJobs, modules, modulesLoading,

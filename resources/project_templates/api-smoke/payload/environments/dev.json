@@ -1,0 +1,6 @@
+{
+  "name": "dev",
+  "variables": {
+    "base_url": "https://jsonplaceholder.typicode.com"
+  }
+}

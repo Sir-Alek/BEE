@@ -1,0 +1,6 @@
+{
+  "default_environment": "dev",
+  "global_headers": {
+    "Accept": "application/json"
+  }
+}

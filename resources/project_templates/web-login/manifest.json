@@ -1,0 +1,19 @@
+{
+  "id": "web-login",
+  "version": 1,
+  "kind": "single",
+  "platform": "web",
+  "name": "Login web (demo)",
+  "description": "Escenario Behave listo con Sauce Demo: abre el navegador, inicia sesión y valida el catálogo. Ideal para tu primera ejecución en minutos.",
+  "default_project_name": "ELIA-Demo-Web",
+  "estimated_minutes": 5,
+  "prerequisites": [
+    "Google Chrome instalado",
+    "Conexión a internet (demo pública saucedemo.com)"
+  ],
+  "checklist": [
+    "Selecciona el proyecto en Automatización UI → Ejecutar Behave",
+    "Ejecuta features/demo_login.feature (evidencia PDF activada)",
+    "Abre outputs/pdfReports para ver el informe generado"
+  ]
+}

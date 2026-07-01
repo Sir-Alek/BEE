@@ -1,0 +1,4 @@
+{
+  "personas": [],
+  "_comment": "Dataset opcional para la feature «Login demo Sauce Demo». Vacío: el escenario demo usa credenciales fijas en el .feature."
+}

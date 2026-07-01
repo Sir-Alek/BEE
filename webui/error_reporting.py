@@ -6,7 +6,9 @@ import os
 import platform
 import re
 import sys
-from logging.handlers import RotatingFileHandler
+import time
+from datetime import datetime, timedelta
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,12 +16,15 @@ from core.elia_paths import error_reports_dir, execution_log_path, logs_dir
 
 _CONFIGURED = False
 EXECUTION_LOGGER_NAME = "elia.execution"
+FOLDER_OPEN_HINT = (
+    "Si no ves la ventana del explorador de archivos, revísala en la barra de tareas."
+)
 
-# Rotación por defecto: 5 MB × 4 archivos (activo + 3 backups) ≈ 20 MB máximo.
-_DEFAULT_MAX_MB = 5
-_DEFAULT_BACKUPS = 3
+# Rotación diaria; conservar como máximo 7 días de historial.
+_DEFAULT_RETENTION_DAYS = 7
 _DEFAULT_ERROR_REPORTS_MAX = 50
 _DEFAULT_LOG_LEVEL = logging.INFO
+_LOG_TS_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
 # Patrones de redacción (Infosec / local-first). Orden importa.
 _REDACTIONS: list[tuple[re.Pattern[str], str]] = [
@@ -54,16 +59,13 @@ def _env_int(name: str, default: int, *, lo: int, hi: int) -> int:
     return max(lo, min(value, hi))
 
 
-def _rotation_limits() -> tuple[int, int]:
-    max_bytes = _env_int("ELIA_EXEC_LOG_MAX_MB", _DEFAULT_MAX_MB, lo=1, hi=50) * 1024 * 1024
-    backup_count = _env_int("ELIA_EXEC_LOG_BACKUPS", _DEFAULT_BACKUPS, lo=1, hi=10)
-    return max_bytes, backup_count
+def _retention_days() -> int:
+    return _env_int("ELIA_EXEC_LOG_MAX_DAYS", _DEFAULT_RETENTION_DAYS, lo=1, hi=90)
 
 
 def execution_log_retention_label() -> str:
-    max_mb = _env_int("ELIA_EXEC_LOG_MAX_MB", _DEFAULT_MAX_MB, lo=1, hi=50)
-    backups = _env_int("ELIA_EXEC_LOG_BACKUPS", _DEFAULT_BACKUPS, lo=1, hi=10)
-    return f"rotación ~{max_mb} MB × {backups + 1} archivos (máx. ~{max_mb * (backups + 1)} MB)"
+    days = _retention_days()
+    return f"rotación diaria, conservando como máximo {days} días"
 
 
 def execution_log_about_hint() -> str:
@@ -106,6 +108,56 @@ def get_execution_logger() -> logging.Logger:
     return logging.getLogger(EXECUTION_LOGGER_NAME)
 
 
+def prune_stale_execution_logs(*, max_age_days: int | None = None) -> int:
+    """Elimina copias rotadas de elia_execution.log más antiguas que max_age_days."""
+    max_age = max_age_days or _retention_days()
+    cutoff = time.time() - max_age * 86400
+    removed = 0
+    for path in logs_dir().glob("elia_execution.log*"):
+        if path.name == "elia_execution.log":
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def trim_execution_log_by_age(*, max_age_days: int | None = None) -> bool:
+    """Recorta el log activo dejando solo entradas dentro del periodo de retención."""
+    log_path = execution_log_path()
+    if not log_path.is_file() or log_path.stat().st_size == 0:
+        return False
+    max_age = max_age_days or _retention_days()
+    cutoff = datetime.now() - timedelta(days=max_age)
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    kept: list[str] = []
+    for line in lines:
+        match = _LOG_TS_PATTERN.match(line)
+        if not match:
+            kept.append(line)
+            continue
+        try:
+            ts = datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            kept.append(line)
+            continue
+        if ts >= cutoff:
+            kept.append(line)
+    if len(kept) == len(lines):
+        return False
+    try:
+        log_path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def configure_execution_logging() -> Path:
     """Configura elia_execution.log bajo Documents/ELIA/logs (rotativo, idempotente)."""
     global _CONFIGURED
@@ -115,13 +167,14 @@ def configure_execution_logging() -> Path:
     logger.propagate = False
 
     logs_dir().mkdir(parents=True, exist_ok=True)
-    max_bytes, backup_count = _rotation_limits()
+    backup_count = _retention_days()
 
-    has_rotating = any(isinstance(h, RotatingFileHandler) for h in logger.handlers)
-    if not has_rotating:
-        handler = RotatingFileHandler(
+    has_timed = any(isinstance(h, TimedRotatingFileHandler) for h in logger.handlers)
+    if not has_timed:
+        handler = TimedRotatingFileHandler(
             log_path,
-            maxBytes=max_bytes,
+            when="midnight",
+            interval=1,
             backupCount=backup_count,
             encoding="utf-8",
         )
@@ -129,7 +182,8 @@ def configure_execution_logging() -> Path:
         logger.addHandler(handler)
 
     if not _CONFIGURED:
-        max_mb = max_bytes // (1024 * 1024)
+        prune_stale_execution_logs()
+        trim_execution_log_by_age()
         logger.info(
             "Log de ejecución ELIA iniciado en ELIA://USER_DATA/logs/elia_execution.log "
             "(%s)",

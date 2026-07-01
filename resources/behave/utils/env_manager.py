@@ -267,41 +267,55 @@ class RunLogCoordinator:
 
     @staticmethod
     def log_step_diagnostics(context, step):
-        if hasattr(context, 'driver') and context.driver:
-            try:
-                context.diagnostic_logger.info("Current URL: %s", context.driver.current_url)
-                context.diagnostic_logger.info("Page Title: %s", context.driver.title)
-                
-                try:
-                    body = context.driver.find_element(By.TAG_NAME, "body")
-                    visible_text = body.text.replace('\n', ' ').replace('\r', ' ')[:1000] + "..."
-                    context.diagnostic_logger.info("Texto visible: %s", visible_text)
-                except:
-                    context.diagnostic_logger.warning("Problema obteniendo texto visible")
-                
-                try:
-                    buttons = context.driver.find_elements(By.XPATH, "//button")
-                    context.diagnostic_logger.info("=== Botones visibles ===")
-                    for i, button in enumerate(buttons[:3]):
-                        if button.is_displayed():
-                            status = RunPathUtils.get_element_status(button)
-                            context.diagnostic_logger.info(f" - Botón {i+1}: '{status.get('text', '')}' Habilitado: {status.get('enabled', 'N/A')}")
-                except StaleElementReferenceException:
-                    context.diagnostic_logger.warning("Elementos cambiaron durante diagnóstico")
-                    
-            except Exception as e:
-                context.diagnostic_logger.warning("Problema en diagnóstico general: %s", str(e))
+        if not hasattr(context, 'driver') or not context.driver:
+            return
 
-            if step.status.name == "failed":
-                try:
-                    context.diagnostic_logger.warning("=== DOM en fallo ===")
-                    inputs = context.driver.find_elements(By.TAG_NAME, "input")
-                    buttons = context.driver.find_elements(By.TAG_NAME, "button")
-                    context.diagnostic_logger.warning("Campos de entrada (%d):", len(inputs))
-                    for i, input_elem in enumerate(inputs[:3]):
-                        context.diagnostic_logger.warning(" - Input %d: %s", i+1, RunPathUtils.get_element_status(input_elem))
-                except Exception as dom_error:
-                    context.diagnostic_logger.warning("Problema analizando DOM: %s", str(dom_error))
+        def _driver_alive() -> bool:
+            try:
+                _ = context.driver.current_url
+                return True
+            except Exception:
+                return False
+
+        if step.status.name == "failed":
+            if not _driver_alive():
+                return
+            try:
+                context.diagnostic_logger.warning("=== DOM en fallo ===")
+                inputs = context.driver.find_elements(By.TAG_NAME, "input")
+                context.diagnostic_logger.warning("Campos de entrada (%d):", len(inputs))
+                for i, input_elem in enumerate(inputs[:3]):
+                    context.diagnostic_logger.warning(" - Input %d: %s", i+1, RunPathUtils.get_element_status(input_elem))
+            except Exception as dom_error:
+                context.diagnostic_logger.warning("Problema analizando DOM: %s", str(dom_error))
+            return
+
+        if not _driver_alive():
+            return
+
+        try:
+            context.diagnostic_logger.info("Current URL: %s", context.driver.current_url)
+            context.diagnostic_logger.info("Page Title: %s", context.driver.title)
+
+            try:
+                body = context.driver.find_element(By.TAG_NAME, "body")
+                visible_text = body.text.replace('\n', ' ').replace('\r', ' ')[:1000] + "..."
+                context.diagnostic_logger.info("Texto visible: %s", visible_text)
+            except Exception:
+                context.diagnostic_logger.warning("Problema obteniendo texto visible")
+
+            try:
+                buttons = context.driver.find_elements(By.XPATH, "//button")
+                context.diagnostic_logger.info("=== Botones visibles ===")
+                for i, button in enumerate(buttons[:3]):
+                    if button.is_displayed():
+                        status = RunPathUtils.get_element_status(button)
+                        context.diagnostic_logger.info(f" - Botón {i+1}: '{status.get('text', '')}' Habilitado: {status.get('enabled', 'N/A')}")
+            except StaleElementReferenceException:
+                context.diagnostic_logger.warning("Elementos cambiaron durante diagnóstico")
+
+        except Exception as e:
+            context.diagnostic_logger.warning("Problema en diagnóstico general: %s", str(e))
 
     @staticmethod
     def consolidate_feature_logs(context, feature):
@@ -335,16 +349,22 @@ class FeatureDatasetLoader:
     """Carga y manejo de datos de prueba"""
     @staticmethod
     def load_dataset(context):
-        json_path = os.path.join(ProjectDirectoryLayout.get_base_dir(), 'resources', 'data', f"{context.feature.name}.json")
+        json_path = os.path.join(
+            ProjectDirectoryLayout.get_base_dir(),
+            "resources",
+            "data",
+            f"{context.feature.name}.json",
+        )
         try:
-            with open(json_path, 'r', encoding='utf-8') as file:
+            with open(json_path, "r", encoding="utf-8") as file:
                 context.dataset = json.load(file)
-                context.personas = context.dataset.get('personas', [])
-                # print(f"Datos de personas cargados correctamente para la característica {context.feature.name}:", context.personas)
+                context.personas = context.dataset.get("personas", [])
         except FileNotFoundError:
-            raise Exception(f"Archivo JSON no encontrado: {json_path}")
-        except json.JSONDecodeError:
-            raise Exception(f"Error leyendo JSON: {json_path}")
+            context.dataset = {}
+            context.personas = []
+            logging.debug("Dataset JSON no encontrado (opcional): %s", json_path)
+        except json.JSONDecodeError as exc:
+            raise Exception(f"Error leyendo JSON: {json_path}") from exc
 
 class RunEvidenceCoordinator:
     """Manejo de capturas y enlaces al helper global"""
@@ -481,12 +501,15 @@ class RunReportPublisher:
             return
         try:
             # Aseguramos pasar los screenshots al método genReport
+            # Preferir carpeta de evidencias del escenario actual si está disponible.
+            feature_ref = getattr(context.feature, "filename", None) or context.feature.name
             PdfReportDocument.genReport(
-                context.feature.name, 
+                feature_ref,
                 scenario.name,
                 context.start_time.strftime('%Y-%m-%d_%H-%M-%S'),
                 end_time.strftime('%Y-%m-%d_%H-%M-%S'),
-                screenshots=failure_screenshots
+                screenshots=failure_screenshots,
+                evidence_dir_name=getattr(context, "evidence_dir", None),
             )
             logging.info(f"✓ Reporte PDF de escenario generado: {scenario.name}")
         except Exception as e:

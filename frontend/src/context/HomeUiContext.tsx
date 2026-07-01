@@ -53,6 +53,8 @@ export type HomeUiContextValue = {
   setAvailableScenarios: React.Dispatch<React.SetStateAction<ScenarioRef[]>>;
   setAvailableRecordings: React.Dispatch<React.SetStateAction<RecordingRef[]>>;
   homeDataRefresh: number;
+  refreshHomeData: () => void;
+  selectRunProject: (platform: string, project: string) => void;
   pendingRunProject: { platform: string; project: string } | null;
   clearPendingRunProject: () => void;
 };

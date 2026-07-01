@@ -18,6 +18,9 @@ import {
 import { OutlinedButton, SecondaryToolbar } from "../components/ui";
 import { EntitlementBanner } from "../components/EntitlementBanner";
 import { NoLicenseOverlay } from "../components/NoLicenseOverlay";
+import { ProjectManageToolbar } from "../components/ProjectManageToolbar";
+import { ProjectTemplateModal } from "../components/ProjectTemplateModal";
+import { PlatformQuickGuide } from "../components/PlatformQuickGuide";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
@@ -41,6 +44,7 @@ export function HomeSurface() {
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
     homeDataRefresh, pendingRunProject, clearPendingRunProject,
+    refreshHomeData, selectRunProject,
   } = useHomeUiContext();
   const {
     connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -59,6 +63,7 @@ export function HomeSurface() {
   } = useRecordingContext();
 
   const [runProject, setRunProject] = useState("");
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const runProjects = usePlatformProjects(platform, homeDataRefresh);
   const features = entitlementFeatures;
   const actionsEnabled = canExecuteHomeActions(entitlementPhase, canRunJobs);
@@ -428,6 +433,7 @@ export function HomeSurface() {
                   />
                 )}
                 {platform === "mobile" && (
+                  <>
                   <MobileConfigForm
                     c={c}
                     license={license}
@@ -491,8 +497,15 @@ export function HomeSurface() {
                     onDeviceManualModeChange={setDeviceManualMode}
                     onClearMobileFieldError={() => setMobileFieldError(null)}
                   />
+                  <PlatformQuickGuide
+                    c={c}
+                    platform="mobile"
+                    hasProjects={runProjects.length > 0}
+                  />
+                  </>
                 )}
                 {platform === "legacy" && (
+                  <>
                   <LegacyConfigForm
                     c={c}
                     windowName={windowName}
@@ -500,6 +513,12 @@ export function HomeSurface() {
                     onWindowNameChange={setWindowName}
                     onExePathChange={setExePath}
                   />
+                  <PlatformQuickGuide
+                    c={c}
+                    platform="legacy"
+                    hasProjects={runProjects.length > 0}
+                  />
+                  </>
                 )}
 
                 {(platform === "web" || platform === "mobile" || platform === "legacy") && (
@@ -658,6 +677,33 @@ export function HomeSurface() {
                   <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
                     Ejecutar Behave, editar .feature / steps y generar PDF (proyecto en behave/{platform}/).
                   </div>
+                  {runProjects.length === 0 && platform === "web" && (
+                    <div
+                      data-testid="elia-no-behave-projects-hint"
+                      style={{
+                        marginBottom: 10,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        background: c.hintBg,
+                        border: `1px solid ${c.hintBorder}`,
+                        fontSize: 13,
+                        color: c.hintText,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Aún no tienes proyectos en esta plataforma. Crea uno desde plantilla para ejecutar tu
+                      primera prueba en minutos.
+                    </div>
+                  )}
+                  {(platform === "mobile" || platform === "legacy") && (
+                    <PlatformQuickGuide
+                      c={c}
+                      platform={platform}
+                      showLink={false}
+                      showRunnerHint
+                      hasProjects={runProjects.length > 0}
+                    />
+                  )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
                     <BehaveProjectSelect
                       c={c}
@@ -666,7 +712,46 @@ export function HomeSurface() {
                       onChange={setRunProject}
                       projects={runProjects}
                     />
+                    {platform === "web" && (
+                    <button
+                      type="button"
+                      data-testid="elia-new-from-template-btn"
+                      disabled={!actionsEnabled}
+                      onClick={() => setTemplateModalOpen(true)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${c.primary}`,
+                        background: "transparent",
+                        color: c.primary,
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: !actionsEnabled ? "not-allowed" : "pointer",
+                        opacity: !actionsEnabled ? 0.5 : 1,
+                      }}
+                    >
+                      Nueva plantilla…
+                    </button>
+                    )}
                   </div>
+                  {runProject ? (
+                    <ProjectManageToolbar
+                      c={c}
+                      platform={platform}
+                      project={runProject}
+                      disabled={!actionsEnabled}
+                      onProjectRenamed={(newName) => {
+                        refreshHomeData();
+                        setRunProject(newName);
+                        selectRunProject(platform, newName);
+                      }}
+                      onProjectDeleted={() => {
+                        refreshHomeData();
+                        setRunProject("");
+                      }}
+                      onError={showHomeError}
+                    />
+                  ) : null}
                   <RunWorkspacePanel
                     key={`${platform}-${runProject}-${homeDataRefresh}`}
                     c={c}
@@ -974,6 +1059,23 @@ export function HomeSurface() {
                 setHomeHint={setHomeHint}
               />
             )}
+
+            <ProjectTemplateModal
+              c={c}
+              open={templateModalOpen}
+              onClose={() => setTemplateModalOpen(false)}
+              contextPlatform="web"
+              onCreated={(result) => {
+                refreshHomeData();
+                const forPlatform = result.projects.find((p) => p.platform === platform) ?? result.projects[0];
+                if (forPlatform) {
+                  selectRunProject(forPlatform.platform, forPlatform.project);
+                  if (forPlatform.platform === platform) {
+                    setRunProject(forPlatform.project);
+                  }
+                }
+              }}
+            />
           </div>
 
   );

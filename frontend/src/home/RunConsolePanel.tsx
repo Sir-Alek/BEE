@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { getProjectReportUrl, getTestRun, openEliaLogsFolder, openProjectFolder } from "../api";
+import { getProjectReportUrl, getRunDiagnostic, getTestRun, openProjectFolder, type RunDiagnosticResponse } from "../api";
 import { closeWithoutStoppingServer } from "../app/sessionGuard";
+import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
+import { RunDiagnosticPanel } from "./RunDiagnosticPanel";
+import { RunHistoryPanel } from "./RunHistoryPanel";
 
 export type RunArtifact = {
   kind: string;
@@ -31,6 +34,9 @@ export function RunConsolePanel(props: Props) {
   const [selectedPdf, setSelectedPdf] = useState<string>("");
   const [consoleHeight, setConsoleHeight] = useState(DEFAULT_CONSOLE_H);
   const [reportFolder, setReportFolder] = useState<string>("");
+  const [outputsHint, setOutputsHint] = useAutoDismissHint();
+  const [diagnostic, setDiagnostic] = useState<RunDiagnosticResponse | null>(null);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
 
@@ -45,6 +51,7 @@ export function RunConsolePanel(props: Props) {
           return_code?: number;
           state?: string;
           artifacts?: RunArtifact[];
+          diagnostic?: RunDiagnosticResponse;
         };
         if (data.line) {
           setLines((prev) => [...prev, data.line as string]);
@@ -52,6 +59,8 @@ export function RunConsolePanel(props: Props) {
         if (data.done) {
           setState(data.state ?? "done");
           setReturnCode(data.return_code ?? null);
+          if (data.diagnostic) setDiagnostic(data.diagnostic);
+          setHistoryRefresh((n) => n + 1);
           if (data.artifacts?.length) {
             setArtifacts(data.artifacts);
             setSelectedPdf(data.artifacts[0].name);
@@ -132,6 +141,13 @@ export function RunConsolePanel(props: Props) {
   const pdfPreviewUrl =
     selectedPdf && platform && project ? getProjectReportUrl(platform, project, selectedPdf) : "";
 
+  useEffect(() => {
+    if (state === "running" || passed) return;
+    void getRunDiagnostic(runId)
+      .then((r) => setDiagnostic(r.diagnostic))
+      .catch(() => undefined);
+  }, [runId, state, passed]);
+
   const onResizeStart = useCallback(
     (ev: React.MouseEvent) => {
       ev.preventDefault();
@@ -182,26 +198,6 @@ export function RunConsolePanel(props: Props) {
           Consola de ejecución — {statusLabel}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {!passed && state !== "running" ? (
-            <button
-              type="button"
-              onClick={() => {
-                void openEliaLogsFolder().catch(() => undefined);
-              }}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 8,
-                border: `1px solid ${c.btnGhostBorder}`,
-                background: c.btnGhostBg,
-                color: c.text,
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              Abrir elia_execution.log
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -232,6 +228,10 @@ export function RunConsolePanel(props: Props) {
       </pre>
       <div ref={bottomRef} />
 
+      {!passed && state !== "running" && diagnostic && platform && project ? (
+        <RunDiagnosticPanel c={c} platform={platform} project={project} diagnostic={diagnostic} />
+      ) : null}
+
       {state !== "running" ? (
         <div
           data-testid="elia-run-report-panel"
@@ -244,8 +244,8 @@ export function RunConsolePanel(props: Props) {
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Reporte PDF de ejecución</div>
           {artifacts.length === 0 ? (
             <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
-              No se detectó PDF en <code style={{ fontSize: 12 }}>outputs/pdfReports</code>. Revisa los logs de la
-              consola o abre la carpeta del proyecto.
+              No se detectó PDF en <code style={{ fontSize: 12 }}>outputs/pdfReports</code>. Revisa la consola o abre{" "}
+              <code style={{ fontSize: 12 }}>outputs</code> del proyecto (logs, PDF y evidencias).
             </div>
           ) : (
             <>
@@ -292,9 +292,12 @@ export function RunConsolePanel(props: Props) {
                 <button
                   type="button"
                   onClick={() => {
-                    void openProjectFolder(platform, project, "outputs/pdfReports").then((r) =>
-                      setReportFolder(r.path),
-                    );
+                    void openProjectFolder(platform, project, "outputs").then((r) => {
+                      setReportFolder(r.path);
+                      setOutputsHint(
+                        r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
+                      );
+                    });
                   }}
                   style={{
                     padding: "8px 12px",
@@ -307,7 +310,7 @@ export function RunConsolePanel(props: Props) {
                     fontSize: 13,
                   }}
                 >
-                  Abrir carpeta pdfReports
+                  Abrir carpeta outputs
                 </button>
               </div>
 
@@ -324,12 +327,30 @@ export function RunConsolePanel(props: Props) {
               </div>
             </>
           )}
-          {reportFolder ? (
+          {reportFolder || outputsHint ? (
             <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>
-              Carpeta: <code>{reportFolder}</code>
+              {reportFolder ? (
+                <>
+                  Carpeta: <code>{reportFolder}</code>
+                  {outputsHint ? <div style={{ marginTop: 4 }}>{outputsHint}</div> : null}
+                </>
+              ) : (
+                outputsHint
+              )}
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {platform && project ? (
+        <RunHistoryPanel
+          c={c}
+          platform={platform}
+          project={project}
+          activeRunId={state !== "running" ? runId : null}
+          refreshToken={historyRefresh}
+          onSelectDiagnostic={(entry) => setDiagnostic(entry)}
+        />
       ) : null}
     </div>
   );

@@ -1,0 +1,23 @@
+{
+  "id": "get-post-1",
+  "name": "GET post de ejemplo",
+  "method": "GET",
+  "url": "{{base_url}}/posts/1",
+  "headers": {},
+  "body": null,
+  "expected_status": 200,
+  "assertions": [
+    {
+      "kind": "jsonpath",
+      "expression": "$.id",
+      "expected": "1"
+    },
+    {
+      "kind": "body_contains",
+      "expression": "",
+      "expected": "sunt aut facere"
+    }
+  ],
+  "extractors": [],
+  "source": "template"
+}

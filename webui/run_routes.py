@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field
 
 from core.elia_paths import behave_projects_dir
 from core.test_runner import project_files
-from core.test_runner.run_artifacts import list_pdfs_in_project, resolve_project_evidence, resolve_project_pdf
+from core.test_runner.run_artifacts import (
+    list_pdfs_in_project,
+    resolve_project_asset,
+    resolve_project_evidence,
+    resolve_project_pdf,
+)
 from core.test_runner.run_launcher import (
     BEHAVE_KINDS,
     build_behave_command,
@@ -49,6 +54,19 @@ class ProjectFileWriteRequest(BaseModel):
 
 class ProjectFolderOpenRequest(BaseModel):
     subpath: str = "outputs/pdfReports"
+
+
+class ProjectOpenFileRequest(BaseModel):
+    path: str
+
+
+class ProjectTemplateCreateRequest(BaseModel):
+    template_id: str
+    project_name: str = ""
+
+
+class ProjectRenameRequest(BaseModel):
+    new_name: str
 
 
 def _project_root(platform: str, project_name: str):
@@ -110,6 +128,80 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
         if not root.is_dir():
             return {"projects": []}
         return {"projects": sorted(d.name for d in root.iterdir() if d.is_dir())}
+
+    @app.get("/api/guides/{platform}")
+    def platform_quick_guide(
+        platform: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, str]:
+        plat = _check_platform(platform)
+        if plat not in ("mobile", "legacy"):
+            raise HTTPException(status_code=400, detail=f"Guía no disponible para plataforma: {platform}")
+        from core.platform_guides import load_platform_guide
+
+        try:
+            title, content = load_platform_guide(plat)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"title": title, "content": content}
+
+    @app.get("/api/projects/{platform}/{project_name}/info")
+    def get_project_info_route(
+        platform: str,
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.project_manage import get_project_info
+
+        try:
+            return get_project_info(platform, project_name.strip())
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/api/projects/{platform}/{project_name}/rename")
+    def rename_project_route(
+        platform: str,
+        project_name: str,
+        body: ProjectRenameRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.project_manage import rename_project
+
+        try:
+            new_name = rename_project(platform, project_name.strip(), body.new_name)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except FileExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"ok": True, "project": new_name, "platform": _check_platform(platform)}
+
+    @app.delete("/api/projects/{platform}/{project_name}")
+    def delete_project_route(
+        platform: str,
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.project_manage import delete_project
+
+        try:
+            delete_project(platform, project_name.strip())
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"ok": True}
 
     @app.get("/api/projects/{platform}/{project_name}/files")
     def list_project_files(
@@ -224,16 +316,105 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
         __: None = Depends(require_active_license),
     ) -> Dict[str, Any]:
         _, root = _project_root(platform, project_name)
-        rel = (body.subpath or "outputs/pdfReports").replace("\\", "/").strip("/")
-        target = (root / rel).resolve()
-        if not str(target).startswith(str(root.resolve())):
+        rel = (body.subpath if body.subpath is not None else "outputs/pdfReports").replace("\\", "/").strip("/")
+        root_resolved = root.resolve()
+        if rel in ("", "."):
+            target = root_resolved
+        else:
+            target = (root / rel).resolve()
+        if not str(target).startswith(str(root_resolved)):
             raise HTTPException(status_code=400, detail="Ruta no permitida")
         try:
             _open_folder_in_os(str(target))
         except FileNotFoundError:
             os.makedirs(target, exist_ok=True)
             _open_folder_in_os(str(target))
-        return {"ok": True, "path": str(target)}
+        from webui.error_reporting import FOLDER_OPEN_HINT
+
+        return {"ok": True, "path": str(target), "hint": FOLDER_OPEN_HINT}
+
+    @app.post("/api/projects/{platform}/{project_name}/open-file")
+    def open_project_file(
+        platform: str,
+        project_name: str,
+        body: ProjectOpenFileRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _, root = _project_root(platform, project_name)
+        rel = (body.path or "").replace("\\", "/").strip("/")
+        root_resolved = root.resolve()
+        target = (root / rel).resolve()
+        if not str(target).startswith(str(root_resolved)):
+            raise HTTPException(status_code=400, detail="Ruta no permitida")
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        try:
+            path = str(target)
+            if sys.platform == "win32":
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["open", path], check=False)
+            else:
+                subprocess.run(["xdg-open", path], check=False)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        from webui.error_reporting import FOLDER_OPEN_HINT
+
+        return {"ok": True, "path": str(target), "hint": FOLDER_OPEN_HINT}
+
+    @app.get("/api/projects/{platform}/{project_name}/assets/file")
+    def get_project_asset_file(
+        platform: str,
+        project_name: str,
+        path: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> FileResponse:
+        _, root = _project_root(platform, project_name)
+        try:
+            asset_path = resolve_project_asset(root, path)
+        except (ValueError, FileNotFoundError) as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        suffix = asset_path.suffix.lower()
+        media = "image/png" if suffix == ".png" else "text/plain" if suffix == ".txt" else "application/octet-stream"
+        return FileResponse(
+            path=str(asset_path),
+            media_type=media,
+            filename=asset_path.name,
+            headers={"Content-Disposition": f'inline; filename="{asset_path.name}"'},
+        )
+
+    @app.get("/api/projects/{platform}/{project_name}/run-history")
+    def list_project_run_history_route(
+        platform: str,
+        project_name: str,
+        limit: int = 5,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _, root = _project_root(platform, project_name)
+        from core.test_runner.run_diagnostic import RUN_HISTORY_MAX, list_project_run_history
+
+        safe_limit = max(1, min(limit, RUN_HISTORY_MAX))
+        runs = list_project_run_history(str(root.resolve()), limit=safe_limit)
+        return {"runs": runs, "max_entries": RUN_HISTORY_MAX}
+
+    @app.get("/api/projects/{platform}/{project_name}/run-history/{run_id}")
+    def get_project_run_history_entry(
+        platform: str,
+        project_name: str,
+        run_id: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _, root = _project_root(platform, project_name)
+        from core.test_runner.run_diagnostic import load_project_run_manifest
+
+        manifest = load_project_run_manifest(str(root.resolve()), run_id)
+        if manifest is None:
+            raise HTTPException(status_code=404, detail="Ejecución no encontrada en historial")
+        return {"run_id": run_id, "diagnostic": manifest}
 
     @app.post("/api/runs")
     def start_unified_run(
@@ -348,6 +529,70 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
             raise HTTPException(status_code=404, detail="run not found")
         return run.to_dict()
 
+    @app.get("/api/runs/{run_id}/diagnostic")
+    def get_run_diagnostic(
+        run_id: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        run = test_runner_service.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        diagnostic = run.meta.get("diagnostic")
+        if diagnostic is None and run.project_path:
+            from core.test_runner.run_diagnostic import build_run_diagnostic, load_project_run_manifest
+
+            diagnostic = load_project_run_manifest(run.project_path, run_id)
+            if diagnostic is None:
+                diagnostic = build_run_diagnostic(
+                    project_path=run.project_path,
+                    lines=run.lines,
+                    since_ts=run.created_at,
+                    return_code=run.return_code,
+                    kind=run.kind,
+                    run_id=run_id,
+                    platform=run.platform,
+                    project=run.project,
+                    finished_at=run.finished_at,
+                )
+        return {"run_id": run_id, "diagnostic": diagnostic or {"ok": True, "failures": []}}
+
+    @app.get("/api/project-templates")
+    def list_project_templates_route(
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.project_templates import list_project_templates
+
+        return {"templates": list_project_templates()}
+
+    @app.post("/api/project-templates/create")
+    def create_project_from_template_route(
+        body: ProjectTemplateCreateRequest,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        from core.project_templates import create_project_from_template
+
+        try:
+            result = create_project_from_template(body.template_id.strip(), body.project_name)
+        except FileExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {
+            "ok": result.ok,
+            "template_id": result.template_id,
+            "message": result.message,
+            "checklist": result.checklist,
+            "projects": [
+                {"platform": p.platform, "project": p.project, "path": p.path}
+                for p in result.projects
+            ],
+        }
+
     @app.get("/api/runs/{run_id}/stream")
     async def stream_run(
         run_id: str,
@@ -377,6 +622,7 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
                         "platform": current.platform,
                         "project": current.project,
                         "project_path": current.project_path,
+                        "diagnostic": current.meta.get("diagnostic"),
                     }
                     yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                     break

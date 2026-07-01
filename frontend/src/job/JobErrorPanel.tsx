@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { downloadJobErrorReport, openEliaLogsFolder } from "../api";
 import { returnToHomeFromJobTab } from "../app/homeNavigation";
+import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 // Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
 // import { SupportContactLink } from "../components/SupportContactLink";
@@ -18,6 +19,7 @@ type Props = {
 export function JobErrorPanel(props: Props) {
   const { c, jobId, errorMessage, betaFeedbackUrl, onDownloadError } = props;
   const [downloading, setDownloading] = useState(false);
+  const [logsFolderHint, setLogsFolderHint] = useAutoDismissHint();
 
   const handleDownload = () => {
     setDownloading(true);
@@ -67,9 +69,15 @@ export function JobErrorPanel(props: Props) {
           <button
             type="button"
             onClick={() => {
-              void openEliaLogsFolder().catch((e: unknown) =>
-                onDownloadError?.(String((e as Error)?.message ?? e)),
-              );
+              void openEliaLogsFolder()
+                .then((r) => {
+                  setLogsFolderHint(
+                    r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
+                  );
+                })
+                .catch((e: unknown) =>
+                  onDownloadError?.(String((e as Error)?.message ?? e)),
+                );
             }}
             style={{
               padding: "10px 14px",
@@ -83,6 +91,9 @@ export function JobErrorPanel(props: Props) {
           >
             Abrir carpeta de logs
           </button>
+          {logsFolderHint ? (
+            <span style={{ fontSize: 12, color: c.muted, flexBasis: "100%" }}>{logsFolderHint}</span>
+          ) : null}
           {betaFeedbackUrl ? (
             <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />
           ) : null}

@@ -112,3 +112,19 @@ def resolve_project_evidence(project_root: str | Path, filename: str) -> Path:
     if not target.is_file():
         raise FileNotFoundError(name)
     return target
+
+
+def resolve_project_asset(project_root: str | Path, rel_path: str) -> Path:
+    rel = str(rel_path or "").replace("\\", "/").strip("/")
+    if not rel or ".." in rel.split("/"):
+        raise ValueError("Ruta no permitida")
+    allowed_prefixes = ("outputs/evidences/", "outputs/logs/", "outputs/pdfReports/")
+    if not any(rel.startswith(prefix) for prefix in allowed_prefixes):
+        raise ValueError("Ruta no permitida")
+    root = Path(project_root).resolve()
+    target = (root / rel).resolve()
+    if not str(target).startswith(str(root)):
+        raise ValueError("Ruta fuera del proyecto")
+    if not target.is_file():
+        raise FileNotFoundError(rel)
+    return target

@@ -4,7 +4,30 @@ Todos los cambios notables de ELIA se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones usan [Semantic Versioning](https://semver.org/lang/es/).
 
-## [0.10.11] - 2026-06-30
+## [0.10.13] - 2026-07-01
+
+### Añadido
+
+- Guías de inicio rápido para entornos móviles y legacy: Se introdujo un asistente de inducción ágil dentro de las pestañas de grabación móvil y de escritorio de Windows. Esta función incluye el acceso directo «Guía rápida», el cual despliega un panel interactivo que detalla visualmente el flujo óptimo de trabajo (capturar interacciones, convertir a escenarios de negocio y lanzar la ejecución). Asimismo, se añadió una tarjeta de asistencia contextual en el panel de ejecución que se activa de forma inteligente si aún no cuentas con proyectos creados, incorporando la opción «No volver a mostrar» para recordar tus preferencias y mantener despejada la pantalla en futuras sesiones. Cabe señalar que el catálogo de proyectos preconfigurados permanece optimizado exclusivamente para entornos web y de servicios.
+- Catálogo de plantillas de proyecto preconfiguradas: Se introdujeron modelos de inicio rápido listos para usar, que incluyen flujos típicos de inicio de sesión web, pruebas rápidas de verificación de servicios (Smoke API) y entornos de demostración completos (full-stack). Ahora puedes crear proyectos listos para operar directamente desde las pestañas de automatización web o de servicios mediante un asistente guiado que gestiona de forma automática los archivos de configuración base del proyecto.
+- Administrador de proyectos unificado: Se incorporaron nuevas opciones interactivas para renombrar, eliminar o explorar directamente la ubicación física de tus proyectos locales, añadiendo además etiquetas visuales especiales para identificar rápidamente aquellos creados a partir de una plantilla de catálogo.
+- Centro de diagnóstico unificado tras fallos: Al interrumpirse o fallar una prueba automatizada, la consola de ejecución ahora despliega un panel de diagnóstico inteligente. Este resumen visual detalla con precisión el escenario afectado, la funcionalidad general, el paso exacto de negocio (Gherkin) donde ocurrió el error, el motivo principal del fallo y las notas de asistencia técnica. Además, incluye una vista previa en miniatura de la captura de pantalla del error y un botón directo para inspeccionar el archivo de registro exclusivo del escenario afectado, facilitando accesos rápidos a las carpetas de evidencias sin alertas flotantes persistentes en la interfaz.
+- Historial de ejecuciones recientes por proyecto: Nuevo panel integrado en la consola que almacena y organiza los últimos 5 resultados de tus corridas de prueba. Al hacer clic en cualquier entrada de este historial, la interfaz recargará instantáneamente el estado visual completo y el diagnóstico guardado de esa ejecución específica, permitiéndote auditar resultados pasados cómodamente sin tener que volver a lanzar las pruebas en el equipo.
+
+### Cambiado
+
+- Interfaz de inducción móvil y legacy simplificada: Optimizamos el espacio de trabajo en estas plataformas removiendo opciones y mensajes redundantes relacionados con la creación de proyectos basados en catálogos. De esta manera, el diseño visual queda completamente limpio, guiando al usuario de forma natural y sin distracciones hacia el camino recomendado por la herramienta: la grabación interactiva de flujos reales y su posterior transformación a proyectos automatizados (BDD).
+- Exploración de proyectos optimizada: La función de «Abrir carpeta» ahora te redirige de forma directa al directorio raíz local exacto de tu proyecto según la plataforma de automatización seleccionada, agilizando el acceso manual a tus archivos de trabajo.
+- Consola orientada a la resolución de errores: Ante una interrupción en una prueba de comportamiento, el sistema prioriza y te vincula directamente al registro específico de ese escenario en lugar de forzar la lectura de la bitácora general de la aplicación. Se incorporó además el botón unificado «Abrir carpeta de resultados» para acceder cómodamente a tus logs, reportes PDF y capturas de pantalla de evidencias en un solo lugar.
+- Mantenimiento automatizado de registros de sistema: El historial general de eventos de la aplicación ahora implementa un ciclo de rotación diaria optimizado que conserva únicamente un máximo de 7 días de registros en el equipo, protegiendo el espacio de almacenamiento local de tu computadora..
+- Auditoría de fallos web más limpia: El motor de diagnóstico web se mejoró para evitar consultas de estado redundantes si la ventana del navegador ya fue cerrada por el usuario o el sistema operativo, eliminando alertas o mensajes técnicos confusos en la consola y concentrándose únicamente en la causa raíz que provocó el fallo de la prueba.
+
+### Corregido
+
+- Estabilización de proyectos de demostración: Se corrigieron y validaron por completo las plantillas de ejemplo, asegurando que utilicen de forma nativa las funciones de interfaz unificadas, incluyan sus conjuntos de datos de prueba estructurados y ejecuten verificaciones previas automáticas de consistencia para garantizar corridas iniciales exitosas y sin errores de configuración.
+- Integridad visual en reportes PDF: Se solucionó un inconveniente en la generación de evidencias documentales de los escenarios. Los reportes PDF finales ahora integran y ordenan cronológicamente todas tus capturas de pantalla de forma numerada, anexan limpiamente las imágenes tomadas en el momento exacto del error y resuelven correctamente la ubicación real de las especificaciones de negocio vinculadas para ofrecer un reporte de calidad impecable.
+
+## [0.10.11] - 2026-06-28
 
 ### Añadido
 
@@ -36,7 +59,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 
 - Controles de calidad internos incrementados: Expandimos la cobertura de validaciones automatizadas internas sobre el sistema de resolución de rutas, la detección inteligente de entornos de desarrollo avanzados y los mecanismos de creación de emuladores móviles para garantizar un despliegue altamente confiable antes del lanzamiento.
 
-## [0.10.10] - 2026-06-28
+## [0.10.10] - 2026-06-27
 
 ### Añadido
 
