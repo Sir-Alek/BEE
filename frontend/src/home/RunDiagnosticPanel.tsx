@@ -5,6 +5,8 @@ import {
   openProjectFolder,
   type RunDiagnosticResponse,
 } from "../api";
+import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
+import { InlineActionHint } from "../components/InlineActionHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 
 type Props = {
@@ -126,9 +128,7 @@ export function RunDiagnosticPanel(props: Props) {
             type="button"
             onClick={() => {
               void openProjectFile(platform, project, failure.log_path!).then((r) =>
-                setFolderHint(
-                  r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
-                ),
+                setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
             style={{
@@ -149,9 +149,7 @@ export function RunDiagnosticPanel(props: Props) {
             type="button"
             onClick={() => {
               void openProjectFolder(platform, project, "outputs/logs").then((r) =>
-                setFolderHint(
-                  r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
-                ),
+                setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
             style={{
@@ -173,9 +171,7 @@ export function RunDiagnosticPanel(props: Props) {
             type="button"
             onClick={() => {
               void openProjectFolder(platform, project, "outputs/evidences").then((r) =>
-                setFolderHint(
-                  r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
-                ),
+                setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
             style={{
@@ -194,9 +190,7 @@ export function RunDiagnosticPanel(props: Props) {
         ) : null}
       </div>
 
-      {folderHint ? (
-        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>{folderHint}</div>
-      ) : null}
+      <InlineActionHint c={c} message={folderHint} testId="elia-run-diagnostic-folder-hint" />
     </div>
   );
 }

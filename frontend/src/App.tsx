@@ -69,6 +69,7 @@ export default function App() {
     platform: string;
     project: string;
   } | null>(null);
+  const [pendingApiProject, setPendingApiProject] = useState<string | null>(null);
   const flowTabRef = useRef<Window | null>(null);
   const [aiCaps, setAiCaps] = useState<AiCapabilitiesResponse | null>(null);
   const [aiPrefsSaving, setAiPrefsSaving] = useState(false);
@@ -596,7 +597,7 @@ export default function App() {
       }, 400);
       return () => window.clearInterval(poll);
     }
-    const t = window.setTimeout(() => setHomeHint(null), 4000);
+    const t = window.setTimeout(() => setHomeHint(null), 5000);
     return () => window.clearTimeout(t);
   }, [homeHint]);
 
@@ -750,13 +751,15 @@ export default function App() {
       homeDataRefresh, refreshHomeData: () => setHomeDataRefresh((n) => n + 1),
       selectRunProject: (platform: string, project: string) => setPendingRunProject({ platform, project }),
       pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
+      selectApiProject: (project: string) => setPendingApiProject(project),
+      pendingApiProject, clearPendingApiProject: () => setPendingApiProject(null),
     }),
     [
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, licenseLoading, canRunJobs, modules, modulesLoading,
       entitlement, offlineBannerDismissed,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
-      availableRecordings, startJob, homeDataRefresh, pendingRunProject,
+      availableRecordings, startJob, homeDataRefresh, pendingRunProject, pendingApiProject,
     ],
   );
 

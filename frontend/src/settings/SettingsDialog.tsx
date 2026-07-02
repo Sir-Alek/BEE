@@ -32,6 +32,7 @@ import type { EliaConnectorProfile } from "../types";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import { ToolPathsSettingsPanel } from "./ToolPathsSettingsPanel";
+import { QuickGuideSettingsPanel } from "./QuickGuideSettingsPanel";
 // Versión comercial (≥1.0): descomentar y usar en Licencia en lugar de BetaFeedbackLink.
 // import { SupportSettingsContact } from "../components/SupportSettingsContact";
 import { useConnectorContext } from "../context/ConnectorContext";
@@ -215,6 +216,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             </div>
 
             {settingsTab === "general" && (
+            <>
             <div
               style={{
                 border: `1px solid ${c.border}`,
@@ -270,6 +272,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </span>
               </label>
             </div>
+            <QuickGuideSettingsPanel c={c} />
+            </>
             )}
 
             {settingsTab === "environment" && (

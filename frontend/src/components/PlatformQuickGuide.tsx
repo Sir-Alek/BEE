@@ -1,9 +1,6 @@
 import React from "react";
-import {
-  dismissPlatformQuickGuide,
-  isPlatformQuickGuideDismissed,
-  type QuickGuidePlatform,
-} from "../app/platformGuidePrefs";
+import { dismissPlatformQuickGuide, type QuickGuidePlatform } from "../app/platformGuidePrefs";
+import { usePlatformGuidePrefs } from "../hooks/usePlatformGuidePrefs";
 import { getPlatformQuickGuide } from "../api";
 import { MarkdownGuideModal } from "./MarkdownGuideModal";
 
@@ -19,16 +16,13 @@ type Props = {
 
 export function PlatformQuickGuide(props: Props) {
   const { c, platform, showLink = true, showRunnerHint = false, hasProjects = false } = props;
-  const [dismissed, setDismissed] = React.useState(() => isPlatformQuickGuideDismissed(platform));
+  const { guidesEnabled, isCardDismissed } = usePlatformGuidePrefs();
+  const dismissed = isCardDismissed(platform);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [content, setContent] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    setDismissed(isPlatformQuickGuideDismissed(platform));
-  }, [platform]);
 
   const openGuide = () => {
     setModalOpen(true);
@@ -46,8 +40,9 @@ export function PlatformQuickGuide(props: Props) {
 
   const handleDismiss = () => {
     dismissPlatformQuickGuide(platform);
-    setDismissed(true);
   };
+
+  if (!guidesEnabled) return null;
 
   const linkBtnStyle: React.CSSProperties = {
     padding: "6px 10px",

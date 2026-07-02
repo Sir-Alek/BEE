@@ -57,6 +57,9 @@ export type HomeUiContextValue = {
   selectRunProject: (platform: string, project: string) => void;
   pendingRunProject: { platform: string; project: string } | null;
   clearPendingRunProject: () => void;
+  selectApiProject: (project: string) => void;
+  pendingApiProject: string | null;
+  clearPendingApiProject: () => void;
 };
 
 const HomeUiContext = createContext<HomeUiContextValue | null>(null);

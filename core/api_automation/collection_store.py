@@ -58,11 +58,34 @@ def _normalize_collection_id(raw: str) -> str:
 
 
 def ensure_default_collection(project: str) -> str:
-    registry = _load_registry(project)
-    for item in registry["collections"]:
-        if str(item.get("id") or "") == DEFAULT_COLLECTION_ID:
+    path = _registry_path(project)
+    if not path.is_file():
+        registry: Dict[str, Any] = {"collections": []}
+    else:
+        registry = _load_registry(project)
+        if registry["collections"]:
+            for item in registry["collections"]:
+                if str(item.get("id") or "") == DEFAULT_COLLECTION_ID:
+                    collection_scenarios_dir(project, DEFAULT_COLLECTION_ID).mkdir(parents=True, exist_ok=True)
+                    return DEFAULT_COLLECTION_ID
+            # Registry exists with collections but no _default — append without wiping.
+            now = datetime.now(timezone.utc).isoformat()
+            registry["collections"].insert(
+                0,
+                {
+                    "id": DEFAULT_COLLECTION_ID,
+                    "name": DEFAULT_COLLECTION_NAME,
+                    "created_at": now,
+                    "source": "manual",
+                },
+            )
+            _save_registry(project, registry)
             collection_scenarios_dir(project, DEFAULT_COLLECTION_ID).mkdir(parents=True, exist_ok=True)
             return DEFAULT_COLLECTION_ID
+        # File exists but parsed empty — do not overwrite; ensure folder only.
+        collection_scenarios_dir(project, DEFAULT_COLLECTION_ID).mkdir(parents=True, exist_ok=True)
+        return DEFAULT_COLLECTION_ID
+
     now = datetime.now(timezone.utc).isoformat()
     registry["collections"].insert(
         0,

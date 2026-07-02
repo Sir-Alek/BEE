@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { downloadJobErrorReport, openEliaLogsFolder } from "../api";
 import { returnToHomeFromJobTab } from "../app/homeNavigation";
+import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
+import { InlineActionHint } from "../components/InlineActionHint";
 // Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
 // import { SupportContactLink } from "../components/SupportContactLink";
 
@@ -49,7 +51,8 @@ export function JobErrorPanel(props: Props) {
           telemetría en la nube. El registro global <code>elia_execution.log</code> (Documents/ELIA/logs/) incluye
           hitos recientes de ejecución y se adjunta parcialmente al reporte descargable.
         </div>
-        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
             disabled={downloading}
@@ -71,9 +74,7 @@ export function JobErrorPanel(props: Props) {
             onClick={() => {
               void openEliaLogsFolder()
                 .then((r) => {
-                  setLogsFolderHint(
-                    r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
-                  );
+                  setLogsFolderHint(r.hint ?? FOLDER_OPEN_HINT);
                 })
                 .catch((e: unknown) =>
                   onDownloadError?.(String((e as Error)?.message ?? e)),
@@ -91,12 +92,11 @@ export function JobErrorPanel(props: Props) {
           >
             Abrir carpeta de logs
           </button>
-          {logsFolderHint ? (
-            <span style={{ fontSize: 12, color: c.muted, flexBasis: "100%" }}>{logsFolderHint}</span>
-          ) : null}
           {betaFeedbackUrl ? (
             <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />
           ) : null}
+          </div>
+          <InlineActionHint c={c} message={logsFolderHint} testId="elia-job-open-logs-folder-hint" />
           {/* Versión comercial (≥1.0): quitar BetaFeedbackLink de arriba y descomentar:
           {supportEmail ? (
             <SupportContactLink email={supportEmail} jobId={jobId} c={c} />

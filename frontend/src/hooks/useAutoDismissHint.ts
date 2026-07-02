@@ -1,7 +1,9 @@
 import React from "react";
 
+import { FOLDER_HINT_DISMISS_MS } from "../app/folderOpenHint";
+
 /** Muestra un aviso breve y lo oculta automáticamente tras `delayMs`. */
-export function useAutoDismissHint(delayMs = 6000): [string | null, (hint: string | null) => void] {
+export function useAutoDismissHint(delayMs = FOLDER_HINT_DISMISS_MS): [string | null, (hint: string | null) => void] {
   const [hint, setHintState] = React.useState<string | null>(null);
   const timerRef = React.useRef<number | null>(null);
 

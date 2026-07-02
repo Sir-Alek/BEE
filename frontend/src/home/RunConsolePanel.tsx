@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getProjectReportUrl, getRunDiagnostic, getTestRun, openProjectFolder, type RunDiagnosticResponse } from "../api";
+import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { closeWithoutStoppingServer } from "../app/sessionGuard";
+import { InlineActionHint } from "../components/InlineActionHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { RunDiagnosticPanel } from "./RunDiagnosticPanel";
 import { RunHistoryPanel } from "./RunHistoryPanel";
@@ -294,9 +296,7 @@ export function RunConsolePanel(props: Props) {
                   onClick={() => {
                     void openProjectFolder(platform, project, "outputs").then((r) => {
                       setReportFolder(r.path);
-                      setOutputsHint(
-                        r.hint ?? "Si no ves la ventana del explorador, revísala en la barra de tareas.",
-                      );
+                      setOutputsHint(r.hint ?? FOLDER_OPEN_HINT);
                     });
                   }}
                   style={{
@@ -313,6 +313,7 @@ export function RunConsolePanel(props: Props) {
                   Abrir carpeta outputs
                 </button>
               </div>
+              <InlineActionHint c={c} message={outputsHint} testId="elia-run-open-outputs-hint" />
 
               <div
                 style={{
@@ -327,16 +328,9 @@ export function RunConsolePanel(props: Props) {
               </div>
             </>
           )}
-          {reportFolder || outputsHint ? (
+          {reportFolder ? (
             <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>
-              {reportFolder ? (
-                <>
-                  Carpeta: <code>{reportFolder}</code>
-                  {outputsHint ? <div style={{ marginTop: 4 }}>{outputsHint}</div> : null}
-                </>
-              ) : (
-                outputsHint
-              )}
+              Carpeta: <code>{reportFolder}</code>
             </div>
           ) : null}
         </div>

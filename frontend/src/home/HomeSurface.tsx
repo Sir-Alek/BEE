@@ -44,7 +44,7 @@ export function HomeSurface() {
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
     homeDataRefresh, pendingRunProject, clearPendingRunProject,
-    refreshHomeData, selectRunProject,
+    refreshHomeData, selectRunProject, selectApiProject,
   } = useHomeUiContext();
   const {
     connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -166,6 +166,22 @@ export function HomeSurface() {
               </button>
               <button
                 type="button"
+                data-testid="elia-home-tab-api"
+                onClick={() => setHomeTab("api")}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${homeTab === "api" ? c.primary : c.btnGhostBorder}`,
+                  background: homeTab === "api" ? c.primary : c.btnGhostBg,
+                  color: homeTab === "api" ? c.primaryFg : c.text,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Pruebas API
+              </button>
+              <button
+                type="button"
                 data-testid="elia-home-tab-req"
                 onClick={() => {
                   if (docAccess === "denied" && showDocLock) {
@@ -191,22 +207,6 @@ export function HomeSurface() {
                 {showDocLock ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
                 {showDocLock ? <TierBadge c={c} label="Tester" /> : null}
-              </button>
-              <button
-                type="button"
-                data-testid="elia-home-tab-api"
-                onClick={() => setHomeTab("api")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: `1px solid ${homeTab === "api" ? c.primary : c.btnGhostBorder}`,
-                  background: homeTab === "api" ? c.primary : c.btnGhostBg,
-                  color: homeTab === "api" ? c.primaryFg : c.text,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                Pruebas API
               </button>
             </div>
 
@@ -1067,6 +1067,11 @@ export function HomeSurface() {
               contextPlatform="web"
               onCreated={(result) => {
                 refreshHomeData();
+                const apiProj = result.projects.find((p) => p.platform === "api");
+                if (apiProj) {
+                  selectApiProject(apiProj.project);
+                  setHomeHint(`Proyecto API «${apiProj.project}» creado. Abre la pestaña Pruebas API.`);
+                }
                 const forPlatform = result.projects.find((p) => p.platform === platform) ?? result.projects[0];
                 if (forPlatform) {
                   selectRunProject(forPlatform.platform, forPlatform.project);

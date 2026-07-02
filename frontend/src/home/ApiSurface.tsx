@@ -94,6 +94,15 @@ type ApiSubTab = "postman" | "load";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
+function pickPreferredApiCollection(cols: ApiCollectionRow[], list: ApiScenarioRow[]): string {
+  if (!cols.length) return "_default";
+  const withCount = cols.filter((col) => col.scenario_count > 0);
+  const idsWithScenarios = new Set(list.map((s) => s.collection_id));
+  const nonEmpty = withCount.length ? withCount : cols.filter((col) => idsWithScenarios.has(col.id));
+  const preferred = nonEmpty.find((col) => col.id !== "_default") ?? nonEmpty[0] ?? cols[0];
+  return preferred?.id ?? "_default";
+}
+
 export function ApiSurface(props: Props) {
   const {
     c,
@@ -108,6 +117,7 @@ export function ApiSurface(props: Props) {
     setHomeHint,
   } = props;
   const [projects, setProjects] = useState<string[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [project, setProject] = useState(() => loadApiSurfacePersistProject() || "DefaultApi");
   const [newProject, setNewProject] = useState("");
   const [scenarios, setScenarios] = useState<ApiScenarioRow[]>([]);
@@ -150,6 +160,7 @@ export function ApiSurface(props: Props) {
   const [preRequestScript, setPreRequestScript] = useState("");
   const [postRequestScript, setPostRequestScript] = useState("");
   const initialized = useRef(false);
+  const pendingAutoLoadRef = useRef(false);
   const [importKind, setImportKind] = useState<"postman" | "openapi">("postman");
   const [apiTab, setApiTab] = useState<ApiSubTab>("postman");
   const [postmanPane, setPostmanPane] = useState<PostmanPane>("request");
@@ -166,7 +177,7 @@ export function ApiSurface(props: Props) {
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [suiteHistoryRefresh, setSuiteHistoryRefresh] = useState(0);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const { refreshHomeData } = useHomeUiContext();
+  const { refreshHomeData, pendingApiProject, clearPendingApiProject, homeDataRefresh } = useHomeUiContext();
   const features = entitlementFeatures;
   const actionsEnabled = canExecuteHomeActions(entitlementPhase, canRunJobs);
   const postmanAccess = getFeatureAccess(entitlementPhase, "api_postman_suites", features, license);
@@ -223,42 +234,99 @@ export function ApiSurface(props: Props) {
   const allScenariosSelected =
     scenarios.length > 0 && scenarios.every((s) => selectedScenarios[s.id]);
 
-  const refreshProjects = () => {
+  const refreshProjects = useCallback(() => {
+    setProjectsLoading(true);
     void getApiProjects()
       .then((r) => setProjects(r.projects))
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)));
-  };
-
-  const refreshScenarios = () => {
-    if (!project.trim()) return;
-    setScenariosLoading(true);
-    void getApiScenarios(project)
-      .then((r) => {
-        const cols = (r.collections || []).map((c) => ({
-          id: c.id,
-          name: c.name,
-          scenario_count: c.scenario_count,
-        }));
-        setCollections(cols);
-        const list: ApiScenarioRow[] = r.scenarios.map((s) => ({
-          id: s.id,
-          name: s.name,
-          collection_id: s.collection_id,
-          collection_name: s.collection_name,
-        }));
-        setScenarios(list);
-        setSelectedScenarios((prev) => {
-          const next: Record<string, boolean> = {};
-          for (const s of list) next[s.id] = prev[s.id] ?? true;
-          return next;
-        });
-        if (cols.length && !cols.some((c) => c.id === activeCollectionId)) {
-          setActiveCollectionId(cols[0]?.id || "_default");
-        }
-      })
       .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
-      .finally(() => setScenariosLoading(false));
-  };
+      .finally(() => setProjectsLoading(false));
+  }, [onShowError]);
+
+  const applyScenarioDetail = useCallback((scenarioId: string, s: Record<string, unknown>) => {
+    setActiveScenarioId(scenarioId);
+    const colId = scenarioId.includes("/") ? scenarioId.split("/")[0] : "_default";
+    setActiveCollectionId(colId);
+    setLoadedScenarioMeta({ id: String(s.id || scenarioId.replace(/\.json$/i, "")), source: String(s.source || "manual") });
+    setScenarioName(String(s.name || ""));
+    setMethod(String(s.method || "GET"));
+    setUrl(String(s.url || ""));
+    setBody(String(s.body || ""));
+    setExpectedStatus(String(s.expected_status || 200));
+    const hdrs = Object.entries((s.headers as Record<string, string>) || {}).map(([key, value]) => ({
+      key,
+      value,
+    }));
+    setReqHeaders(hdrs.length ? hdrs : [{ key: "", value: "" }]);
+    const rawAssertions = (s.assertions as Array<{ kind: string; expression?: string; expected?: string }>) || [];
+    setAssertions(
+      rawAssertions.length
+        ? rawAssertions.map((a) => ({ kind: a.kind, expression: a.expression || "", expected: a.expected || "" }))
+        : [],
+    );
+    const rawExtractors = (s.extractors as Array<{ kind: string; expression?: string; target_var?: string }>) || [];
+    setExtractors(
+      rawExtractors.length
+        ? rawExtractors.map((e) => ({ kind: e.kind, expression: e.expression || "", target_var: e.target_var || "" }))
+        : [],
+    );
+    setMaxDurationMs(s.max_duration_ms != null ? String(s.max_duration_ms) : "");
+    setRequestWeight(String(s.weight || 1));
+    setPreRequestScript(String(s.pre_request_script || ""));
+    setPostRequestScript(String(s.post_request_script || ""));
+    setApiTab("postman");
+    setPostmanPane("request");
+  }, []);
+
+  const loadScenarioIntoWorkspace = useCallback(
+    (scenarioId: string) => {
+      if (!project.trim()) return;
+      setBusy(true);
+      void getApiScenarioDetail(project, scenarioId)
+        .then((r) => applyScenarioDetail(scenarioId, r.scenario as Record<string, unknown>))
+        .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+        .finally(() => setBusy(false));
+    },
+    [project, applyScenarioDetail, onShowError],
+  );
+
+  const refreshScenarios = useCallback(
+    (opts?: { autoLoadFirst?: boolean }) => {
+      if (!project.trim()) return;
+      setScenariosLoading(true);
+      void getApiScenarios(project)
+        .then((r) => {
+          const cols = (r.collections || []).map((col) => ({
+            id: col.id,
+            name: col.name,
+            scenario_count: col.scenario_count,
+          }));
+          setCollections(cols);
+          const list: ApiScenarioRow[] = r.scenarios.map((s) => ({
+            id: s.id,
+            name: s.name,
+            collection_id: s.collection_id,
+            collection_name: s.collection_name,
+          }));
+          setScenarios(list);
+          setSelectedScenarios((prev) => {
+            const next: Record<string, boolean> = {};
+            for (const s of list) next[s.id] = prev[s.id] ?? true;
+            return next;
+          });
+          const preferredCol = pickPreferredApiCollection(cols, list);
+          setActiveCollectionId(preferredCol);
+          const shouldAutoLoad = (opts?.autoLoadFirst || pendingAutoLoadRef.current) && list.length > 0;
+          if (shouldAutoLoad) {
+            pendingAutoLoadRef.current = false;
+            const target = list.find((s) => s.collection_id === preferredCol) ?? list[0];
+            loadScenarioIntoWorkspace(target.id);
+          }
+        })
+        .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+        .finally(() => setScenariosLoading(false));
+    },
+    [project, onShowError, loadScenarioIntoWorkspace],
+  );
 
   const refreshCaptures = () => {
     if (!project.trim()) return;
@@ -292,14 +360,15 @@ export function ApiSurface(props: Props) {
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
-      refreshProjects();
     }
-  }, []);
+    refreshProjects();
+  }, [homeDataRefresh, refreshProjects]);
 
   useEffect(() => {
     refreshScenarios();
     refreshCaptures();
     refreshConfig();
+    setActiveCollectionId("_default");
     setActiveScenarioId(null);
     setLoadedScenarioMeta(null);
     setScenarioName("");
@@ -307,6 +376,14 @@ export function ApiSurface(props: Props) {
     setPostRequestScript("");
     setExecResult(null);
   }, [project]);
+
+  useEffect(() => {
+    if (!pendingApiProject?.trim()) return;
+    refreshProjects();
+    setProject(pendingApiProject);
+    pendingAutoLoadRef.current = true;
+    clearPendingApiProject();
+  }, [pendingApiProject, clearPendingApiProject]);
 
   useEffect(() => {
     if (project && environment) loadEnvironmentVars(environment);
@@ -517,45 +594,7 @@ export function ApiSurface(props: Props) {
   };
 
   const handleLoadScenario = (scenarioId: string) => {
-    setBusy(true);
-    void getApiScenarioDetail(project, scenarioId)
-      .then((r) => {
-        const s = r.scenario;
-        setActiveScenarioId(scenarioId);
-        const colId = scenarioId.includes("/") ? scenarioId.split("/")[0] : "_default";
-        setActiveCollectionId(colId);
-        setLoadedScenarioMeta({ id: String(s.id || scenarioId.replace(/\.json$/i, "")), source: String(s.source || "manual") });
-        setScenarioName(String(s.name || ""));
-        setMethod(String(s.method || "GET"));
-        setUrl(String(s.url || ""));
-        setBody(String(s.body || ""));
-        setExpectedStatus(String(s.expected_status || 200));
-        const hdrs = Object.entries((s.headers as Record<string, string>) || {}).map(([key, value]) => ({
-          key,
-          value,
-        }));
-        setReqHeaders(hdrs.length ? hdrs : [{ key: "", value: "" }]);
-        const rawAssertions = (s.assertions as Array<{ kind: string; expression?: string; expected?: string }>) || [];
-        setAssertions(
-          rawAssertions.length
-            ? rawAssertions.map((a) => ({ kind: a.kind, expression: a.expression || "", expected: a.expected || "" }))
-            : [],
-        );
-        const rawExtractors = (s.extractors as Array<{ kind: string; expression?: string; target_var?: string }>) || [];
-        setExtractors(
-          rawExtractors.length
-            ? rawExtractors.map((e) => ({ kind: e.kind, expression: e.expression || "", target_var: e.target_var || "" }))
-            : [],
-        );
-        setMaxDurationMs(s.max_duration_ms != null ? String(s.max_duration_ms) : "");
-        setRequestWeight(String(s.weight || 1));
-        setPreRequestScript(String(s.pre_request_script || ""));
-        setPostRequestScript(String(s.post_request_script || ""));
-        setApiTab("postman");
-        setPostmanPane("request");
-      })
-      .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
-      .finally(() => setBusy(false));
+    loadScenarioIntoWorkspace(scenarioId);
   };
 
   const handleRenameScenario = (scenarioId: string, newName: string) => {
@@ -844,15 +883,29 @@ export function ApiSurface(props: Props) {
         <label style={{ fontSize: 13, color: c.muted }}>Proyecto</label>
         <select
           value={project}
+          disabled={projectsLoading}
           onChange={(e) => setProject(e.target.value)}
-          style={apiInputStyle(c, { minWidth: 140 })}
+          style={apiInputStyle(c, { minWidth: 140, opacity: projectsLoading ? 0.7 : 1 })}
+          data-testid="elia-api-project-select"
         >
-          {[...new Set([project, ...projects])].map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
+          {projectsLoading ? (
+            <option value={project}>Cargando proyectos…</option>
+          ) : (
+            [...new Set([project, ...projects])].map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))
+          )}
         </select>
+        {projectsLoading ? (
+          <LoadingStatusRow
+            c={c}
+            text="Cargando proyectos…"
+            loading
+            testId="elia-api-projects-loading"
+          />
+        ) : null}
         <input
           value={newProject}
           onChange={(e) => setNewProject(e.target.value)}
@@ -1381,7 +1434,11 @@ export function ApiSurface(props: Props) {
           refreshHomeData();
           refreshProjects();
           const apiProj = result.projects.find((p) => p.platform === "api") ?? result.projects[0];
-          if (apiProj) setProject(apiProj.project);
+          if (apiProj) {
+            setProject(apiProj.project);
+            pendingAutoLoadRef.current = true;
+            setHomeHint(`Proyecto «${apiProj.project}» listo. Colección demo y petición GET cargadas.`);
+          }
         }}
       />
     </div>

@@ -172,12 +172,9 @@ def _finalize_platform_project(platform: str, dest: Path, *, template_id: str, t
         from core.api_automation.traffic_store import ensure_api_project
 
         ensure_api_project(dest.name)
-        try:
-            from core.api_automation.scenario_index import rebuild_index
+        from core.api_automation.scenario_index import rebuild_index
 
-            rebuild_index(dest.name)
-        except Exception:
-            pass
+        rebuild_index(dest.name)
     _write_project_metadata(dest, template_id=template_id, template_version=template_version)
     errors = validate_template_project(plat, dest)
     if errors:
@@ -209,6 +206,9 @@ def validate_template_project(platform: str, project_path: Path) -> List[str]:
         scenario = root / "scenarios" / "demo" / "get_post_1.json"
         if not scenario.is_file():
             errors.append("Falta escenario demo get_post_1.json")
+        registry = root / "collections.json"
+        if not registry.is_file():
+            errors.append("Falta collections.json")
         env_file = root / "environments" / "dev.json"
         if not env_file.is_file():
             errors.append("Falta environments/dev.json")

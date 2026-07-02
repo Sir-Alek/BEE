@@ -6,6 +6,9 @@ import {
   renameProject,
   type ProjectInfoResponse,
 } from "../api";
+import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
+import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
+import { InlineActionHint } from "./InlineActionHint";
 
 type Props = {
   c: Record<string, string>;
@@ -38,6 +41,7 @@ export function ProjectManageToolbar(props: Props) {
   const [renameValue, setRenameValue] = React.useState("");
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState("");
+  const [folderHint, setFolderHint] = useAutoDismissHint();
 
   React.useEffect(() => {
     if (!project.trim()) {
@@ -62,6 +66,9 @@ export function ProjectManageToolbar(props: Props) {
   const handleOpenRoot = () => {
     setBusy(true);
     void openProjectFolder(platform, project, ".")
+      .then((r) => {
+        setFolderHint(r.hint ?? FOLDER_OPEN_HINT);
+      })
       .catch((e: unknown) => onError(String((e as Error)?.message ?? e)))
       .finally(() => setBusy(false));
   };
@@ -97,65 +104,67 @@ export function ProjectManageToolbar(props: Props) {
 
   return (
     <>
-      <div
-        data-testid={`elia-project-manage-${platform}`}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          alignItems: "center",
-          marginBottom: 10,
-        }}
-      >
-        {info?.from_template && info.template_id ? (
-          <span
-            data-testid="elia-project-template-badge"
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: c.hintBg,
-              border: `1px solid ${c.hintBorder}`,
-              color: c.hintText,
-            }}
+      <div style={{ marginBottom: 10 }}>
+        <div
+          data-testid={`elia-project-manage-${platform}`}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          {info?.from_template && info.template_id ? (
+            <span
+              data-testid="elia-project-template-badge"
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "4px 8px",
+                borderRadius: 999,
+                background: c.hintBg,
+                border: `1px solid ${c.hintBorder}`,
+                color: c.hintText,
+              }}
+            >
+              Plantilla: {info.template_id}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={handleOpenRoot}
+            style={ghostBtn(c)}
+            data-testid="elia-project-open-folder"
           >
-            Plantilla: {info.template_id}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={handleOpenRoot}
-          style={ghostBtn(c)}
-          data-testid="elia-project-open-folder"
-        >
-          Abrir carpeta
-        </button>
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={() => {
-            setRenameValue(project);
-            setRenameOpen(true);
-          }}
-          style={ghostBtn(c)}
-          data-testid="elia-project-rename"
-        >
-          Renombrar
-        </button>
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={() => {
-            setDeleteConfirm("");
-            setDeleteOpen(true);
-          }}
-          style={ghostBtn(c, true)}
-          data-testid="elia-project-delete"
-        >
-          Eliminar proyecto
-        </button>
+            Abrir carpeta
+          </button>
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => {
+              setRenameValue(project);
+              setRenameOpen(true);
+            }}
+            style={ghostBtn(c)}
+            data-testid="elia-project-rename"
+          >
+            Renombrar
+          </button>
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => {
+              setDeleteConfirm("");
+              setDeleteOpen(true);
+            }}
+            style={ghostBtn(c, true)}
+            data-testid="elia-project-delete"
+          >
+            Eliminar proyecto
+          </button>
+        </div>
+        <InlineActionHint c={c} message={folderHint} testId="elia-project-open-folder-hint" />
       </div>
 
       {renameOpen ? (
