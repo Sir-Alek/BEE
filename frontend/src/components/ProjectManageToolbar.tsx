@@ -24,9 +24,9 @@ function ghostBtn(c: Record<string, string>, danger = false): React.CSSPropertie
   return {
     padding: "6px 10px",
     borderRadius: 8,
-    border: `1px solid ${danger ? (c.errorBorder ?? "#c0392b") : c.btnGhostBorder}`,
-    background: danger ? (c.errorBg ?? "rgba(192,57,43,0.08)") : c.btnGhostBg,
-    color: danger ? (c.errorTitle ?? "#c0392b") : c.text,
+    border: `1px solid ${danger ? (c.dangerBtnBorder ?? c.errorBorder ?? "#c0392b") : c.btnGhostBorder}`,
+    background: danger ? (c.dangerBtnBg ?? c.errorBg ?? "rgba(192,57,43,0.08)") : c.btnGhostBg,
+    color: danger ? (c.dangerBtnText ?? c.errorTitle ?? "#c0392b") : c.text,
     fontWeight: 600,
     fontSize: 12,
     cursor: "pointer",

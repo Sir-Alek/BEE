@@ -1592,13 +1592,61 @@ export async function saveApiDataFile(body: {
   project: string;
   filename: string;
   content: string;
-}): Promise<{ ok: boolean; path: string }> {
+}): Promise<{ ok: boolean; path: string; preview?: { name: string; columns: string[]; rows: Record<string, string>[]; total: number } }> {
   const res = await fetch("/api/api/data-files", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to save data file: ${res.status}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = typeof (data as { detail?: string })?.detail === "string" ? (data as { detail: string }).detail : `Failed to save data file: ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export type ApiDataFilePreview = {
+  name: string;
+  columns: string[];
+  rows: Record<string, string>[];
+  total: number;
+};
+
+export async function getApiDataFileContent(project: string, filename: string): Promise<{ name: string; content: string }> {
+  const res = await fetch(
+    `/api/api/projects/${encodeURIComponent(project)}/data-files/${encodeURIComponent(filename)}/content`,
+  );
+  if (!res.ok) throw new Error(`Failed to read data file: ${res.status}`);
+  return res.json();
+}
+
+export async function uploadApiDataFile(
+  project: string,
+  file: File,
+  overwrite = false,
+): Promise<{
+  ok: boolean;
+  name: string;
+  path: string;
+  source_format: string;
+  converted_from_xlsx: boolean;
+  preview: ApiDataFilePreview;
+}> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("overwrite", overwrite ? "true" : "false");
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/data-files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = typeof (data as { detail?: string })?.detail === "string" ? (data as { detail: string }).detail : `Failed to upload data file: ${res.status}`;
+    const err = new Error(detail) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 

@@ -6,12 +6,19 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from core.api_automation.api_to_behave_converter import convert_traffic_to_feature, write_api_feature
 from core.api_automation.locust_generator import write_locustfile
-from core.api_automation.data_store import list_data_files, preview_csv, read_csv_rows, save_csv_content
+from core.api_automation.data_store import (
+    import_data_file,
+    list_data_files,
+    preview_csv,
+    read_csv_rows,
+    read_csv_text,
+    save_csv_content,
+)
 from core.api_automation.flow_store import list_flows, load_flow, save_flow
 from core.api_automation.locust_metrics import resolve_metrics
 from core.api_automation.models import ApiFlow, ApiRequest
@@ -699,6 +706,42 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
 
+    @app.get("/api/api/projects/{project_name}/data-files/{filename}/content")
+    def api_data_file_content(
+        project_name: str,
+        filename: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, str]:
+        _require_api_module()
+        try:
+            return {"name": filename, "content": read_csv_text(project_name, filename)}
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/api/api/projects/{project_name}/data-files/upload")
+    async def api_upload_data_file(
+        project_name: str,
+        file: UploadFile = File(...),
+        overwrite: bool = Form(False),
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        raw_name = file.filename or "datos.csv"
+        lower = raw_name.lower()
+        if not (lower.endswith(".csv") or lower.endswith(".xlsx")):
+            raise HTTPException(status_code=400, detail="Solo se admiten archivos .csv o .xlsx")
+        data = await file.read()
+        try:
+            return import_data_file(project_name, raw_name, data, overwrite=overwrite)
+        except FileExistsError as e:
+            raise HTTPException(status_code=409, detail=f"Ya existe {e}") from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
     @app.post("/api/api/data-files")
     def api_save_data_file(
         body: ApiCsvSaveRequest,
@@ -710,7 +753,7 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             path = save_csv_content(body.project, body.filename, body.content)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return {"ok": True, "path": path}
+        return {"ok": True, "path": path, "preview": preview_csv(body.project, body.filename)}
 
     @app.get("/api/api/load-test/{run_id}/metrics")
     def api_load_test_metrics(

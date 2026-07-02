@@ -4,6 +4,7 @@ import {
   exportApiSuiteEvidence,
   exportLoadHistoryReport,
   getApiDataFiles,
+  getApiDataFileContent,
   getApiDriverCapabilities,
   getApiFlow,
   getApiLoadHistory,
@@ -13,12 +14,19 @@ import {
   getProjectReportUrl,
   getTestRun,
   listApiFlows,
+  openProjectFolder,
   runApiSuite,
   saveApiDataFile,
   saveApiFlow,
   sqlPreflight,
   grpcPreflight,
+  uploadApiDataFile,
+  type ApiDataFilePreview,
 } from "../api";
+import { API_DATA_FILES_CHANGED, notifyApiDataFilesChanged } from "../app/apiDataFilesEvents";
+import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
+import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
+import { InlineActionHint } from "../components/InlineActionHint";
 import { ConfirmModal } from "../components/ConfirmModal";
 import {
   NodeListEditor,
@@ -186,9 +194,14 @@ export function SuiteRunnerPanel(props: {
 
   useEffect(() => {
     if (!project) return;
-    void getApiDataFiles(project)
-      .then((r) => setDataFiles(r.files.map((f) => f.name)))
-      .catch(() => setDataFiles([]));
+    const load = () => {
+      void getApiDataFiles(project)
+        .then((r) => setDataFiles(r.files.map((f) => f.name)))
+        .catch(() => setDataFiles([]));
+    };
+    load();
+    window.addEventListener(API_DATA_FILES_CHANGED, load);
+    return () => window.removeEventListener(API_DATA_FILES_CHANGED, load);
   }, [project]);
 
   useEffect(() => {
@@ -551,9 +564,15 @@ export function DataCsvPanel(props: {
   onHint: (msg: string) => void;
 }) {
   const { c, project, busy, onError, onHint } = props;
+  const [tab, setTab] = useState<"import" | "manual">("import");
   const [filename, setFilename] = useState("datos.csv");
   const [content, setContent] = useState("email,password\nuser1@test.com,pass1\n");
   const [files, setFiles] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [preview, setPreview] = useState<ApiDataFilePreview | null>(null);
+  const [folderHint, setFolderHint] = useAutoDismissHint();
+  const [confirm, setConfirm] = useState<null | { title: string; message: string; file: File }>(null);
 
   const refresh = () => {
     void getApiDataFiles(project)
@@ -565,32 +584,233 @@ export function DataCsvPanel(props: {
     refresh();
   }, [project]);
 
+  const notifyChanged = () => {
+    refresh();
+    notifyApiDataFilesChanged();
+  };
+
+  const doUpload = (file: File, overwrite = false) => {
+    if (!project.trim()) {
+      onError("Selecciona un proyecto API.");
+      return;
+    }
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".csv") && !lower.endsWith(".xlsx")) {
+      onError("Solo se admiten archivos .csv o .xlsx");
+      return;
+    }
+    setUploadBusy(true);
+    void uploadApiDataFile(project, file, overwrite)
+      .then((r) => {
+        setPreview(r.preview);
+        notifyChanged();
+        const note = r.converted_from_xlsx ? ` (convertido desde Excel)` : "";
+        onHint(`Datos importados: ${r.name}${note}`);
+      })
+      .catch((e: unknown) => {
+        const err = e as Error & { status?: number };
+        if (err.status === 409) {
+          setConfirm({
+            title: "Archivo existente",
+            message: `${err.message}. ¿Deseas reemplazarlo?`,
+            file,
+          });
+          return;
+        }
+        onError(String(err.message ?? e));
+      })
+      .finally(() => setUploadBusy(false));
+  };
+
+  const handleFiles = (picked: File[]) => {
+    const file = picked.find((f) => {
+      const n = f.name.toLowerCase();
+      return n.endsWith(".csv") || n.endsWith(".xlsx");
+    });
+    if (!file) {
+      onError("Solo se admiten archivos .csv o .xlsx");
+      return;
+    }
+    doUpload(file);
+  };
+
+  const openBrowse = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv,.xlsx";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) handleFiles([file]);
+    };
+    input.click();
+  };
+
+  const tabBtn = (id: "import" | "manual", label: string) => (
+    <button
+      type="button"
+      onClick={() => setTab(id)}
+      style={{
+        ...btn(c, tab !== id, tab === id),
+        padding: "6px 12px",
+        fontSize: 12,
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div>
       <div style={{ fontSize: 13, color: c.muted, marginBottom: 8 }}>
-        CSV en <code>resources/data/</code> para suites data-driven.
+        Datos en <code>resources/data/</code> para suites data-driven y perfiles de carga con CSV.
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <input value={filename} onChange={(e) => setFilename(e.target.value)} style={inputStyle(c, { width: 160 })} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        {tabBtn("import", "Importar archivo")}
+        {tabBtn("manual", "Editar manualmente")}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !project.trim()}
           onClick={() => {
-            void saveApiDataFile({ project, filename, content })
-              .then(() => {
-                refresh();
-                onHint(`CSV guardado: ${filename}`);
-              })
+            void openProjectFolder("api", project, "resources/data")
+              .then((r) => setFolderHint(r.hint ?? FOLDER_OPEN_HINT))
               .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
           }}
-          style={btn(c)}
+          style={{ ...btn(c, true), marginLeft: "auto", fontSize: 12, padding: "6px 12px" }}
         >
-          Guardar CSV
+          Abrir carpeta de datos
         </button>
       </div>
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={4} style={monoArea(c)} />
+      <InlineActionHint c={c} message={folderHint} />
+
+      {tab === "import" ? (
+        <>
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              handleFiles(Array.from(e.dataTransfer.files));
+            }}
+            style={{
+              border: `2px dashed ${dragOver ? c.primary : c.inputBorder}`,
+              borderRadius: 12,
+              padding: "16px 14px",
+              textAlign: "center",
+              background: dragOver ? c.hintBg : c.inputBg,
+              color: c.muted,
+              fontSize: 13,
+              marginBottom: 10,
+            }}
+          >
+            Arrastra aquí un <strong>.csv</strong> o <strong>.xlsx</strong>
+            <div style={{ marginTop: 8 }}>
+              <button type="button" disabled={busy || uploadBusy} onClick={openBrowse} style={btn(c)}>
+                Buscar archivo
+              </button>
+            </div>
+            <div style={{ fontSize: 11, marginTop: 8, color: c.muted }}>
+              Excel: se importa la primera hoja y se guarda como CSV en el proyecto.
+            </div>
+          </div>
+          {preview ? (
+            <div
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                border: `1px solid ${c.border}`,
+                background: c.neutralBg,
+                fontSize: 12,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: c.text, marginBottom: 6 }}>
+                {preview.name} — {preview.total} fila{preview.total === 1 ? "" : "s"}
+              </div>
+              {preview.columns.length ? (
+                <div style={{ color: c.muted, marginBottom: 6 }}>Columnas: {preview.columns.join(", ")}</div>
+              ) : null}
+              {preview.rows.length ? (
+                <pre style={{ margin: 0, fontSize: 11, overflow: "auto", color: c.text }}>
+                  {JSON.stringify(preview.rows.slice(0, 3), null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <input value={filename} onChange={(e) => setFilename(e.target.value)} style={inputStyle(c, { width: 160 })} />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void saveApiDataFile({ project, filename, content })
+                  .then((r) => {
+                    if (r.preview) setPreview(r.preview);
+                    notifyChanged();
+                    onHint(`CSV guardado: ${filename}`);
+                  })
+                  .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
+              }}
+              style={btn(c)}
+            >
+              Guardar CSV
+            </button>
+            {files.length ? (
+              <select
+                value=""
+                onChange={(e) => {
+                  const name = e.target.value;
+                  if (!name) return;
+                  void getApiDataFileContent(project, name)
+                    .then((r) => {
+                      setFilename(r.name);
+                      setContent(r.content);
+                    })
+                    .catch((err: unknown) => onError(String((err as Error)?.message ?? err)));
+                }}
+                style={inputStyle(c, { minWidth: 160 })}
+              >
+                <option value="">Cargar archivo existente…</option>
+                {files.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={6} style={monoArea(c)} />
+        </>
+      )}
+
       {files.length ? (
-        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Archivos: {files.join(", ")}</div>
+        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>
+          Archivos en proyecto: {files.join(", ")}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>Aún no hay archivos CSV en este proyecto.</div>
+      )}
+
+      {confirm ? (
+        <ConfirmModal
+          c={c}
+          title={confirm.title}
+          message={confirm.message}
+          confirmLabel="Reemplazar"
+          destructive
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            const file = confirm.file;
+            setConfirm(null);
+            doUpload(file, true);
+          }}
+        />
       ) : null}
     </div>
   );

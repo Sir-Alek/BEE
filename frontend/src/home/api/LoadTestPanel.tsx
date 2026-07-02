@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getApiDataFiles, getLoadTestProfiles } from "../../api";
+import { API_DATA_FILES_CHANGED } from "../../app/apiDataFilesEvents";
 import { apiBtn, apiInputStyle } from "./apiUi";
 
 export type LoadTestSettings = {
@@ -105,9 +106,14 @@ export function LoadTestPanel(props: Props) {
 
   useEffect(() => {
     if (!project.trim()) return;
-    void getApiDataFiles(project)
-      .then((r) => setDataFiles((r.files || []).map((f) => f.name)))
-      .catch(() => setDataFiles([]));
+    const load = () => {
+      void getApiDataFiles(project)
+        .then((r) => setDataFiles((r.files || []).map((f) => f.name)))
+        .catch(() => setDataFiles([]));
+    };
+    load();
+    window.addEventListener(API_DATA_FILES_CHANGED, load);
+    return () => window.removeEventListener(API_DATA_FILES_CHANGED, load);
   }, [project]);
 
   const profileHelp: Record<string, string> = {

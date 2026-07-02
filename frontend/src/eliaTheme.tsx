@@ -72,6 +72,9 @@ export type EliaPalette = {
   severityErrorText: string;
   severityWarnBorder: string;
   severityWarnText: string;
+  dangerBtnBg: string;
+  dangerBtnBorder: string;
+  dangerBtnText: string;
 };
 
 const LIGHT: EliaPalette = {
@@ -131,6 +134,9 @@ const LIGHT: EliaPalette = {
   severityErrorText: "#b91c1c",
   severityWarnBorder: "#fde68a",
   severityWarnText: "#92400e",
+  dangerBtnBg: "#fef2f2",
+  dangerBtnBorder: "#fca5a5",
+  dangerBtnText: "#b91c1c",
 };
 
 const DARK: EliaPalette = {
@@ -190,6 +196,9 @@ const DARK: EliaPalette = {
   severityErrorText: "#fecaca",
   severityWarnBorder: "#b45309",
   severityWarnText: "#fde68a",
+  dangerBtnBg: "#1a1414",
+  dangerBtnBorder: "#4a3333",
+  dangerBtnText: "#b89595",
 };
 
 type Ctx = {
