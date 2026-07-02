@@ -97,7 +97,6 @@ export default function App() {
   const [windowName, setWindowName] = useState("");
   const [exePath, setExePath] = useState("");
   const [loadedDocs, setLoadedDocs] = useState<LoadedDoc[]>([]);
-  const [docDragOver, setDocDragOver] = useState(false);
   const [docUploadError, setDocUploadError] = useState<string | null>(null);
   const [linkRecordings, setLinkRecordings] = useState(false);
   const [availableScenarios, setAvailableScenarios] = useState<ScenarioRef[]>([]);
@@ -745,7 +744,7 @@ export default function App() {
       setOfflineBannerDismissed,
       showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
       autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
-      setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
+      setLoadedDocs, docUploadError, setDocUploadError, linkRecordings,
       setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
       availableRecordings, setAvailableScenarios, setAvailableRecordings,
       homeDataRefresh, refreshHomeData: () => setHomeDataRefresh((n) => n + 1),
@@ -758,7 +757,7 @@ export default function App() {
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, licenseLoading, canRunJobs, modules, modulesLoading,
       entitlement, offlineBannerDismissed,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
-      loadedDocs, docDragOver, docUploadError, linkRecordings, linkMapping, recordingMapping,
+      loadedDocs, docUploadError, linkRecordings, linkMapping, recordingMapping,
       availableRecordings, startJob, homeDataRefresh, pendingRunProject, pendingApiProject,
     ],
   );

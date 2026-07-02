@@ -63,14 +63,22 @@ export function PlatformQuickGuide(props: Props) {
           "Convierte la grabación: se crea el proyecto en behave/mobile/.",
           "Ejecuta el .feature desde la consola de abajo.",
         ]
-      : [
-          "Indica el título exacto de la ventana (y opcionalmente el .exe).",
-          "Graba la interacción con la aplicación de escritorio.",
-          "Convierte: el proyecto queda en behave/legacy/.",
-          "Ejecuta Behave con la app accesible.",
-        ];
+      : platform === "legacy"
+        ? [
+            "Indica el título exacto de la ventana (y opcionalmente el .exe).",
+            "Graba la interacción con la aplicación de escritorio.",
+            "Convierte: el proyecto queda en behave/legacy/.",
+            "Ejecuta Behave con la app accesible.",
+          ]
+        : [
+            "Guarda escenarios en la pestaña Cliente API.",
+            "Importa CSV/XLSX si necesitas datos parametrizados.",
+            "Selecciona escenarios y ejecuta una suite funcional.",
+            "Configura Locust (perfil, usuarios, CSV opcional).",
+          ];
 
-  const showExpandedHint = showRunnerHint && !hasProjects && !dismissed;
+  const isApiLoad = platform === "api_load";
+  const showExpandedHint = showRunnerHint && !dismissed && (isApiLoad || !hasProjects);
 
   return (
     <>
@@ -107,7 +115,10 @@ export function PlatformQuickGuide(props: Props) {
             lineHeight: 1.45,
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Primeros pasos en {platform === "mobile" ? "móvil" : "legacy"}</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            Primeros pasos en{" "}
+            {platform === "mobile" ? "móvil" : platform === "legacy" ? "legacy" : "Suites y carga"}
+          </div>
           <ol style={{ margin: "0 0 10px 18px", padding: 0 }}>
             {steps.map((step) => (
               <li key={step} style={{ marginBottom: 4 }}>
@@ -136,9 +147,9 @@ export function PlatformQuickGuide(props: Props) {
         </div>
       ) : null}
 
-      {showRunnerHint && !hasProjects && dismissed ? (
+      {showRunnerHint && dismissed && (isApiLoad || !hasProjects) ? (
         <div
-          data-testid="elia-no-behave-projects-hint"
+          data-testid={isApiLoad ? "elia-api-load-quick-start-hint" : "elia-no-behave-projects-hint"}
           style={{
             marginBottom: 10,
             padding: "10px 12px",
@@ -150,34 +161,66 @@ export function PlatformQuickGuide(props: Props) {
             lineHeight: 1.45,
           }}
         >
-          Aún no hay proyectos en esta plataforma. En {platform === "mobile" ? "móvil" : "legacy"} se crean al{" "}
-          <b>convertir una grabación</b>.{" "}
-          <button
-            type="button"
-            onClick={openGuide}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: c.primary,
-              fontWeight: 700,
-              cursor: "pointer",
-              padding: 0,
-              fontSize: 13,
-            }}
-          >
-            Guía rápida
-          </button>
+          {isApiLoad ? (
+            <>
+              ¿Primera vez en suites o carga?{" "}
+              <button
+                type="button"
+                onClick={openGuide}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: c.primary,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: 13,
+                }}
+              >
+                Guía rápida
+              </button>
+            </>
+          ) : (
+            <>
+              Aún no hay proyectos en esta plataforma. En {platform === "mobile" ? "móvil" : "legacy"} se crean al{" "}
+              <b>convertir una grabación</b>.{" "}
+              <button
+                type="button"
+                onClick={openGuide}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: c.primary,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: 13,
+                }}
+              >
+                Guía rápida
+              </button>
+            </>
+          )}
         </div>
       ) : null}
 
       {modalOpen ? (
         <MarkdownGuideModal
           c={c}
-          title={title || (platform === "mobile" ? "Guía rápida — Móvil" : "Guía rápida — Legacy")}
+          title={
+            title ||
+            (platform === "mobile"
+              ? "Guía rápida — Móvil"
+              : platform === "legacy"
+                ? "Guía rápida — Legacy"
+                : "Guía rápida — Suites y carga")
+          }
           subtitle={
             platform === "mobile"
               ? "Grabación Android → conversión Behave → ejecución"
-              : "Grabación Windows → conversión Behave → ejecución"
+              : platform === "legacy"
+                ? "Grabación Windows → conversión Behave → ejecución"
+                : "Escenarios → suite funcional → prueba de carga Locust"
           }
           content={content}
           loading={loading}

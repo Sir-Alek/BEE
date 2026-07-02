@@ -71,7 +71,8 @@ import { FeatureGate } from "../components/FeatureGate";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import { ProjectManageToolbar } from "../components/ProjectManageToolbar";
 import { ProjectTemplateModal } from "../components/ProjectTemplateModal";
-import { TierBadge, UpsellModal } from "../components/UpsellModal";
+import { PlatformQuickGuide } from "../components/PlatformQuickGuide";
+import { UpsellModal } from "../components/UpsellModal";
 import { useHomeUiContext } from "../context/HomeUiContext";
 import type { FeatureFlags, ModulesStatus } from "../types";
 
@@ -872,11 +873,6 @@ export function ApiSurface(props: Props) {
       ) : null}
       <div style={{ fontSize: 14, marginBottom: 12, color: c.text }}>
         Pruebas API: cliente de peticiones, suites encadenadas y pruebas de carga (motor Locust).
-        {modules?.tier_label ? (
-          <span style={{ marginLeft: 8 }}>
-            <TierBadge c={c} label={modules.tier_label} />
-          </span>
-        ) : null}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
@@ -1102,6 +1098,12 @@ export function ApiSurface(props: Props) {
         </div>
       ) : (
         <>
+          <PlatformQuickGuide
+            c={c}
+            platform="api_load"
+            showLink
+            showRunnerHint
+          />
           <FeatureGate
             c={c}
             phase={entitlementPhase}

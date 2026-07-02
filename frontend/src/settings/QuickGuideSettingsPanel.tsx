@@ -23,7 +23,7 @@ export function QuickGuideSettingsPanel(props: Props) {
 
   const handleResetCards = () => {
     resetAllQuickGuideDismissCards();
-    setResetMsg("Tarjetas de primeros pasos restablecidas en móvil y legacy.");
+    setResetMsg("Tarjetas de primeros pasos restablecidas en móvil, legacy y Suites y carga (API).");
     window.setTimeout(() => setResetMsg(null), 3000);
   };
 
@@ -38,10 +38,10 @@ export function QuickGuideSettingsPanel(props: Props) {
       }}
       data-testid="elia-settings-quick-guides"
     >
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>Guías rápidas (móvil y legacy)</div>
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>Guías rápidas (móvil, legacy y API)</div>
       <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, lineHeight: 1.45 }}>
-        Tarjetas de «Primeros pasos», enlaces «Guía rápida» y modal de ayuda en grabación y runner. No afecta
-        plantillas web/API ni otras ayudas del producto.
+        Tarjetas de «Primeros pasos», enlaces «Guía rápida» y modal de ayuda en grabación, runner y pestaña Suites y
+        carga. No afecta plantillas web/API ni otras ayudas del producto.
       </div>
       <label
         htmlFor="elia-quick-guides-toggle"

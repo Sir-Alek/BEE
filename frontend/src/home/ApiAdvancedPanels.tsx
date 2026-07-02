@@ -28,6 +28,7 @@ import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { InlineActionHint } from "../components/InlineActionHint";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { FileDropZone } from "../components/FileDropZone";
 import {
   NodeListEditor,
   deserializeFlowNodes,
@@ -568,7 +569,6 @@ export function DataCsvPanel(props: {
   const [filename, setFilename] = useState("datos.csv");
   const [content, setContent] = useState("email,password\nuser1@test.com,pass1\n");
   const [files, setFiles] = useState<string[]>([]);
-  const [dragOver, setDragOver] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [preview, setPreview] = useState<ApiDataFilePreview | null>(null);
   const [folderHint, setFolderHint] = useAutoDismissHint();
@@ -623,26 +623,9 @@ export function DataCsvPanel(props: {
   };
 
   const handleFiles = (picked: File[]) => {
-    const file = picked.find((f) => {
-      const n = f.name.toLowerCase();
-      return n.endsWith(".csv") || n.endsWith(".xlsx");
-    });
-    if (!file) {
-      onError("Solo se admiten archivos .csv o .xlsx");
-      return;
-    }
+    const file = picked[0];
+    if (!file) return;
     doUpload(file);
-  };
-
-  const openBrowse = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".csv,.xlsx";
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (file) handleFiles([file]);
-    };
-    input.click();
   };
 
   const tabBtn = (id: "import" | "manual", label: string) => (
@@ -684,38 +667,18 @@ export function DataCsvPanel(props: {
 
       {tab === "import" ? (
         <>
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              handleFiles(Array.from(e.dataTransfer.files));
-            }}
-            style={{
-              border: `2px dashed ${dragOver ? c.primary : c.inputBorder}`,
-              borderRadius: 12,
-              padding: "16px 14px",
-              textAlign: "center",
-              background: dragOver ? c.hintBg : c.inputBg,
-              color: c.muted,
-              fontSize: 13,
-              marginBottom: 10,
-            }}
-          >
-            Arrastra aquí un <strong>.csv</strong> o <strong>.xlsx</strong>
-            <div style={{ marginTop: 8 }}>
-              <button type="button" disabled={busy || uploadBusy} onClick={openBrowse} style={btn(c)}>
-                Buscar archivo
-              </button>
-            </div>
-            <div style={{ fontSize: 11, marginTop: 8, color: c.muted }}>
-              Excel: se importa la primera hoja y se guarda como CSV en el proyecto.
-            </div>
-          </div>
+          <FileDropZone
+            c={c}
+            accept=".csv,.xlsx"
+            extensions={[".csv", ".xlsx"]}
+            acceptLabel=".csv, .xlsx"
+            hintText="Excel: se importa la primera hoja y se guarda como CSV en el proyecto."
+            disabled={busy}
+            busy={uploadBusy}
+            onFiles={handleFiles}
+            onInvalidFiles={onError}
+            testId="elia-api-data-file-drop"
+          />
           {preview ? (
             <div
               style={{

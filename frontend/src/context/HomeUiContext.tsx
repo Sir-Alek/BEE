@@ -39,8 +39,6 @@ export type HomeUiContextValue = {
   startJob: (mode: ConvertJobMode) => void;
   loadedDocs: LoadedDoc[];
   setLoadedDocs: React.Dispatch<React.SetStateAction<LoadedDoc[]>>;
-  docDragOver: boolean;
-  setDocDragOver: (v: boolean) => void;
   docUploadError: string | null;
   setDocUploadError: React.Dispatch<React.SetStateAction<string | null>>;
   linkRecordings: boolean;

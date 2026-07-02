@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 _GUIDE_FILES = {
     "mobile": ("mobile_quick_start.md", "Guía rápida — Automatización móvil"),
     "legacy": ("legacy_quick_start.md", "Guía rápida — Automatización legacy"),
+    "api_load": ("api_suites_quick_start.md", "Guía rápida — Suites y carga (API)"),
 }
 
 SUPPORTED_PLATFORMS = frozenset(_GUIDE_FILES.keys())

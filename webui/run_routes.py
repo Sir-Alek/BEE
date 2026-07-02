@@ -135,15 +135,17 @@ def register_run_routes(app, *, require_localhost, require_active_license) -> No
         _: None = Depends(require_localhost),
         __: None = Depends(require_active_license),
     ) -> Dict[str, str]:
-        plat = _check_platform(platform)
-        if plat not in ("mobile", "legacy"):
-            raise HTTPException(status_code=400, detail=f"Guía no disponible para plataforma: {platform}")
-        from core.platform_guides import load_platform_guide
+        from core.platform_guides import SUPPORTED_PLATFORMS, load_platform_guide
 
+        plat = (platform or "").strip().lower()
+        if plat not in SUPPORTED_PLATFORMS:
+            raise HTTPException(status_code=400, detail=f"Guía no disponible para plataforma: {platform}")
         try:
             title, content = load_platform_guide(plat)
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return {"title": title, "content": content}
 
     @app.get("/api/projects/{platform}/{project_name}/info")

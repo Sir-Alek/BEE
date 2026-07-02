@@ -2,7 +2,7 @@ const GUIDE_DISMISS_PREFIX = "elia.guide.";
 const QUICK_GUIDES_ENABLED_KEY = "elia.guide.quick.enabled";
 export const QUICK_GUIDE_PREFS_CHANGED = "elia-quick-guide-prefs-changed";
 
-export type QuickGuidePlatform = "mobile" | "legacy";
+export type QuickGuidePlatform = "mobile" | "legacy" | "api_load";
 
 export function platformQuickGuideDismissKey(platform: QuickGuidePlatform): string {
   return `${GUIDE_DISMISS_PREFIX}${platform}.dismiss`;
@@ -54,7 +54,7 @@ export function resetPlatformQuickGuideDismiss(platform: QuickGuidePlatform): vo
 }
 
 export function resetAllQuickGuideDismissCards(): void {
-  for (const platform of ["mobile", "legacy"] as const) {
+  for (const platform of ["mobile", "legacy", "api_load"] as const) {
     resetPlatformQuickGuideDismiss(platform);
   }
 }

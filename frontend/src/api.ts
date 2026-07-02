@@ -1046,7 +1046,7 @@ export async function getApiScriptsGuide(): Promise<{ title: string; content: st
 }
 
 export async function getPlatformQuickGuide(
-  platform: "mobile" | "legacy",
+  platform: "mobile" | "legacy" | "api_load",
 ): Promise<{ title: string; content: string }> {
   const res = await fetch(`/api/guides/${encodeURIComponent(platform)}`);
   if (!res.ok) throw new Error(`No se pudo cargar la guía: ${res.status}`);

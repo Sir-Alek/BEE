@@ -21,6 +21,7 @@ import { NoLicenseOverlay } from "../components/NoLicenseOverlay";
 import { ProjectManageToolbar } from "../components/ProjectManageToolbar";
 import { ProjectTemplateModal } from "../components/ProjectTemplateModal";
 import { PlatformQuickGuide } from "../components/PlatformQuickGuide";
+import { FileDropZone } from "../components/FileDropZone";
 import { TierBadge, UpsellModal } from "../components/UpsellModal";
 import { LegacyConfigForm } from "../recording/LegacyConfigForm";
 import { MobileConfigForm } from "../recording/MobileConfigForm";
@@ -40,7 +41,7 @@ export function HomeSurface() {
     offlineBannerDismissed, setOfflineBannerDismissed,
     showLockModal, setShowLockModal, showHomeError, autoLinkToScenario, setAutoLinkToScenario,
     autoLinkScenarioRef, setAutoLinkScenarioRef, availableScenarios, startJob, loadedDocs,
-    setLoadedDocs, docDragOver, setDocDragOver, docUploadError, setDocUploadError, linkRecordings,
+    setLoadedDocs, docUploadError, setDocUploadError, linkRecordings,
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
     homeDataRefresh, pendingRunProject, clearPendingRunProject,
@@ -784,65 +785,26 @@ export function HomeSurface() {
                   Carga de Documentos (Word / Excel → BDD)
                 </div>
 
-                {/* Área Drag & Drop */}
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setDocDragOver(true); }}
-                  onDragLeave={() => setDocDragOver(false)}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    setDocDragOver(false);
+                <FileDropZone
+                  c={c}
+                  accept=".docx,.xlsx,.json"
+                  extensions={[".docx", ".xlsx", ".json"]}
+                  acceptLabel=".docx, .xlsx, .json"
+                  multiple
+                  onFiles={(files) => {
                     setDocUploadError(null);
-                    const files = Array.from(e.dataTransfer.files).filter((f) =>
-                      [".docx", ".xlsx", ".json"].some((ext) => f.name.toLowerCase().endsWith(ext))
-                    );
-                    if (!files.length) { setDocUploadError("Solo se aceptan archivos .docx, .xlsx y .json"); return; }
-                    try {
-                      const result = await uploadDocs(files);
-                      setLoadedDocs((prev) => {
-                        const existing = new Set(prev.map((d) => d.path));
-                        return [...prev, ...result.files.filter((f) => !existing.has(f.path))];
-                      });
-                    } catch (err: any) {
-                      setDocUploadError(String(err?.message ?? err));
-                    }
-                  }}
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".docx,.xlsx,.json";
-                    input.multiple = true;
-                    input.onchange = async () => {
-                      const files = Array.from(input.files ?? []);
-                      if (!files.length) return;
-                      setDocUploadError(null);
-                      try {
-                        const result = await uploadDocs(files);
+                    void uploadDocs(files)
+                      .then((result) => {
                         setLoadedDocs((prev) => {
                           const existing = new Set(prev.map((d) => d.path));
                           return [...prev, ...result.files.filter((f) => !existing.has(f.path))];
                         });
-                      } catch (err: any) {
-                        setDocUploadError(String(err?.message ?? err));
-                      }
-                    };
-                    input.click();
+                      })
+                      .catch((err: unknown) => setDocUploadError(String((err as Error)?.message ?? err)));
                   }}
-                  style={{
-                    border: `2px dashed ${docDragOver ? c.primary : c.inputBorder}`,
-                    borderRadius: 12,
-                    padding: "18px 14px",
-                    textAlign: "center",
-                    cursor: "pointer",
-                    background: docDragOver ? (dark ? "rgba(99,102,241,0.08)" : "rgba(99,102,241,0.04)") : c.inputBg,
-                    color: c.muted,
-                    fontSize: 13,
-                    marginBottom: 8,
-                    transition: "border-color 0.15s, background 0.15s",
-                  }}
-                >
-                  Arrastra tus archivos aquí o haz clic para buscar
-                  <span style={{ display: "block", fontSize: 11, marginTop: 4 }}>(.docx, .xlsx, .json)</span>
-                </div>
+                  onInvalidFiles={(msg) => setDocUploadError(msg)}
+                  testId="elia-req-doc-drop"
+                />
 
                 {docUploadError && (
                   <div style={{ fontSize: 12, color: "#e53e3e", marginBottom: 8 }}>{docUploadError}</div>
