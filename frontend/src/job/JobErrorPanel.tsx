@@ -5,6 +5,7 @@ import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 import { InlineActionHint } from "../components/InlineActionHint";
+import { EliaButton } from "../components/ui";
 // Versión comercial (≥1.0): descomentar y usar en lugar de BetaFeedbackLink (ver bloque JSX abajo).
 // import { SupportContactLink } from "../components/SupportContactLink";
 
@@ -53,24 +54,12 @@ export function JobErrorPanel(props: Props) {
         </div>
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="button"
-            disabled={downloading}
-            onClick={handleDownload}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: c.primary,
-              color: c.primaryFg,
-              border: "none",
-              cursor: downloading ? "wait" : "pointer",
-              fontWeight: 600,
-            }}
-          >
+          <EliaButton variant="primary" size="sm" disabled={downloading} onClick={handleDownload}>
             {downloading ? "Generando…" : "Descargar reporte de error"}
-          </button>
-          <button
-            type="button"
+          </EliaButton>
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={() => {
               void openEliaLogsFolder()
                 .then((r) => {
@@ -80,18 +69,9 @@ export function JobErrorPanel(props: Props) {
                   onDownloadError?.(String((e as Error)?.message ?? e)),
                 );
             }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: `1px solid ${c.btnGhostBorder}`,
-              background: c.btnGhostBg,
-              color: c.text,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
           >
             Abrir carpeta de logs
-          </button>
+          </EliaButton>
           {betaFeedbackUrl ? (
             <BetaFeedbackLink url={betaFeedbackUrl} c={c} variant="job" />
           ) : null}
@@ -106,20 +86,9 @@ export function JobErrorPanel(props: Props) {
         </div>
       </div>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
-          onClick={() => returnToHomeFromJobTab({ jobId })}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
-        >
+        <EliaButton variant="ghost" size="sm" onClick={() => returnToHomeFromJobTab({ jobId })}>
           Volver al inicio
-        </button>
+        </EliaButton>
       </div>
     </>
   );
@@ -129,20 +98,9 @@ export function JobErrorActions(props: { c: Record<string, string> }) {
   const { c } = props;
   return (
     <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-      <button
-        type="button"
-        onClick={() => returnToHomeFromJobTab()}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: c.primary,
-          color: c.primaryFg,
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
+      <EliaButton variant="primary" size="sm" onClick={() => returnToHomeFromJobTab()}>
         Volver al inicio
-      </button>
+      </EliaButton>
     </div>
   );
 }

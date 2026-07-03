@@ -9,6 +9,7 @@ import {
 import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { InlineActionHint } from "./InlineActionHint";
+import { EliaButton, EliaModalActions, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -19,19 +20,6 @@ type Props = {
   onProjectDeleted: () => void;
   onError: (msg: string) => void;
 };
-
-function ghostBtn(c: Record<string, string>, danger = false): React.CSSProperties {
-  return {
-    padding: "6px 10px",
-    borderRadius: 8,
-    border: `1px solid ${danger ? (c.dangerBtnBorder ?? c.errorBorder ?? "#c0392b") : c.btnGhostBorder}`,
-    background: danger ? (c.dangerBtnBg ?? c.errorBg ?? "rgba(192,57,43,0.08)") : c.btnGhostBg,
-    color: danger ? (c.dangerBtnText ?? c.errorTitle ?? "#c0392b") : c.text,
-    fontWeight: 600,
-    fontSize: 12,
-    cursor: "pointer",
-  };
-}
 
 export function ProjectManageToolbar(props: Props) {
   const { c, platform, project, disabled, onProjectRenamed, onProjectDeleted, onError } = props;
@@ -130,127 +118,79 @@ export function ProjectManageToolbar(props: Props) {
               Plantilla: {info.template_id}
             </span>
           ) : null}
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             disabled={disabled || busy}
             onClick={handleOpenRoot}
-            style={ghostBtn(c)}
             data-testid="elia-project-open-folder"
           >
             Abrir carpeta
-          </button>
-          <button
-            type="button"
+          </EliaButton>
+          <EliaButton
+            variant="ghost"
+            size="sm"
             disabled={disabled || busy}
             onClick={() => {
               setRenameValue(project);
               setRenameOpen(true);
             }}
-            style={ghostBtn(c)}
             data-testid="elia-project-rename"
           >
             Renombrar
-          </button>
-          <button
-            type="button"
+          </EliaButton>
+          <EliaButton
+            variant="danger"
+            size="sm"
             disabled={disabled || busy}
             onClick={() => {
               setDeleteConfirm("");
               setDeleteOpen(true);
             }}
-            style={ghostBtn(c, true)}
             data-testid="elia-project-delete"
           >
             Eliminar proyecto
-          </button>
+          </EliaButton>
         </div>
         <InlineActionHint c={c} message={folderHint} testId="elia-project-open-folder-hint" />
       </div>
 
       {renameOpen ? (
-        <div
-          data-testid="elia-project-rename-modal"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-            padding: 16,
-          }}
-          onClick={() => setRenameOpen(false)}
-        >
-          <div
-            style={{
-              background: c.surface,
-              border: `1px solid ${c.border}`,
-              borderRadius: 14,
-              padding: 20,
-              width: "min(420px, 96vw)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <EliaModalOverlay testId="elia-project-rename-modal" ariaLabel="Renombrar proyecto" onClose={() => setRenameOpen(false)}>
+          <EliaModalPanel onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 96vw)", padding: 20 }}>
             <div style={{ fontWeight: 800, marginBottom: 8, color: c.text }}>Renombrar proyecto</div>
             <div style={{ fontSize: 13, color: c.muted, marginBottom: 12 }}>
               Nuevo nombre en behave/{platform}/ (solo letras, números, guiones).
             </div>
             <input
+              className="elia-input"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                marginBottom: 14,
-              }}
+              style={{ width: "100%", marginBottom: 14 }}
               data-testid="elia-project-rename-input"
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" onClick={() => setRenameOpen(false)} style={ghostBtn(c)}>
+            <EliaModalActions>
+              <EliaButton variant="ghost" size="sm" onClick={() => setRenameOpen(false)}>
                 Cancelar
-              </button>
-              <button
-                type="button"
+              </EliaButton>
+              <EliaButton
+                variant="primary"
+                size="sm"
                 disabled={busy || !renameValue.trim() || renameValue.trim() === project}
                 onClick={handleRename}
-                style={{ ...ghostBtn(c), background: c.primary, color: "#fff", border: "none" }}
               >
                 Guardar
-              </button>
-            </div>
-          </div>
-        </div>
+              </EliaButton>
+            </EliaModalActions>
+          </EliaModalPanel>
+        </EliaModalOverlay>
       ) : null}
 
       {deleteOpen ? (
-        <div
-          data-testid="elia-project-delete-modal"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-            padding: 16,
-          }}
-          onClick={() => setDeleteOpen(false)}
-        >
-          <div
-            style={{
-              background: c.surface,
-              border: `1px solid ${c.errorBorder ?? c.border}`,
-              borderRadius: 14,
-              padding: 20,
-              width: "min(460px, 96vw)",
-            }}
+        <EliaModalOverlay testId="elia-project-delete-modal" ariaLabel="Eliminar proyecto" onClose={() => setDeleteOpen(false)}>
+          <EliaModalPanel
             onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(460px, 96vw)", padding: 20, border: `1px solid ${c.errorBorder ?? c.border}` }}
           >
             <div style={{ fontWeight: 800, marginBottom: 8, color: c.errorTitle ?? c.text }}>
               Eliminar proyecto
@@ -263,34 +203,27 @@ export function ProjectManageToolbar(props: Props) {
               Escribe <code>{project}</code> para confirmar:
             </div>
             <input
+              className="elia-input"
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                marginBottom: 14,
-              }}
+              style={{ width: "100%", marginBottom: 14 }}
               data-testid="elia-project-delete-confirm-input"
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" onClick={() => setDeleteOpen(false)} style={ghostBtn(c)}>
+            <EliaModalActions>
+              <EliaButton variant="ghost" size="sm" onClick={() => setDeleteOpen(false)}>
                 Cancelar
-              </button>
-              <button
-                type="button"
+              </EliaButton>
+              <EliaButton
+                variant="danger"
+                size="sm"
                 disabled={busy || deleteConfirm.trim() !== project}
                 onClick={handleDelete}
-                style={ghostBtn(c, true)}
               >
                 Eliminar definitivamente
-              </button>
-            </div>
-          </div>
-        </div>
+              </EliaButton>
+            </EliaModalActions>
+          </EliaModalPanel>
+        </EliaModalOverlay>
       ) : null}
     </>
   );

@@ -3,9 +3,11 @@ import { JobErrorActions, JobErrorPanel } from "./JobErrorPanel";
 import { JobPromptRouter } from "./JobPromptRouter";
 import { JobRunningPanel } from "./JobRunningPanel";
 import { JobCancelledPanel, JobDonePanel } from "./JobTerminalPanels";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import { cancelConvertJob } from "../api";
 import { isReloadNavigation, requestAppExitIfClosingWhenOrphanJobTab } from "../app/homeNavigation";
-import { broadcastJobTabClosed } from "./promptNav";import type { JobEvent } from "./jobEvents";
+import { broadcastJobTabClosed } from "./promptNav";
+import type { JobEvent } from "./jobEvents";
 import type { JobProgressState } from "./useJobProgress";
 import type { ActivePrompt } from "../types";
 
@@ -49,7 +51,9 @@ export function JobWorkspace(props: JobWorkspaceProps) {
 
   return (
     <>
-      {!job && jobId && !jobLoadError && <div style={{ color: c.muted }}>Cargando...</div>}
+      {!job && jobId && !jobLoadError && (
+        <LoadingStatusRow c={c} text="Cargando trabajo…" loading testId="elia-job-loading" />
+      )}
       {!job && jobId && jobLoadError ? (
         <div style={{ color: c.errorBody ?? c.muted, fontSize: 14 }}>
           {jobLoadError} Esta pestaña se cerrará sola…

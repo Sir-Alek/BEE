@@ -1,5 +1,6 @@
 import React from "react";
 import { stopRecording } from "../api";
+import { EliaButton } from "../components/ui";
 import { JobEventTimeline } from "./JobEventTimeline";
 import type { JobEvent } from "./jobEvents";
 import type { JobProgressState } from "./useJobProgress";
@@ -19,6 +20,7 @@ export function JobRunningPanel(props: Props) {
   return (
     <>
       <div
+        className={`elia-hud-panel${job.state === "running" ? " elia-state-running" : ""}`}
         style={{
           background: c.processingBg,
           border: `1px solid ${c.processingBorder}`,
@@ -30,9 +32,16 @@ export function JobRunningPanel(props: Props) {
         }}
       >
         <div>
-          {job.progress?.stage
-            ? String(job.progress.stage)
-            : "Procesando… (espera; esta pestaña no se cerrará sola)."}
+          {job.progress?.stage ? (
+            <>
+              <span className="elia-pulse-dot" style={{ color: c.primary, marginRight: 6 }}>
+                ●
+              </span>
+              {String(job.progress.stage)}
+            </>
+          ) : (
+            "Procesando… (espera; esta pestaña no se cerrará sola)."
+          )}
         </div>
         {job.progress?.events_captured != null && (
           <div style={{ marginTop: 8, fontSize: 13 }}>
@@ -42,8 +51,9 @@ export function JobRunningPanel(props: Props) {
         )}
         {Boolean(job.progress?.recording) && (
           <div style={{ marginTop: 12 }}>
-            <button
-              type="button"
+            <EliaButton
+              variant="primary"
+              size="sm"
               disabled={stoppingRecording}
               onClick={() => {
                 setStoppingRecording(true);
@@ -53,18 +63,9 @@ export function JobRunningPanel(props: Props) {
                   })
                   .finally(() => setStoppingRecording(false));
               }}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 10,
-                background: c.primary,
-                color: c.primaryFg,
-                border: "none",
-                cursor: stoppingRecording ? "wait" : "pointer",
-                fontWeight: 600,
-              }}
             >
               {stoppingRecording ? "Finalizando…" : "Finalizar grabación"}
-            </button>
+            </EliaButton>
           </div>
         )}
         <JobEventTimeline events={jobEvents} c={c} recordingOnly={Boolean(job.progress?.recording)} />

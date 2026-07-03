@@ -23,8 +23,8 @@ export function useLicense(options: UseLicenseOptions) {
 
   const canRunJobs = license?.can_run_jobs ?? false;
 
-  const refreshLicense = useCallback(async () => {
-    setLicenseLoading(true);
+  const refreshLicense = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLicenseLoading(true);
     try {
       const l = await getLicenseStatus();
       setLicense(licenseFromApi(l));
@@ -41,7 +41,7 @@ export function useLicense(options: UseLicenseOptions) {
         reason: pingOk ? "license_fetch_failed" : "disconnected",
       });
     } finally {
-      setLicenseLoading(false);
+      if (!opts?.silent) setLicenseLoading(false);
     }
   }, []);
 
@@ -52,7 +52,7 @@ export function useLicense(options: UseLicenseOptions) {
 
   useEffect(() => {
     if (!settingsOpen || !isHomeSurface) return;
-    void refreshLicense();
+    void refreshLicense({ silent: true });
   }, [settingsOpen, isHomeSurface, refreshLicense]);
 
   useEffect(() => {

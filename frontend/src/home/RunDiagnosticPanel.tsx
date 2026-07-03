@@ -7,6 +7,7 @@ import {
 } from "../api";
 import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { InlineActionHint } from "../components/InlineActionHint";
+import { EliaButton } from "../components/ui";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 
 type Props = {
@@ -124,69 +125,42 @@ export function RunDiagnosticPanel(props: Props) {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         {failure?.log_path && failure.log_exists ? (
-          <button
-            type="button"
+          <EliaButton
+            variant="primary"
+            size="sm"
             onClick={() => {
               void openProjectFile(platform, project, failure.log_path!).then((r) =>
                 setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: `1px solid ${c.primary}`,
-              background: c.primary,
-              color: c.primaryFg,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
           >
             Abrir log del escenario
-          </button>
+          </EliaButton>
         ) : (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={() => {
               void openProjectFolder(platform, project, "outputs/logs").then((r) =>
                 setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: `1px solid ${c.btnGhostBorder}`,
-              background: c.btnGhostBg,
-              color: c.text,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
           >
             Abrir carpeta logs
-          </button>
+          </EliaButton>
         )}
         {evidences.length > 0 ? (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={() => {
               void openProjectFolder(platform, project, "outputs/evidences").then((r) =>
                 setFolderHint(r.hint ?? FOLDER_OPEN_HINT),
               );
             }}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: `1px solid ${c.btnGhostBorder}`,
-              background: c.btnGhostBg,
-              color: c.text,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
           >
             Abrir evidencias
-          </button>
+          </EliaButton>
         ) : null}
       </div>
 

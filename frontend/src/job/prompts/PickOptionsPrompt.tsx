@@ -1,5 +1,6 @@
 import React from "react";
 import { sendPromptResponse } from "../../api";
+import { EliaButton } from "../../components/ui";
 import type { ActivePrompt } from "../../types";
 
 type Props = {
@@ -9,27 +10,20 @@ type Props = {
 };
 
 export function PickOptionsPrompt(props: Props) {
-  const { c, jobId, activePrompt } = props;
+  const { jobId, activePrompt } = props;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {(activePrompt.options ?? []).map((opt) => (
-          <button
+          <EliaButton
             key={opt.value}
+            variant="ghost"
             onClick={async () => {
               await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: opt.value });
             }}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: `1px solid ${c.btnGhostBorder}`,
-              background: c.btnGhostBg,
-              color: c.text,
-              cursor: "pointer",
-            }}
           >
             {opt.label}
-          </button>
+          </EliaButton>
         ))}
       </div>
     </div>

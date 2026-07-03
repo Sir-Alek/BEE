@@ -1,9 +1,5 @@
-/**
- * Enlace mailto a soporte en pantalla de error del job.
- * Versión comercial (≥1.0): activar en JobErrorPanel.tsx (sustituye BetaFeedbackLink).
- * Correo: core/_version.py → ELIA_SUPPORT_EMAIL, expuesto en /api/app/about → support_email.
- */
 import React from "react";
+import { EliaLinkButton } from "./ui";
 
 type Props = {
   email: string;
@@ -12,7 +8,7 @@ type Props = {
 };
 
 export function SupportContactLink(props: Props) {
-  const { email, jobId, c } = props;
+  const { email, jobId } = props;
   const trimmed = email.trim();
   if (!trimmed) return null;
 
@@ -26,22 +22,8 @@ export function SupportContactLink(props: Props) {
   const href = `mailto:${trimmed}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
   return (
-    <a
-      data-testid="elia-support-contact-job"
-      href={href}
-      style={{
-        display: "inline-block",
-        padding: "10px 14px",
-        borderRadius: 10,
-        background: c.btnGhostBg,
-        color: c.text,
-        border: `1px solid ${c.btnGhostBorder}`,
-        fontWeight: 600,
-        fontSize: 13,
-        textDecoration: "none",
-      }}
-    >
+    <EliaLinkButton data-testid="elia-support-contact-job" href={href} variant="ghost">
       Reportar o contactar a soporte →
-    </a>
+    </EliaLinkButton>
   );
 }

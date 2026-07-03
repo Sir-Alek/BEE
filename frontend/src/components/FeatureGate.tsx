@@ -37,16 +37,7 @@ function PendingShell(props: { c: Record<string, string>; children: React.ReactN
           pointerEvents: "none",
         }}
       >
-        <span
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            border: `2px solid ${c.border}`,
-            borderTopColor: c.primary,
-            animation: "elia-spin 0.8s linear infinite",
-          }}
-        />
+        <span className="elia-spinner elia-spinner--overlay" aria-hidden />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { buildFileTree, type FileTreeNode } from "../utils/fileTree";
+import { EliaButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -54,8 +55,9 @@ function TreeBranch(props: {
   if (!isFolder && node.path) {
     const active = selectedPath === node.path;
     return (
-      <button
-        type="button"
+      <EliaButton
+        variant="ghost"
+        size="sm"
         data-testid={`elia-file-tree-item-${node.path.replace(/[/\\]/g, "_")}`}
         title={node.path}
         onClick={() => onSelectFile(node.path!)}
@@ -70,20 +72,21 @@ function TreeBranch(props: {
           border: "none",
           background: active ? c.neutralBg : "transparent",
           color: active ? c.primary : c.text,
-          cursor: "pointer",
           fontSize: 12,
+          justifyContent: "flex-start",
         }}
       >
         <span style={{ color: c.muted, width: 14 }}>📄</span>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
-      </button>
+      </EliaButton>
     );
   }
 
   return (
     <div>
-      <button
-        type="button"
+      <EliaButton
+        variant="ghost"
+        size="sm"
         onClick={() => onToggle(key)}
         style={{
           display: "flex",
@@ -96,15 +99,15 @@ function TreeBranch(props: {
           border: "none",
           background: "transparent",
           color: c.text,
-          cursor: "pointer",
           fontSize: 12,
           fontWeight: 600,
+          justifyContent: "flex-start",
         }}
       >
         <span style={{ color: c.muted, width: 14, fontSize: 10 }}>{isCollapsed ? "▸" : "▾"}</span>
         <span style={{ color: c.muted }}>📁</span>
         <span>{node.name}</span>
-      </button>
+      </EliaButton>
       {!isCollapsed
         ? node.children?.map((child) => (
             <TreeBranch

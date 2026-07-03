@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { EliaButton } from "../../components/ui";
 
 export type HeaderRow = { key: string; value: string };
 export type EnvVarRow = { key: string; value: string };
@@ -77,8 +78,9 @@ export function ApiCollapsibleSection(props: ApiCollapsibleSectionProps) {
         overflow: "hidden",
       }}
     >
-      <button
-        type="button"
+      <EliaButton
+        variant="ghost"
+        size="sm"
         onClick={() => setCollapsed((v) => !v)}
         style={{
           display: "flex",
@@ -88,8 +90,8 @@ export function ApiCollapsibleSection(props: ApiCollapsibleSectionProps) {
           padding: "12px 14px",
           border: "none",
           background: c.neutralBg ?? c.surface,
-          cursor: "pointer",
           textAlign: "left",
+          justifyContent: "flex-start",
         }}
       >
         <span style={{ fontSize: 12, color: c.muted, width: 14 }}>{collapsed ? "▸" : "▾"}</span>
@@ -101,7 +103,7 @@ export function ApiCollapsibleSection(props: ApiCollapsibleSectionProps) {
             </div>
           ) : null}
         </div>
-      </button>
+      </EliaButton>
       {!collapsed ? (
         <div style={{ padding: "0 14px 14px", borderTop: `1px solid ${c.border}` }}>
           <div style={{ maxHeight: maxListHeight, overflowY: "auto", overflowX: "hidden", paddingTop: 10, paddingRight: 4 }}>
@@ -149,27 +151,23 @@ export function HeaderEditor(props: {
             placeholder="Valor"
             style={apiInputStyle(c, { flex: "2 1 200px" })}
           />
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             title="Eliminar header"
             aria-label="Eliminar header"
             onClick={() => {
               const next = rows.filter((_, i) => i !== idx);
               onChange(next.length ? next : [{ key: "", value: "" }]);
             }}
-            style={apiBtn(c, undefined, undefined, true)}
           >
             ✕
-          </button>
+          </EliaButton>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => onChange([...rows, { key: "", value: "" }])}
-        style={apiBtn(c, undefined, undefined, true)}
-      >
+      <EliaButton variant="ghost" size="sm" onClick={() => onChange([...rows, { key: "", value: "" }])}>
         + Header
-      </button>
+      </EliaButton>
     </>
   );
 
@@ -212,9 +210,9 @@ export function EnvVarEditor(props: {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontSize: 12, color: c.muted }}>Variables del entorno</div>
-        <button type="button" onClick={() => setJsonMode((v) => !v)} style={apiBtn(c, undefined, undefined, true)}>
+        <EliaButton variant="ghost" size="sm" onClick={() => setJsonMode((v) => !v)}>
           {jsonMode ? "Vista tabla" : "Editar JSON"}
-        </button>
+        </EliaButton>
       </div>
       {!parsed.ok ? (
         <div style={{ fontSize: 12, color: "#c0392b" }}>JSON inválido: {parsed.error}</div>
@@ -251,27 +249,23 @@ export function EnvVarEditor(props: {
                 placeholder="valor"
                 style={apiInputStyle(c, { flex: "2 1 200px" })}
               />
-              <button
-                type="button"
+              <EliaButton
+                variant="ghost"
+                size="sm"
                 title="Eliminar variable"
                 aria-label="Eliminar variable"
                 onClick={() => {
                   const next = rows.filter((_, i) => i !== idx);
                   updateRows(next.length ? next : [{ key: "", value: "" }]);
                 }}
-                style={apiBtn(c, undefined, undefined, true)}
               >
                 ✕
-              </button>
+              </EliaButton>
             </div>
           ))}
-          <button
-            type="button"
-            onClick={() => updateRows([...rows, { key: "", value: "" }])}
-            style={apiBtn(c, undefined, undefined, true)}
-          >
+          <EliaButton variant="ghost" size="sm" onClick={() => updateRows([...rows, { key: "", value: "" }])}>
             + Variable
-          </button>
+          </EliaButton>
         </>
       )}
       {parsed.ok && Object.keys(parsed.vars).length > 0 ? (
@@ -307,31 +301,19 @@ export function EnvVarEditor(props: {
   );
 }
 
-export function apiInputStyle(c: Record<string, string>, extra?: React.CSSProperties): React.CSSProperties {
-  return {
-    padding: "8px 10px",
-    borderRadius: 8,
-    border: `1px solid ${c.inputBorder}`,
-    background: c.inputBg,
-    color: c.text,
-    ...extra,
-  };
+export function apiInputStyle(_c: Record<string, string>, extra?: React.CSSProperties): React.CSSProperties {
+  return extra ?? {};
 }
 
-export function apiMonoArea(c: Record<string, string>): React.CSSProperties {
-  return {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: `1px solid ${c.inputBorder}`,
-    background: c.inputBg,
-    color: c.text,
-    fontFamily: "monospace",
-    fontSize: 13,
-  };
+export const API_INPUT_CLASS = "elia-input elia-mono";
+
+export function apiBtnClass(primary?: boolean, ghost = true): string {
+  if (primary) return "elia-btn elia-btn--primary elia-btn--sm";
+  if (ghost) return "elia-btn elia-btn--ghost elia-btn--sm";
+  return "elia-btn elia-btn--sm";
 }
 
+/** @deprecated Use apiBtnClass + className */
 export function apiBtn(
   c: Record<string, string>,
   bg?: string,
@@ -346,6 +328,20 @@ export function apiBtn(
     color: fg ?? c.text,
     fontWeight: 600,
     cursor: "pointer",
+    fontSize: 13,
+  };
+}
+
+export function apiMonoArea(c: Record<string, string>): React.CSSProperties {
+  return {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: `1px solid ${c.inputBorder}`,
+    background: c.inputBg,
+    color: c.text,
+    fontFamily: "var(--elia-font-mono)",
     fontSize: 13,
   };
 }

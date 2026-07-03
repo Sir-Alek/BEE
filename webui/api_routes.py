@@ -19,6 +19,12 @@ from core.api_automation.data_store import (
     read_csv_text,
     save_csv_content,
 )
+from core.api_automation.jmx_import import (
+    commit_jmx_import,
+    invalidate_jmx_import_meta_after_api_change,
+    preview_jmx_import,
+    resolve_jmx_import_meta,
+)
 from core.api_automation.flow_store import list_flows, load_flow, save_flow
 from core.api_automation.locust_metrics import resolve_metrics
 from core.api_automation.models import ApiFlow, ApiRequest
@@ -376,6 +382,10 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             deleted = delete_collection(project_name, collection_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        invalidate_jmx_import_meta_after_api_change(
+            project_name,
+            deleted_collection_id=collection_id,
+        )
         return {"ok": True, "collection_id": collection_id, "deleted_scenarios": deleted}
 
     @app.get("/api/api/projects/{project_name}/scenarios")
@@ -501,6 +511,10 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             delete_scenario(project_name, scenario_id)
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+        invalidate_jmx_import_meta_after_api_change(
+            project_name,
+            deleted_scenario_ids=[scenario_id],
+        )
         return {"ok": True, "scenario_id": scenario_id}
 
     @app.post("/api/api/scenarios/delete")
@@ -514,6 +528,10 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
         if not body.scenario_ids:
             raise HTTPException(status_code=400, detail="Lista de escenarios vacía")
         deleted = delete_scenarios(body.project, body.scenario_ids)
+        invalidate_jmx_import_meta_after_api_change(
+            body.project,
+            deleted_scenario_ids=body.scenario_ids,
+        )
         return {"ok": True, "deleted": deleted}
 
     @app.post("/api/api/execute")
@@ -739,6 +757,69 @@ def register_api_routes(app, *, require_localhost, require_active_license) -> No
             return import_data_file(project_name, raw_name, data, overwrite=overwrite)
         except FileExistsError as e:
             raise HTTPException(status_code=409, detail=f"Ya existe {e}") from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/api/api/projects/{project_name}/jmx/preview")
+    async def api_jmx_preview(
+        project_name: str,
+        file: UploadFile = File(...),
+        thread_group_index: int = Form(0),
+        include_disabled_controllers: bool = Form(False),
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        raw_name = file.filename or "plan.jmx"
+        if not raw_name.lower().endswith(".jmx"):
+            raise HTTPException(status_code=400, detail="Solo se admiten archivos .jmx")
+        data = await file.read()
+        try:
+            report = preview_jmx_import(
+                data,
+                source_name=raw_name,
+                thread_group_index=thread_group_index,
+                include_disabled_controllers=include_disabled_controllers,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"ok": True, "report": report.to_dict()}
+
+    @app.get("/api/api/projects/{project_name}/jmx/meta")
+    def api_jmx_meta(
+        project_name: str,
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        meta = resolve_jmx_import_meta(project_name)
+        return {"ok": True, "meta": meta}
+
+    @app.post("/api/api/projects/{project_name}/jmx/import")
+    async def api_jmx_import(
+        project_name: str,
+        file: UploadFile = File(...),
+        thread_group_index: int = Form(0),
+        include_disabled_controllers: bool = Form(False),
+        _: None = Depends(require_localhost),
+        __: None = Depends(require_active_license),
+    ) -> Dict[str, Any]:
+        _require_api_module()
+        _require_api_postman()
+        raw_name = file.filename or "plan.jmx"
+        if not raw_name.lower().endswith(".jmx"):
+            raise HTTPException(status_code=400, detail="Solo se admiten archivos .jmx")
+        data = await file.read()
+        try:
+            return commit_jmx_import(
+                project_name,
+                data,
+                source_name=raw_name,
+                thread_group_index=thread_group_index,
+                include_disabled_controllers=include_disabled_controllers,
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 

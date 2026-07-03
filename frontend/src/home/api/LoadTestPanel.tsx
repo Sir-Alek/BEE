@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { getApiDataFiles, getLoadTestProfiles } from "../../api";
 import { API_DATA_FILES_CHANGED } from "../../app/apiDataFilesEvents";
-import { apiBtn, apiInputStyle } from "./apiUi";
+import { EliaButton } from "../../components/ui";
+import { apiInputStyle } from "./apiUi";
 
 export type LoadTestSettings = {
   profile: string;
@@ -306,9 +307,9 @@ export function LoadTestPanel(props: Props) {
             />
           ) : null}
           {onPreflight && settings.mode !== "standalone" ? (
-            <button type="button" disabled={preflightBusy} onClick={onPreflight} style={apiBtn(c, undefined, undefined, true)}>
+            <EliaButton variant="ghost" size="sm" disabled={preflightBusy} onClick={onPreflight}>
               {preflightBusy ? "Comprobando…" : "Preflight red"}
-            </button>
+            </EliaButton>
           ) : null}
         </div>
         {settings.mode !== "standalone" ? (

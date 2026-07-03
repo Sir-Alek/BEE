@@ -4,6 +4,7 @@ import {
   createApiProject,
   deleteApiCollection,
   deleteApiScenario,
+  deleteApiScenarios,
   executeApiRequest,
   exportApiLoadEvidence,
   exportApiRequestEvidence,
@@ -31,6 +32,9 @@ import {
   syncApiEnvironmentFromWeb,
   listApiFlows,
   getApiFlow,
+  getJmxImportMeta,
+  type JmxImportMeta,
+  type JmxImportResult,
 } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import {
@@ -52,8 +56,11 @@ import {
   validateDistributedLoadSettings,
   type LoadTestSettings,
 } from "./api/LoadTestPanel";
+import { ApiSuiteScenarioPicker } from "./api/ApiSuiteScenarioPicker";
+import { JmxImportPanel } from "./api/JmxImportPanel";
 import { ApiPostmanWorkspace, type PostmanPane } from "./api/ApiPostmanWorkspace";
-import { ApiCollapsibleSection, ApiSection, apiBtn, apiInputStyle } from "./api/apiUi";
+import { ApiCollapsibleSection, ApiSection, API_INPUT_CLASS, apiBtnClass, apiInputStyle } from "./api/apiUi";
+import { EliaButton } from "../components/ui";
 import { analyzeFlowNodeCounts, deserializeFlowNodes } from "./api/FlowControllerEditor";
 import {
   loadApiSurfacePersistProject,
@@ -167,6 +174,7 @@ export function ApiSurface(props: Props) {
   const [postmanPane, setPostmanPane] = useState<PostmanPane>("request");
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [loadSettings, setLoadSettings] = useState<LoadTestSettings>(defaultLoadTestSettings);
+  const [jmxImportMeta, setJmxImportMeta] = useState<JmxImportMeta | null>(null);
   const [webOriginAvailable, setWebOriginAvailable] = useState(false);
   const [upsell, setUpsell] = useState<null | "api_postman" | "api_locust">(null);
   const [confirm, setConfirm] = useState<null | {
@@ -186,25 +194,9 @@ export function ApiSurface(props: Props) {
   const showPostmanUpsell = shouldShowTierUpsell(entitlementPhase, postmanAccess, showTierUpsell);
 
   const upsellButton = (tier: "api_postman" | "api_locust", message: string) => (
-    <button
-      type="button"
-      onClick={() => setUpsell(tier)}
-      style={{
-        padding: "12px 18px",
-        borderRadius: 10,
-        border: `1px solid ${c.border}`,
-        background: c.surface,
-        color: c.text,
-        cursor: "pointer",
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        boxShadow: c.shadow,
-      }}
-    >
+    <EliaButton variant="ghost" onClick={() => setUpsell(tier)}>
       🔒 {message}
-    </button>
+    </EliaButton>
   );
 
   const envVarNames = useMemo(() => {
@@ -232,8 +224,6 @@ export function ApiSurface(props: Props) {
     handlePersistRestore,
   );
 
-  const allScenariosSelected =
-    scenarios.length > 0 && scenarios.every((s) => selectedScenarios[s.id]);
 
   const refreshProjects = useCallback(() => {
     setProjectsLoading(true);
@@ -329,6 +319,76 @@ export function ApiSurface(props: Props) {
     [project, onShowError, loadScenarioIntoWorkspace],
   );
 
+  const applyJmxLoadSuggestion = useCallback((suggestion: Record<string, unknown>, csvBasename?: string | null) => {
+    if (suggestion.users != null) setLoadUsers(String(suggestion.users));
+    if (suggestion.spawn_rate != null) setLoadSpawn(String(suggestion.spawn_rate));
+    if (suggestion.run_time != null) setLoadRunTime(String(suggestion.run_time));
+    setLoadSettings((prev) => ({
+      ...prev,
+      ...(suggestion.profile ? { profile: String(suggestion.profile) } : {}),
+      ...(csvBasename ? { dataFile: csvBasename } : {}),
+    }));
+  }, []);
+
+  const refreshJmxImportState = useCallback(() => {
+    if (!project.trim()) {
+      setJmxImportMeta(null);
+      return;
+    }
+    void getJmxImportMeta(project)
+      .then((r) => {
+        setJmxImportMeta(r.meta);
+        if (!r.meta) {
+          setLoadFlowId((prev) => {
+            if (prev && prev.startsWith("Suite .jmx")) return "";
+            return prev;
+          });
+        }
+      })
+      .catch(() => setJmxImportMeta(null));
+    void listApiFlows(project)
+      .then((r) => {
+        const flows = r.flows.map((f) => ({ id: f.id, name: f.name }));
+        setSavedLoadFlows(flows);
+        setLoadFlowId((prev) => (prev && !flows.some((f) => f.id === prev) ? "" : prev));
+      })
+      .catch(() => setSavedLoadFlows([]));
+  }, [project]);
+
+  const handleJmxImported = useCallback(
+    (result: JmxImportResult) => {
+      refreshScenarios();
+      void listApiFlows(project)
+        .then((r) => {
+          setSavedLoadFlows(r.flows.map((f) => ({ id: f.id, name: f.name })));
+          if (result.flow_id) setLoadFlowId(result.flow_id);
+        })
+        .catch(() => setSavedLoadFlows([]));
+      if (result.scenario_ids?.length) {
+        setSelectedScenarios((prev) => {
+          const next = { ...prev };
+          for (const id of result.scenario_ids) next[id] = true;
+          return next;
+        });
+      }
+      if (result.load_suggestion) {
+        applyJmxLoadSuggestion(result.load_suggestion, result.csv_basename);
+      }
+      setJmxImportMeta({
+        source_file: result.report.source_file,
+        flow_id: result.flow_id,
+        flow_name: result.flow_name,
+        load_suggestion: result.load_suggestion,
+        csv_basename: result.csv_basename,
+        scenario_ids: result.scenario_ids,
+      });
+      setHomeHint(
+        `Importación .jmx: ${result.count} escenarios, flujo «${result.flow_name}» y parámetros Locust aplicados.`,
+      );
+    },
+    [project, refreshScenarios, applyJmxLoadSuggestion, setHomeHint],
+  );
+
   const refreshCaptures = () => {
     if (!project.trim()) return;
     void getApiTrafficCaptures(project)
@@ -402,6 +462,14 @@ export function ApiSurface(props: Props) {
     setLoadFlowCounts({});
     setRunSetupFlow(false);
   }, [project]);
+
+  useEffect(() => {
+    if (!project.trim()) {
+      setJmxImportMeta(null);
+      return;
+    }
+    refreshJmxImportState();
+  }, [project, refreshJmxImportState]);
 
   useEffect(() => {
     if (!project.trim() || !loadFlowId) {
@@ -617,6 +685,36 @@ export function ApiSurface(props: Props) {
       .finally(() => setBusy(false));
   };
 
+  const handleDeleteSelectedScenarios = (scenarioIds: string[]) => {
+    if (!scenarioIds.length) return;
+    setConfirm({
+      title: "Eliminar escenarios seleccionados",
+      message: `¿Eliminar ${scenarioIds.length} escenario(s) seleccionado(s)? Esta acción no se puede deshacer.`,
+      destructive: true,
+      onConfirm: () => {
+        setConfirm(null);
+        setBusy(true);
+        void deleteApiScenarios({ project, scenario_ids: scenarioIds })
+          .then(() => {
+            if (activeScenarioId && scenarioIds.includes(activeScenarioId)) {
+              setActiveScenarioId(null);
+              setLoadedScenarioMeta(null);
+            }
+            setSelectedScenarios((prev) => {
+              const next = { ...prev };
+              for (const id of scenarioIds) delete next[id];
+              return next;
+            });
+            refreshScenarios();
+            refreshJmxImportState();
+            setHomeHint(`${scenarioIds.length} escenario(s) eliminado(s).`);
+          })
+          .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
+          .finally(() => setBusy(false));
+      },
+    });
+  };
+
   const handleDeleteScenario = (scenarioId: string) => {
     const name = scenarios.find((s) => s.id === scenarioId)?.name || scenarioId;
     setConfirm({
@@ -638,6 +736,7 @@ export function ApiSurface(props: Props) {
               return next;
             });
             refreshScenarios();
+            refreshJmxImportState();
             setHomeHint("Escenario eliminado.");
           })
           .catch((e: unknown) => onShowError(String((e as Error)?.message ?? e)))
@@ -679,6 +778,7 @@ export function ApiSurface(props: Props) {
               setActiveCollectionId("_default");
             }
             refreshScenarios();
+            refreshJmxImportState();
             setHomeHint(
               isDefault
                 ? `Colección "${label}" vaciada (${r.deleted_scenarios} escenario(s) eliminados).`
@@ -858,7 +958,7 @@ export function ApiSurface(props: Props) {
   };
 
   return (
-    <div data-testid="elia-api-panel">
+    <div data-testid="elia-api-panel" className="elia-panel elia-hud-panel elia-panel--padded">
       {upsell ? <UpsellModal c={c} requiredTier={upsell} onClose={() => setUpsell(null)} /> : null}
       {confirm ? (
         <ConfirmModal
@@ -881,6 +981,7 @@ export function ApiSurface(props: Props) {
           value={project}
           disabled={projectsLoading}
           onChange={(e) => setProject(e.target.value)}
+          className={API_INPUT_CLASS}
           style={apiInputStyle(c, { minWidth: 140, opacity: projectsLoading ? 0.7 : 1 })}
           data-testid="elia-api-project-select"
         >
@@ -906,11 +1007,13 @@ export function ApiSurface(props: Props) {
           value={newProject}
           onChange={(e) => setNewProject(e.target.value)}
           placeholder="Nuevo proyecto"
+          className={API_INPUT_CLASS}
           style={apiInputStyle(c, { minWidth: 160 })}
         />
         <button
           type="button"
           disabled={!newProject.trim() || busy}
+          className={apiBtnClass()}
           onClick={() => {
             void createApiProject(newProject.trim()).then(() => {
               setProject(newProject.trim());
@@ -918,7 +1021,6 @@ export function ApiSurface(props: Props) {
               refreshProjects();
             });
           }}
-          style={apiBtn(c)}
         >
           Crear
         </button>
@@ -926,8 +1028,8 @@ export function ApiSurface(props: Props) {
           type="button"
           data-testid="elia-api-new-from-template-btn"
           disabled={busy || !actionsEnabled}
+          className={apiBtnClass(false, true)}
           onClick={() => setTemplateModalOpen(true)}
-          style={apiBtn(c, undefined, c.primary, true)}
         >
           Desde plantilla…
         </button>
@@ -935,6 +1037,7 @@ export function ApiSurface(props: Props) {
         <select
           value={environment}
           onChange={(e) => setEnvironment(e.target.value)}
+          className={API_INPUT_CLASS}
           style={apiInputStyle(c, { minWidth: 100 })}
         >
           {environments.map((env) => (
@@ -965,38 +1068,23 @@ export function ApiSurface(props: Props) {
         />
       ) : null}
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      <div className="elia-tab-bar" style={{ marginBottom: 16 }}>
         {(
           [
             { id: "postman" as const, label: "Cliente API" },
             { id: "load" as const, label: "Suites y carga" },
           ] as const
-        ).map(({ id, label }) => {
-          const active = apiTab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              data-testid={`elia-api-subtab-${id}`}
-              onClick={() => setApiTab(id)}
-              style={{
-                padding: "7px 18px",
-                borderRadius: 8,
-                border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
-                background: active ? c.primary : c.btnGhostBg,
-                color: active ? c.primaryFg : c.text,
-                fontWeight: active ? 700 : 400,
-                cursor: "pointer",
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+        ).map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            data-testid={`elia-api-subtab-${id}`}
+            onClick={() => setApiTab(id)}
+            className={`elia-btn elia-btn--tab${apiTab === id ? " is-active" : ""}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {apiTab === "postman" ? (
@@ -1114,6 +1202,17 @@ export function ApiSurface(props: Props) {
             upsellOverlay={upsellButton("api_postman", "Desbloquea suites funcionales con ELIA Tester")}
           >
             <>
+              <ApiSection c={c} title="Migración .jmx">
+                <JmxImportPanel
+                  c={c}
+                  project={project}
+                  busy={busy}
+                  onError={onShowError}
+                  onHint={setHomeHint}
+                  onImported={handleJmxImported}
+                />
+              </ApiSection>
+
               <ApiSection c={c} title="Datos CSV (data-driven)">
                 <DataCsvPanel c={c} project={project} busy={busy} onError={onShowError} onHint={setHomeHint} />
               </ApiSection>
@@ -1123,90 +1222,26 @@ export function ApiSurface(props: Props) {
                 title={`Escenarios para suite/carga (${scenarios.length})`}
                 subtitle={
                   scenarios.length
-                    ? `${scenarios.filter((s) => selectedScenarios[s.id]).length} seleccionados · lista con scroll`
+                    ? `${scenarios.filter((s) => selectedScenarios[s.id]).length} seleccionados · ${collections.filter((col) => scenarios.some((s) => s.collection_id === col.id)).length} colecciones`
                     : undefined
                 }
               >
-                {scenarios.length === 0 ? (
-                  <div style={{ fontSize: 13, color: c.muted }}>Sin escenarios guardados.</div>
-                ) : (
-                  <>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 13,
-                        marginBottom: 10,
-                        position: "sticky",
-                        top: 0,
-                        background: c.surface,
-                        paddingBottom: 6,
-                        zIndex: 1,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={allScenariosSelected}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setSelectedScenarios((prev) => {
-                            const next = { ...prev };
-                            for (const s of scenarios) next[s.id] = checked;
-                            return next;
-                          });
-                        }}
-                      />
-                      Seleccionar todos
-                    </label>
-                    <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", fontSize: 13 }}>
-                      {scenarios.map((s) => (
-                        <li
-                          key={s.id}
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            alignItems: "center",
-                            marginBottom: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={!!selectedScenarios[s.id]}
-                              onChange={(e) =>
-                                setSelectedScenarios((prev) => ({ ...prev, [s.id]: e.target.checked }))
-                              }
-                            />
-                            {s.name}
-                          </label>
-                          {locustAccess === "granted" ? (
-                            <input
-                              type="number"
-                              min={1}
-                              value={scenarioWeights[s.id] ?? "1"}
-                              onChange={(e) => setScenarioWeights((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                              title="Peso Locust"
-                              style={{ ...apiInputStyle(c, { width: 56 }), padding: "4px 6px" }}
-                            />
-                          ) : null}
-                          <button type="button" disabled={busy} onClick={() => handleLoadScenario(s.id)} style={apiBtn(c)}>
-                            Cargar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => handleDeleteScenario(s.id)}
-                            style={apiBtn(c, undefined, undefined, true)}
-                          >
-                            Eliminar
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+                <ApiSuiteScenarioPicker
+                  c={c}
+                  busy={busy}
+                  scenarios={scenarios}
+                  collections={collections}
+                  selectedScenarios={selectedScenarios}
+                  scenarioWeights={scenarioWeights}
+                  locustAccess={locustAccess === "granted"}
+                  onSelectedChange={setSelectedScenarios}
+                  onWeightChange={(id, value) => setScenarioWeights((prev) => ({ ...prev, [id]: value }))}
+                  onLoadScenario={(id) => {
+                    setApiTab("postman");
+                    handleLoadScenario(id);
+                  }}
+                  onDeleteSelected={handleDeleteSelectedScenarios}
+                />
               </ApiCollapsibleSection>
 
               <ApiSection c={c} title="Suite funcional">
@@ -1320,6 +1355,17 @@ export function ApiSurface(props: Props) {
                   preflightBusy={preflightBusy}
                 />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+                  {jmxImportMeta?.load_suggestion ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        applyJmxLoadSuggestion(jmxImportMeta.load_suggestion!, jmxImportMeta.csv_basename)
+                      }
+                      className={apiBtnClass()}
+                    >
+                      Aplicar sugerencia del .jmx
+                    </button>
+                  ) : null}
                   <div>
                     <label style={{ display: "block", fontSize: 12, color: c.muted, marginBottom: 4 }}>Usuarios</label>
                     <input
@@ -1367,7 +1413,7 @@ export function ApiSurface(props: Props) {
                       type="button"
                       disabled={preflightBusy}
                       onClick={handleLoadPreflight}
-                      style={apiBtn(c, undefined, undefined, true)}
+                      className={apiBtnClass()}
                     >
                       Preflight
                     </button>
@@ -1376,7 +1422,7 @@ export function ApiSurface(props: Props) {
                     type="button"
                     disabled={!actionsEnabled || busy}
                     onClick={handleRunLocust}
-                    style={apiBtn(c, c.primary, c.primaryFg)}
+                    className={apiBtnClass(true)}
                   >
                     Ejecutar Locust
                   </button>
@@ -1387,7 +1433,7 @@ export function ApiSurface(props: Props) {
                       type="button"
                       disabled={busy}
                       onClick={() => handleExportLoadReport("pdf")}
-                      style={apiBtn(c, c.primary, c.primaryFg)}
+                      className={apiBtnClass(true)}
                     >
                       Generar reporte enriquecido (PDF)
                     </button>
@@ -1395,7 +1441,7 @@ export function ApiSurface(props: Props) {
                       type="button"
                       disabled={busy}
                       onClick={() => handleExportLoadReport("html")}
-                      style={apiBtn(c, undefined, undefined, true)}
+                      className={apiBtnClass()}
                     >
                       Generar reporte enriquecido (HTML)
                     </button>

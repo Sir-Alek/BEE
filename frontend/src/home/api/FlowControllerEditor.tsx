@@ -1,5 +1,6 @@
 import React from "react";
-import { apiBtn, apiInputStyle, apiMonoArea } from "./apiUi";
+import { EliaButton } from "../../components/ui";
+import { apiInputStyle, apiMonoArea } from "./apiUi";
 
 type Theme = Record<string, string>;
 
@@ -518,22 +519,14 @@ function SqlNodeEditor(props: {
             placeholder="fila"
             style={apiInputStyle(c, { width: 56 })}
           />
-          <button
-            type="button"
-            onClick={() => patch({ extractors: extractors.filter((_, i) => i !== idx) })}
-            style={apiBtn(c, undefined, undefined, true)}
-          >
+          <EliaButton variant="ghost" size="icon" onClick={() => patch({ extractors: extractors.filter((_, i) => i !== idx) })}>
             ✕
-          </button>
+          </EliaButton>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => patch({ extractors: [...extractors, { column: "", target_var: "", row: "0" }] })}
-        style={apiBtn(c, undefined, undefined, true)}
-      >
+      <EliaButton variant="ghost" size="sm" onClick={() => patch({ extractors: [...extractors, { column: "", target_var: "", row: "0" }] })}>
         + Extractor SQL
-      </button>
+      </EliaButton>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input
           value={sql.min_rows ?? ""}
@@ -548,9 +541,9 @@ function SqlNodeEditor(props: {
           style={apiInputStyle(c, { width: 90 })}
         />
         {onPreflight ? (
-          <button type="button" disabled={preflightBusy} onClick={onPreflight} style={apiBtn(c, undefined, undefined, true)}>
+          <EliaButton variant="ghost" size="sm" disabled={preflightBusy} onClick={onPreflight}>
             Validar conexión
-          </button>
+          </EliaButton>
         ) : null}
       </div>
       <div style={{ fontSize: 11, color: c.muted }}>
@@ -653,26 +646,18 @@ function GrpcNodeEditor(props: {
             placeholder="→ variable"
             style={apiInputStyle(c, { flex: "1 1 100px" })}
           />
-          <button
-            type="button"
-            onClick={() => patch({ extractors: extractors.filter((_, i) => i !== idx) })}
-            style={apiBtn(c, undefined, undefined, true)}
-          >
+          <EliaButton variant="ghost" size="icon" onClick={() => patch({ extractors: extractors.filter((_, i) => i !== idx) })}>
             ✕
-          </button>
+          </EliaButton>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => patch({ extractors: [...extractors, { jsonpath: "", target_var: "" }] })}
-        style={apiBtn(c, undefined, undefined, true)}
-      >
+      <EliaButton variant="ghost" size="sm" onClick={() => patch({ extractors: [...extractors, { jsonpath: "", target_var: "" }] })}>
         + Extractor gRPC
-      </button>
+      </EliaButton>
       {onPreflight ? (
-        <button type="button" disabled={preflightBusy} onClick={onPreflight} style={apiBtn(c, undefined, undefined, true)}>
+        <EliaButton variant="ghost" size="sm" disabled={preflightBusy} onClick={onPreflight}>
           Validar reflexión
-        </button>
+        </EliaButton>
       ) : null}
       <div style={{ fontSize: 11, color: c.muted }}>
         Reflexión del servidor (grpcio, grpcio-reflection, protobuf). Incluido en pruebas de carga ELIA Architect.
@@ -913,15 +898,15 @@ export function NodeListEditor(props: {
           }}
         >
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginBottom: 6 }}>
-            <button type="button" title="Subir" onClick={() => move(idx, -1)} style={apiBtn(c, undefined, undefined, true)}>
+            <EliaButton variant="ghost" size="icon" title="Subir" onClick={() => move(idx, -1)}>
               ↑
-            </button>
-            <button type="button" title="Bajar" onClick={() => move(idx, 1)} style={apiBtn(c, undefined, undefined, true)}>
+            </EliaButton>
+            <EliaButton variant="ghost" size="icon" title="Bajar" onClick={() => move(idx, 1)}>
               ↓
-            </button>
-            <button type="button" title="Eliminar" onClick={() => removeAt(idx)} style={apiBtn(c, undefined, undefined, true)}>
+            </EliaButton>
+            <EliaButton variant="ghost" size="icon" title="Eliminar" onClick={() => removeAt(idx)}>
               ✕
-            </button>
+            </EliaButton>
           </div>
           <NodeEditor
             c={c}
@@ -938,21 +923,21 @@ export function NodeListEditor(props: {
         </div>
       ))}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button type="button" onClick={() => addNode("request")} style={apiBtn(c, undefined, undefined, true)}>
+        <EliaButton variant="ghost" size="sm" onClick={() => addNode("request")}>
           + Petición
-        </button>
-        <button type="button" onClick={() => addNode("if")} style={apiBtn(c, undefined, undefined, true)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={() => addNode("if")}>
           + Condición (If)
-        </button>
-        <button type="button" onClick={() => addNode("loop")} style={apiBtn(c, undefined, undefined, true)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={() => addNode("loop")}>
           + Bucle (Loop/While)
-        </button>
-        <button type="button" onClick={() => addNode("sql")} style={apiBtn(c, undefined, undefined, true)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={() => addNode("sql")}>
           + SQL
-        </button>
-        <button type="button" onClick={() => addNode("grpc")} style={apiBtn(c, undefined, undefined, true)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={() => addNode("grpc")}>
           + gRPC
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

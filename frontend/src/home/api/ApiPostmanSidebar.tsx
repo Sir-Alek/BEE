@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingStatusRow } from "../../components/LoadingStatusRow";
-import { apiBtn, apiInputStyle } from "./apiUi";
+import { EliaButton } from "../../components/ui";
+import { apiInputStyle } from "./apiUi";
 
 export type ApiCollectionRow = { id: string; name: string; scenario_count: number };
 export type ApiScenarioRow = { id: string; name: string; collection_id: string; collection_name?: string };
@@ -137,14 +138,9 @@ export function ApiPostmanSidebar(props: Props) {
               e.target.value = "";
             }}
           />
-          <button
-            type="button"
-            disabled={!canRunJobs || busy}
-            onClick={() => importRef.current?.click()}
-            style={apiBtn(c)}
-          >
+          <EliaButton variant="ghost" size="sm" disabled={!canRunJobs || busy} onClick={() => importRef.current?.click()}>
             Importar JSON
-          </button>
+          </EliaButton>
         </div>
       </div>
 
@@ -167,9 +163,9 @@ export function ApiPostmanSidebar(props: Props) {
                 Hay captura web en el proyecto. Importa tráfico abajo o sincroniza <code>base_url</code> desde la pestaña
                 Cliente API.
               </div>
-              <button type="button" disabled={busy} onClick={onSyncFromWeb} style={apiBtn(c, c.primary, c.primaryFg)}>
+              <EliaButton variant="primary" size="sm" disabled={busy} onClick={onSyncFromWeb}>
                 Sincronizar base_url desde web
-              </button>
+              </EliaButton>
             </div>
           ) : null}
         </div>
@@ -192,14 +188,9 @@ export function ApiPostmanSidebar(props: Props) {
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cap.path}>
                   {cap.name}
                 </span>
-                <button
-                  type="button"
-                  disabled={!canRunJobs || busy}
-                  onClick={() => onImportCapture(cap.id)}
-                  style={apiBtn(c, undefined, undefined, true)}
-                >
+                <EliaButton variant="ghost" size="sm" disabled={!canRunJobs || busy} onClick={() => onImportCapture(cap.id)}>
                   Importar a escenarios
-                </button>
+                </EliaButton>
               </li>
             ))}
           </ul>
@@ -271,36 +262,25 @@ export function ApiPostmanSidebar(props: Props) {
                     borderBottom: isCollapsed ? undefined : `1px solid ${c.border}`,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleCollapsed(collection.id)}
-                    style={apiBtn(c, undefined, undefined, true)}
-                    title={isCollapsed ? "Expandir" : "Contraer"}
-                  >
+                  <EliaButton variant="ghost" size="icon" onClick={() => toggleCollapsed(collection.id)} title={isCollapsed ? "Expandir" : "Contraer"}>
                     {isCollapsed ? "▸" : "▾"}
-                  </button>
+                  </EliaButton>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {collection.name}
                     </div>
                     <div style={{ fontSize: 10, color: c.muted }}>{colScenarios.length} escenario(s)</div>
                   </div>
-                  <button
-                    type="button"
+                  <EliaButton
+                    variant="ghost"
+                    size="icon"
                     disabled={busy || colScenarios.length === 0}
                     title={deleteTitle}
                     onClick={() => onDeleteCollection(collection.id)}
-                    style={{
-                      ...apiBtn(c, undefined, undefined, true),
-                      padding: "4px 7px",
-                      fontSize: 11,
-                      lineHeight: 1,
-                      minWidth: 24,
-                      flexShrink: 0,
-                    }}
+                    style={{ padding: "4px 7px", fontSize: 11, lineHeight: 1, minWidth: 24, flexShrink: 0 }}
                   >
                     ✕
-                  </button>
+                  </EliaButton>
                 </div>
                 {!isCollapsed ? (
                   <ul style={{ margin: 0, padding: "6px 8px 8px", listStyle: "none", fontSize: 12 }}>
@@ -326,8 +306,9 @@ export function ApiPostmanSidebar(props: Props) {
                               />
                             ) : (
                               <div style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
-                                <button
-                                  type="button"
+                                <EliaButton
+                                  variant={active ? "primary" : "ghost"}
+                                  size="sm"
                                   disabled={busy}
                                   title={`${s.name}\n${s.id}`}
                                   onClick={() => onLoadScenario(s.id)}
@@ -337,38 +318,24 @@ export function ApiPostmanSidebar(props: Props) {
                                     setEditingName(s.name);
                                   }}
                                   style={{
-                                    ...apiBtn(c, active ? c.primary : undefined, active ? c.primaryFg : undefined, !active),
                                     flex: 1,
                                     textAlign: "left",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
-                                    border: active ? `2px solid ${c.primary}` : undefined,
                                     fontWeight: active ? 700 : 600,
                                   }}
                                 >
                                   {s.name}
-                                </button>
+                                </EliaButton>
                                 {onCloneScenario ? (
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    title="Duplicar escenario"
-                                    onClick={() => onCloneScenario(s.id)}
-                                    style={apiBtn(c, undefined, undefined, true)}
-                                  >
+                                  <EliaButton variant="ghost" size="icon" disabled={busy} title="Duplicar escenario" onClick={() => onCloneScenario(s.id)}>
                                     ✎
-                                  </button>
+                                  </EliaButton>
                                 ) : null}
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  title="Eliminar escenario"
-                                  onClick={() => onDeleteScenario(s.id)}
-                                  style={apiBtn(c, undefined, undefined, true)}
-                                >
+                                <EliaButton variant="ghost" size="icon" disabled={busy} title="Eliminar escenario" onClick={() => onDeleteScenario(s.id)}>
                                   ✕
-                                </button>
+                                </EliaButton>
                               </div>
                             )}
                           </li>

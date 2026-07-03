@@ -10,7 +10,7 @@ import type { LicenseState } from "../app/licenseUtils";
 import { AvdArchitectUpsellModal } from "../components/AvdArchitectUpsellModal";
 import { AvdSetupWizardModal } from "../components/AvdSetupWizardModal";
 import { AndroidStudioPathPanel } from "../components/AndroidStudioPathPanel";
-import { FieldLabel, SegmentedTabs } from "../components/ui";
+import { FieldLabel, SegmentedTabs, EliaButton } from "../components/ui";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import type { EmulatorMessageTone } from "../hooks/useMobileRecording";
 import {
@@ -318,41 +318,14 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
             {appiumStatus.managed_by_elia ? " · iniciado por ELIA" : ""}
           </div>
           {!appiumStatus.running && appiumStatus.installed && (
-            <button
-              type="button"
-              data-testid="elia-mobile-start-appium"
-              disabled={appiumStarting}
-              onClick={onStartAppium}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "none",
-                background: appiumStarting ? c.buttonDisabledBg : c.primary,
-                color: c.primaryFg,
-                cursor: appiumStarting ? "wait" : "pointer",
-                fontSize: 13,
-              }}
-            >
+            <EliaButton variant="primary" size="sm" data-testid="elia-mobile-start-appium" disabled={appiumStarting} onClick={onStartAppium}>
               {appiumStarting ? "Iniciando Appium…" : "Iniciar Appium"}
-            </button>
+            </EliaButton>
           )}
           {appiumStatus.running && appiumStatus.managed_by_elia && (
-            <button
-              type="button"
-              data-testid="elia-mobile-stop-appium"
-              onClick={onStopAppium}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
+            <EliaButton variant="ghost" size="sm" data-testid="elia-mobile-stop-appium" onClick={onStopAppium}>
               Detener Appium (ELIA)
-            </button>
+            </EliaButton>
           )}
         </div>
       )}
@@ -460,39 +433,12 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
             />
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              data-testid="elia-mobile-avd-assistant"
-              onClick={handleAvdAssistantClick}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.primary}`,
-                background: c.neutralBg,
-                color: c.text,
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
+            <EliaButton variant="ghost" size="sm" data-testid="elia-mobile-avd-assistant" onClick={handleAvdAssistantClick}>
               Asistente AVD
-            </button>
-            <button
-              type="button"
-              data-testid="elia-mobile-open-studio"
-              onClick={handleOpenStudio}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
+            </EliaButton>
+            <EliaButton variant="ghost" size="sm" data-testid="elia-mobile-open-studio" onClick={handleOpenStudio}>
               Abrir Android Studio
-            </button>
+            </EliaButton>
             <button
               type="button"
               data-testid="elia-mobile-recheck-avd"
@@ -557,8 +503,9 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
+            <EliaButton
+              variant="primary"
+              size="sm"
               data-testid="elia-mobile-start-emulator"
               disabled={emulatorStarting || (hasOnlineEmulator && !canPickAvd) || !canLaunchNewAvd}
               onClick={handleStartEmulatorClick}
@@ -571,23 +518,13 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
                       ? "Selecciona un AVD de la lista"
                       : undefined
               }
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "none",
-                background: canLaunchNewAvd ? c.primary : c.buttonDisabledBg,
-                color: c.primaryFg,
-                cursor: canLaunchNewAvd && !emulatorStarting ? "pointer" : "not-allowed",
-                fontSize: 13,
-                opacity: emulatorStarting ? 0.85 : 1,
-              }}
             >
               {emulatorStarting
                 ? "Arrancando…"
                 : hasOnlineEmulator && !canPickAvd
                   ? "Emulador activo"
                   : "Iniciar emulador"}
-            </button>
+            </EliaButton>
             <button
               type="button"
               data-testid="elia-mobile-refresh-avds"
@@ -723,23 +660,15 @@ export function MobileConfigForm(props: MobileConfigFormProps) {
               placeholder="Paquete (ej: com.empresa.miapp)"
               style={{ ...fieldInputStyle(c), flex: "1 1 220px" }}
             />
-            <button
-              type="button"
+            <EliaButton
+              variant="ghost"
+              size="sm"
               data-testid="elia-mobile-detect-app"
               disabled={detectingForegroundApp || !deviceId.trim() || deviceId === MANUAL_DEVICE_OPTION}
               onClick={onDetectForegroundApp}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-                cursor: detectingForegroundApp || !deviceId.trim() ? "wait" : "pointer",
-                fontSize: 13,
-              }}
             >
               {detectingForegroundApp ? "Detectando…" : "Detectar app abierta"}
-            </button>
+            </EliaButton>
           </div>
           <FieldLabel
             c={c}

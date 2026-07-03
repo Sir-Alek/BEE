@@ -29,6 +29,7 @@ import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { InlineActionHint } from "../components/InlineActionHint";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { FileDropZone } from "../components/FileDropZone";
+import { EliaButton } from "../components/ui";
 import {
   NodeListEditor,
   deserializeFlowNodes,
@@ -91,12 +92,12 @@ export function AssertionEditor(props: {
             placeholder="Esperado"
             style={inputStyle(c, { flex: "1 1 100px" })}
           />
-          <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== idx))} style={btn(c, true)}>
+          <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== idx))} className="elia-btn elia-btn--ghost elia-btn--sm">
             ✕
           </button>
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...rows, { kind: "jsonpath", expression: "", expected: "" }])} style={btn(c, true)}>
+      <button type="button" onClick={() => onChange([...rows, { kind: "jsonpath", expression: "", expected: "" }])} className="elia-btn elia-btn--ghost elia-btn--sm">
         + Aserción
       </button>
     </div>
@@ -151,7 +152,7 @@ export function ExtractorEditor(props: {
             placeholder="variable"
             style={inputStyle(c, { width: 120 })}
           />
-          <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== idx))} style={btn(c, true)}>
+          <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== idx))} className="elia-btn elia-btn--ghost elia-btn--sm">
             ✕
           </button>
         </div>
@@ -159,7 +160,7 @@ export function ExtractorEditor(props: {
       <button
         type="button"
         onClick={() => onChange([...rows, { kind: "jsonpath", expression: "$.", target_var: "var" }])}
-        style={btn(c, true)}
+        className="elia-btn elia-btn--ghost elia-btn--sm"
       >
         + Extractor
       </button>
@@ -392,20 +393,12 @@ export function SuiteRunnerPanel(props: {
         />
       ) : null}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <button
-          type="button"
-          onClick={() => setMode("simple")}
-          style={btn(c, false, mode === "simple")}
-        >
+        <EliaButton variant="tab" size="sm" active={mode === "simple"} onClick={() => setMode("simple")}>
           Lista simple
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("flow")}
-          style={btn(c, false, mode === "flow")}
-        >
+        </EliaButton>
+        <EliaButton variant="tab" size="sm" active={mode === "flow"} onClick={() => setMode("flow")}>
           Flujo con controladores
-        </button>
+        </EliaButton>
       </div>
 
       {mode === "flow" ? (
@@ -436,10 +429,10 @@ export function SuiteRunnerPanel(props: {
                 </option>
               ))}
             </select>
-            <button type="button" onClick={handleSaveFlow} style={btn(c, true)}>
+            <button type="button" onClick={handleSaveFlow} className="elia-btn elia-btn--ghost elia-btn--sm">
               Guardar flujo
             </button>
-            <button type="button" onClick={handleNewFlow} style={btn(c, true)}>
+            <button type="button" onClick={handleNewFlow} className="elia-btn elia-btn--ghost elia-btn--sm">
               Nuevo
             </button>
             {loadedFlowId ? (
@@ -477,9 +470,9 @@ export function SuiteRunnerPanel(props: {
             </option>
           ))}
         </select>
-        <button type="button" disabled={!canRun || busy} onClick={handleRun} style={btn(c)}>
+        <EliaButton variant="primary" size="sm" disabled={!canRun || busy} onClick={handleRun}>
           {mode === "flow" ? "Ejecutar flujo" : "Ejecutar suite"}
-        </button>
+        </EliaButton>
       </div>
       {suiteResult ? (
         <div style={{ fontSize: 13, padding: 10, borderRadius: 8, border: `1px solid ${c.border}`, background: c.neutralBg }}>
@@ -513,8 +506,9 @@ export function SuiteRunnerPanel(props: {
             </div>
           ))}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <button
-              type="button"
+            <EliaButton
+              variant="primary"
+              size="sm"
               disabled={busy}
               onClick={() => {
                 void exportApiSuiteEvidence({
@@ -529,10 +523,9 @@ export function SuiteRunnerPanel(props: {
                   })
                   .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
               }}
-              style={btn(c)}
             >
               Exportar suite (PDF)
-            </button>
+            </EliaButton>
             <button
               type="button"
               disabled={busy}
@@ -546,7 +539,7 @@ export function SuiteRunnerPanel(props: {
                   .then((r) => onHint(`Evidencia suite JSON: ${r.filename}`))
                   .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
               }}
-              style={btn(c, true)}
+              className="elia-btn elia-btn--ghost elia-btn--sm"
             >
               Exportar suite (JSON)
             </button>
@@ -632,11 +625,7 @@ export function DataCsvPanel(props: {
     <button
       type="button"
       onClick={() => setTab(id)}
-      style={{
-        ...btn(c, tab !== id, tab === id),
-        padding: "6px 12px",
-        fontSize: 12,
-      }}
+      className={btnClass(false, tab === id)}
     >
       {label}
     </button>
@@ -658,7 +647,8 @@ export function DataCsvPanel(props: {
               .then((r) => setFolderHint(r.hint ?? FOLDER_OPEN_HINT))
               .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
           }}
-          style={{ ...btn(c, true), marginLeft: "auto", fontSize: 12, padding: "6px 12px" }}
+          className={btnClass()}
+          style={{ marginLeft: "auto" }}
         >
           Abrir carpeta de datos
         </button>
@@ -708,8 +698,9 @@ export function DataCsvPanel(props: {
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             <input value={filename} onChange={(e) => setFilename(e.target.value)} style={inputStyle(c, { width: 160 })} />
-            <button
-              type="button"
+            <EliaButton
+              variant="primary"
+              size="sm"
               disabled={busy}
               onClick={() => {
                 void saveApiDataFile({ project, filename, content })
@@ -720,10 +711,9 @@ export function DataCsvPanel(props: {
                   })
                   .catch((e: unknown) => onError(String((e as Error)?.message ?? e)));
               }}
-              style={btn(c)}
             >
               Guardar CSV
-            </button>
+            </EliaButton>
             {files.length ? (
               <select
                 value=""
@@ -823,6 +813,7 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
 
   return (
     <div
+      className={`elia-hud-panel${runState === "running" ? " elia-state-running" : runState === "done" ? " elia-state-ok" : ""}`}
       style={{
         marginTop: 12,
         padding: 12,
@@ -833,6 +824,7 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
       }}
     >
       <div style={{ fontWeight: 700, marginBottom: 8 }}>
+        {runState === "running" ? <span className="elia-pulse-dot" style={{ color: c.primary, marginRight: 6 }}>●</span> : null}
         Métricas en vivo ({runState}) — req: {live.total_requests}, errores: {live.total_failures} ({live.error_rate_pct}%)
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
@@ -845,7 +837,7 @@ export function LoadMetricsPanel(props: { c: Theme; runId: string | null }) {
                 style={{
                   height: "100%",
                   width: `${Math.min(100, (b.value / b.max) * 100)}%`,
-                  background: c.primary,
+                  background: "var(--elia-accent-gradient)",
                   borderRadius: 4,
                 }}
               />
@@ -958,9 +950,9 @@ export function LoadHistoryComparePanel(props: {
             </option>
           ))}
         </select>
-        <button type="button" onClick={handleCompare} style={btn(c)}>
+        <EliaButton variant="primary" size="sm" onClick={handleCompare}>
           Comparar
-        </button>
+        </EliaButton>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         {runA ? (
@@ -969,7 +961,7 @@ export function LoadHistoryComparePanel(props: {
               type="button"
               disabled={!!reportBusy}
               onClick={() => handleRetroReport(runA, "pdf")}
-              style={btn(c, true)}
+              className="elia-btn elia-btn--ghost elia-btn--sm"
             >
               Reporte PDF (A)
             </button>
@@ -977,7 +969,7 @@ export function LoadHistoryComparePanel(props: {
               type="button"
               disabled={!!reportBusy}
               onClick={() => handleRetroReport(runA, "html")}
-              style={btn(c, true)}
+              className="elia-btn elia-btn--ghost elia-btn--sm"
             >
               Reporte HTML (A)
             </button>
@@ -989,7 +981,7 @@ export function LoadHistoryComparePanel(props: {
               type="button"
               disabled={!!reportBusy}
               onClick={() => handleRetroReport(runB, "pdf")}
-              style={btn(c, true)}
+              className="elia-btn elia-btn--ghost elia-btn--sm"
             >
               Reporte PDF (B)
             </button>
@@ -997,7 +989,7 @@ export function LoadHistoryComparePanel(props: {
               type="button"
               disabled={!!reportBusy}
               onClick={() => handleRetroReport(runB, "html")}
-              style={btn(c, true)}
+              className="elia-btn elia-btn--ghost elia-btn--sm"
             >
               Reporte HTML (B)
             </button>
@@ -1132,15 +1124,8 @@ function monoArea(c: Theme): React.CSSProperties {
   };
 }
 
-function btn(c: Theme, ghost?: boolean, primary?: boolean): React.CSSProperties {
-  return {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: primary ? "none" : `1px solid ${c.btnGhostBorder}`,
-    background: primary ? c.primary : c.btnGhostBg,
-    color: primary ? c.primaryFg : c.text,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 13,
-  };
+function btnClass(primary?: boolean, tabActive?: boolean): string {
+  if (tabActive) return "elia-btn elia-btn--tab elia-btn--sm is-active";
+  if (primary) return "elia-btn elia-btn--primary elia-btn--sm";
+  return "elia-btn elia-btn--ghost elia-btn--sm";
 }

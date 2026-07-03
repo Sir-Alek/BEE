@@ -1,4 +1,5 @@
 import React from "react";
+import { EliaButton } from "./EliaButton";
 
 export type SegmentedTabOption<T extends string> = {
   id: T;
@@ -21,24 +22,16 @@ export function SegmentedTabs<T extends string>(props: Props<T>) {
       {options.map(({ id, label, testId }) => {
         const active = value === id;
         return (
-          <button
+          <EliaButton
             key={id}
-            type="button"
+            variant="tab"
+            size="sm"
+            active={active}
             data-testid={testId}
             onClick={() => onChange(id)}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 8,
-              border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
-              background: active ? c.primary : c.btnGhostBg,
-              color: active ? c.primaryFg : c.text,
-              fontWeight: active ? 700 : 400,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
           >
             {label}
-          </button>
+          </EliaButton>
         );
       })}
     </div>

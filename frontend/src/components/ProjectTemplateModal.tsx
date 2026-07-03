@@ -5,6 +5,7 @@ import {
   type ProjectTemplateInfo,
 } from "../api";
 import { LoadingStatusRow } from "./LoadingStatusRow";
+import { EliaButton, EliaModalActions, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -85,32 +86,15 @@ export function ProjectTemplateModal(props: Props) {
   };
 
   return (
-    <div
-      data-testid="elia-project-template-modal"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1100,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
+    <EliaModalOverlay testId="elia-project-template-modal" ariaLabel="Nuevo proyecto desde plantilla" onClose={onClose}>
+      <EliaModalPanel
+        onClick={(e) => e.stopPropagation()}
         style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 16,
           width: "min(640px, 96vw)",
           maxHeight: "min(88vh, 720px)",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div style={{ padding: "18px 20px", borderBottom: `1px solid ${c.border}` }}>
           <div style={{ fontWeight: 800, fontSize: 17, color: c.text }}>Nuevo proyecto desde plantilla</div>
@@ -151,19 +135,12 @@ export function ProjectTemplateModal(props: Props) {
                       key={t.id}
                       type="button"
                       data-testid={`elia-template-card-${t.id}`}
+                      className={`elia-select-card${active ? " is-active" : ""}`}
                       onClick={() => {
                         setSelectedId(t.id);
                         setProjectName(t.default_project_name);
                       }}
-                      style={{
-                        textAlign: "left",
-                        padding: "12px 14px",
-                        borderRadius: 12,
-                        border: `2px solid ${active ? c.primary : c.border}`,
-                        background: active ? (c.hintBg ?? c.surface) : c.inputBg,
-                        cursor: "pointer",
-                        color: c.text,
-                      }}
+                      style={{ textAlign: "left", color: c.text }}
                     >
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</div>
                       <div style={{ fontSize: 12, color: c.muted, marginTop: 4, lineHeight: 1.45 }}>{t.description}</div>
@@ -187,19 +164,11 @@ export function ProjectTemplateModal(props: Props) {
               </label>
               <input
                 data-testid="elia-template-project-name"
+                className="elia-input"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder={selected?.default_project_name ?? "MiProyecto"}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${c.inputBorder}`,
-                  background: c.inputBg,
-                  color: c.text,
-                  fontSize: 14,
-                  marginBottom: 8,
-                }}
+                style={{ width: "100%", marginBottom: 8 }}
               />
               {selected?.kind === "multi" ? (
                 <div style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>
@@ -216,52 +185,25 @@ export function ProjectTemplateModal(props: Props) {
           ) : null}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 10,
-            padding: "14px 20px",
-            borderTop: `1px solid ${c.border}`,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              border: `1px solid ${c.btnGhostBorder}`,
-              background: c.btnGhostBg,
-              color: c.text,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            {doneChecklist ? "Cerrar" : "Cancelar"}
-          </button>
-          {!doneChecklist && templates.length > 0 ? (
-            <button
-              type="button"
-              data-testid="elia-template-create-btn"
-              disabled={busy || !projectName.trim() || !selectedId}
-              onClick={handleCreate}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 10,
-                border: "none",
-                background: c.primary,
-                color: "#fff",
-                cursor: busy ? "wait" : "pointer",
-                fontWeight: 700,
-                opacity: busy || !projectName.trim() ? 0.65 : 1,
-              }}
-            >
-              {busy ? "Creando…" : "Crear proyecto"}
-            </button>
-          ) : null}
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${c.border}` }}>
+          <EliaModalActions>
+            <EliaButton variant="ghost" size="sm" onClick={onClose}>
+              {doneChecklist ? "Cerrar" : "Cancelar"}
+            </EliaButton>
+            {!doneChecklist && templates.length > 0 ? (
+              <EliaButton
+                variant="primary"
+                size="sm"
+                data-testid="elia-template-create-btn"
+                disabled={busy || !projectName.trim() || !selectedId}
+                onClick={handleCreate}
+              >
+                {busy ? "Creando…" : "Crear proyecto"}
+              </EliaButton>
+            ) : null}
+          </EliaModalActions>
         </div>
-      </div>
-    </div>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }

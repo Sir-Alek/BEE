@@ -8,6 +8,7 @@ import {
 } from "../api";
 import { LoadingStatusRow } from "./LoadingStatusRow";
 import { AndroidStudioPathPanel } from "./AndroidStudioPathPanel";
+import { EliaButton, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -159,33 +160,10 @@ export function AvdSetupWizardModal(props: Props) {
   };
 
   return (
-    <div
-      data-testid="elia-avd-setup-wizard"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1200,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 16,
-          padding: "24px 28px",
-          maxWidth: 540,
-          width: "100%",
-          maxHeight: "90vh",
-          overflow: "auto",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
-        }}
+    <EliaModalOverlay testId="elia-avd-setup-wizard" ariaLabel="Asistente AVD" onClose={onClose} zIndex={1200}>
+      <EliaModalPanel
         onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 540, padding: "24px 28px", maxHeight: "90vh", overflow: "auto" }}
       >
         <div style={{ fontWeight: 800, fontSize: 18, color: c.text, marginBottom: 6 }}>
           Asistente AVD
@@ -241,21 +219,14 @@ export function AvdSetupWizardModal(props: Props) {
                   <>
                     {" "}
                     ·{" "}
-                    <button
-                      type="button"
+                    <EliaButton
+                      variant="ghost"
+                      size="sm"
                       onClick={onOpenEnvironmentSettings}
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        color: c.primary,
-                        cursor: "pointer",
-                        padding: 0,
-                        fontSize: 12,
-                        textDecoration: "underline",
-                      }}
+                      style={{ padding: 0, border: "none", background: "transparent", color: c.primary, textDecoration: "underline", fontSize: 12 }}
                     >
                       Configurar en Entorno local
-                    </button>
+                    </EliaButton>
                   </>
                 ) : null}
               </div>
@@ -306,55 +277,16 @@ export function AvdSetupWizardModal(props: Props) {
                 Configuración manual (todos los planes)
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  data-testid="elia-avd-open-studio"
-                  onClick={handleOpenStudio}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    border: `1px solid ${c.inputBorder}`,
-                    background: c.inputBg,
-                    color: c.text,
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
+                <EliaButton variant="ghost" size="sm" data-testid="elia-avd-open-studio" onClick={handleOpenStudio}>
                   Abrir Android Studio
-                </button>
-                <button
-                  type="button"
-                  data-testid="elia-avd-recheck"
-                  onClick={handleRecheck}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    border: `1px solid ${c.inputBorder}`,
-                    background: c.inputBg,
-                    color: c.text,
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
+                </EliaButton>
+                <EliaButton variant="ghost" size="sm" data-testid="elia-avd-recheck" onClick={handleRecheck}>
                   Comprobar de nuevo
-                </button>
+                </EliaButton>
                 {onOpenEnvironmentSettings ? (
-                  <button
-                    type="button"
-                    data-testid="elia-avd-env-settings"
-                    onClick={onOpenEnvironmentSettings}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      border: `1px solid ${c.inputBorder}`,
-                      background: c.inputBg,
-                      color: c.text,
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
+                  <EliaButton variant="ghost" size="sm" data-testid="elia-avd-env-settings" onClick={onOpenEnvironmentSettings}>
                     Entorno local…
-                  </button>
+                  </EliaButton>
                 ) : null}
               </div>
               {studioMsg && (
@@ -404,40 +336,16 @@ export function AvdSetupWizardModal(props: Props) {
         )}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
-          >
+          <EliaButton variant="ghost" size="sm" onClick={onClose}>
             {step === "done" ? "Cerrar" : "Cancelar"}
-          </button>
+          </EliaButton>
           {step === "intro" && caps?.orchestration_allowed && (
-            <button
-              type="button"
-              data-testid="elia-avd-wizard-run"
-              onClick={runWizard}
-              disabled={!selected}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                background: c.primary,
-                color: c.primaryFg,
-                border: "none",
-                cursor: selected ? "pointer" : "not-allowed",
-              }}
-            >
+            <EliaButton variant="primary" size="sm" data-testid="elia-avd-wizard-run" onClick={runWizard} disabled={!selected}>
               Crear AVD automáticamente
-            </button>
+            </EliaButton>
           )}
         </div>
-      </div>
-    </div>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }

@@ -1,8 +1,12 @@
 import React from "react";
 import { dismissPlatformQuickGuide, type QuickGuidePlatform } from "../app/platformGuidePrefs";
+import {
+  fetchPlatformQuickGuideCached,
+  peekPlatformQuickGuide,
+} from "../app/guidesCache";
 import { usePlatformGuidePrefs } from "../hooks/usePlatformGuidePrefs";
-import { getPlatformQuickGuide } from "../api";
 import { MarkdownGuideModal } from "./MarkdownGuideModal";
+import { EliaButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -14,22 +18,48 @@ type Props = {
   hasProjects?: boolean;
 };
 
+const DEFAULT_TITLES: Record<QuickGuidePlatform, string> = {
+  mobile: "Guía rápida — Móvil",
+  legacy: "Guía rápida — Legacy",
+  api_load: "Guía rápida — Suites y carga",
+};
+
 export function PlatformQuickGuide(props: Props) {
   const { c, platform, showLink = true, showRunnerHint = false, hasProjects = false } = props;
   const { guidesEnabled, isCardDismissed } = usePlatformGuidePrefs();
   const dismissed = isCardDismissed(platform);
   const [modalOpen, setModalOpen] = React.useState(false);
-  const [title, setTitle] = React.useState("");
-  const [content, setContent] = React.useState("");
+  const cached = peekPlatformQuickGuide(platform);
+  const [title, setTitle] = React.useState(cached?.title ?? DEFAULT_TITLES[platform]);
+  const [content, setContent] = React.useState(cached?.content ?? "");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    const hit = peekPlatformQuickGuide(platform);
+    if (hit) {
+      setTitle(hit.title);
+      setContent(hit.content);
+    }
+  }, [platform]);
+
   const openGuide = () => {
     setModalOpen(true);
-    if (content.trim()) return;
+    const hit = peekPlatformQuickGuide(platform);
+    if (hit) {
+      setTitle(hit.title);
+      setContent(hit.content);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    if (content.trim()) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
-    void getPlatformQuickGuide(platform)
+    void fetchPlatformQuickGuideCached(platform)
       .then((r) => {
         setTitle(r.title);
         setContent(r.content);
@@ -43,17 +73,6 @@ export function PlatformQuickGuide(props: Props) {
   };
 
   if (!guidesEnabled) return null;
-
-  const linkBtnStyle: React.CSSProperties = {
-    padding: "6px 10px",
-    borderRadius: 8,
-    border: `1px solid ${c.border}`,
-    background: "transparent",
-    color: c.primary,
-    fontWeight: 700,
-    fontSize: 12,
-    cursor: "pointer",
-  };
 
   const steps =
     platform === "mobile"
@@ -90,14 +109,15 @@ export function PlatformQuickGuide(props: Props) {
             marginBottom: 10,
           }}
         >
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             data-testid={`elia-${platform}-quick-guide-link`}
             onClick={openGuide}
-            style={linkBtnStyle}
+            style={{ color: c.primary, fontWeight: 700 }}
           >
             Guía rápida
-          </button>
+          </EliaButton>
         </div>
       ) : null}
 
@@ -127,22 +147,18 @@ export function PlatformQuickGuide(props: Props) {
             ))}
           </ol>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" onClick={openGuide} style={linkBtnStyle}>
+            <EliaButton variant="ghost" size="sm" onClick={openGuide} style={{ color: c.primary, fontWeight: 700 }}>
               Ver guía completa
-            </button>
-            <button
-              type="button"
+            </EliaButton>
+            <EliaButton
+              variant="ghost"
+              size="sm"
               data-testid={`elia-${platform}-quick-guide-dismiss`}
               onClick={handleDismiss}
-              style={{
-                ...linkBtnStyle,
-                border: "none",
-                color: c.muted,
-                fontWeight: 600,
-              }}
+              style={{ border: "none", color: c.muted, fontWeight: 600 }}
             >
               No volver a mostrar
-            </button>
+            </EliaButton>
           </div>
         </div>
       ) : null}
@@ -164,41 +180,27 @@ export function PlatformQuickGuide(props: Props) {
           {isApiLoad ? (
             <>
               ¿Primera vez en suites o carga?{" "}
-              <button
-                type="button"
+              <EliaButton
+                variant="ghost"
+                size="sm"
                 onClick={openGuide}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: c.primary,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: 13,
-                }}
+                style={{ padding: 0, border: "none", background: "transparent", color: c.primary, fontWeight: 700, fontSize: 13 }}
               >
                 Guía rápida
-              </button>
+              </EliaButton>
             </>
           ) : (
             <>
               Aún no hay proyectos en esta plataforma. En {platform === "mobile" ? "móvil" : "legacy"} se crean al{" "}
               <b>convertir una grabación</b>.{" "}
-              <button
-                type="button"
+              <EliaButton
+                variant="ghost"
+                size="sm"
                 onClick={openGuide}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: c.primary,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: 13,
-                }}
+                style={{ padding: 0, border: "none", background: "transparent", color: c.primary, fontWeight: 700, fontSize: 13 }}
               >
                 Guía rápida
-              </button>
+              </EliaButton>
             </>
           )}
         </div>
@@ -207,14 +209,7 @@ export function PlatformQuickGuide(props: Props) {
       {modalOpen ? (
         <MarkdownGuideModal
           c={c}
-          title={
-            title ||
-            (platform === "mobile"
-              ? "Guía rápida — Móvil"
-              : platform === "legacy"
-                ? "Guía rápida — Legacy"
-                : "Guía rápida — Suites y carga")
-          }
+          title={title}
           subtitle={
             platform === "mobile"
               ? "Grabación Android → conversión Behave → ejecución"

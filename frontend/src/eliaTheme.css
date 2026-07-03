@@ -1,24 +1,52 @@
-/* Complementos globales del tema oscuro (persistencia en eliaTheme.tsx). */
+/* Complementos globales del tema (persistencia en eliaTheme.tsx). */
 html[data-elia-theme="dark"] {
   color-scheme: dark;
 }
 
-html[data-elia-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
-html[data-elia-theme="dark"] select,
-html[data-elia-theme="dark"] textarea {
-  background-color: #0f172a;
-  color: #e5e7eb;
-  border-color: #475569;
+html[data-elia-theme="light"] {
+  color-scheme: light;
+}
+
+/* Inputs globales — delegar a primitivos cuando llevan .elia-input */
+html[data-elia-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not(.elia-input),
+html[data-elia-theme="dark"] select:not(.elia-input),
+html[data-elia-theme="dark"] textarea:not(.elia-input) {
+  background-color: var(--elia-input-bg);
+  color: var(--elia-text);
+  border-color: var(--elia-input-border);
+}
+
+html[data-elia-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not(.elia-input),
+html[data-elia-theme="light"] select:not(.elia-input),
+html[data-elia-theme="light"] textarea:not(.elia-input) {
+  background-color: var(--elia-input-bg);
+  color: var(--elia-text);
+  border-color: var(--elia-input-border);
+}
+
+html[data-elia-theme="dark"] input:focus:not([type="checkbox"]):not([type="radio"]),
+html[data-elia-theme="dark"] select:focus,
+html[data-elia-theme="dark"] textarea:focus,
+html[data-elia-theme="light"] input:focus:not([type="checkbox"]):not([type="radio"]),
+html[data-elia-theme="light"] select:focus,
+html[data-elia-theme="light"] textarea:focus {
+  outline: none;
+  border-color: var(--elia-border-focus);
+  box-shadow: var(--elia-focus-ring);
 }
 
 html[data-elia-theme="dark"] input::placeholder,
-html[data-elia-theme="dark"] textarea::placeholder {
-  color: #64748b;
+html[data-elia-theme="dark"] textarea::placeholder,
+html[data-elia-theme="light"] input::placeholder,
+html[data-elia-theme="light"] textarea::placeholder {
+  color: var(--elia-muted);
 }
 
 html[data-elia-theme="dark"] input[type="checkbox"],
-html[data-elia-theme="dark"] input[type="radio"] {
-  accent-color: #38bdf8;
+html[data-elia-theme="dark"] input[type="radio"],
+html[data-elia-theme="light"] input[type="checkbox"],
+html[data-elia-theme="light"] input[type="radio"] {
+  accent-color: var(--elia-accent-cyan);
   width: 1rem;
   height: 1rem;
   cursor: pointer;
@@ -30,26 +58,117 @@ html[data-elia-theme="dark"] ::-webkit-scrollbar {
 }
 
 html[data-elia-theme="dark"] ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #060b16;
 }
 
 html[data-elia-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: #334155;
   border-radius: 6px;
-  border: 2px solid #0f172a;
+  border: 2px solid #060b16;
 }
 
 html[data-elia-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #475569;
 }
 
 html[data-elia-theme="dark"] {
-  scrollbar-color: #475569 #0f172a;
+  scrollbar-color: #334155 #060b16;
   scrollbar-width: thin;
+}
+
+html[data-elia-theme="light"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html[data-elia-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html[data-elia-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+
+html[data-elia-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+html[data-elia-theme="light"] {
+  scrollbar-color: #cbd5e1 #f1f5f9;
+  scrollbar-width: thin;
+}
+
+html[data-elia-theme="dark"] pre,
+html[data-elia-theme="dark"] code,
+html[data-elia-theme="dark"] .elia-code-block,
+html[data-elia-theme="light"] pre,
+html[data-elia-theme="light"] code,
+html[data-elia-theme="light"] .elia-code-block {
+  font-family: var(--elia-font-mono);
+}
+
+html[data-elia-theme="dark"] pre,
+html[data-elia-theme="dark"] code,
+html[data-elia-theme="dark"] .elia-code-block {
+  color: #f1f5f9;
+}
+
+html[data-elia-theme="light"] pre,
+html[data-elia-theme="light"] code,
+html[data-elia-theme="light"] .elia-code-block {
+  color: #0f172a;
+}
+
+/* Estados operativos — neón acotado a propósito técnico */
+.elia-state-running {
+  border-color: rgba(0, 210, 255, 0.45) !important;
+  box-shadow: 0 0 0 1px rgba(0, 210, 255, 0.08);
+}
+
+html[data-elia-theme="light"] .elia-state-running {
+  border-color: rgba(8, 145, 178, 0.4) !important;
+  box-shadow: 0 0 0 1px rgba(8, 145, 178, 0.08);
+}
+
+.elia-state-running .elia-state-running__label {
+  color: var(--elia-accent-cyan);
+}
+
+.elia-state-ok {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+}
+
+.elia-state-error {
+  border-color: rgba(239, 68, 68, 0.45) !important;
+}
+
+html[data-elia-hud="1"] [data-elia-chrome="1"] {
+  box-shadow: inset 0 -1px 0 var(--elia-chrome-line);
+}
+
+html[data-elia-hud="1"] .elia-hud-panel {
+  border-color: var(--elia-border-focus);
+  box-shadow: var(--elia-glow-soft);
 }
 
 @keyframes elia-spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes elia-pulse-cyan {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.elia-state-running .elia-pulse-dot {
+  animation: elia-pulse-cyan 1.4s ease-in-out infinite;
 }

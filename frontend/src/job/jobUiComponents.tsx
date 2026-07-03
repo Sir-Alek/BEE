@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { ConversionResultPayload, GeneratedFileEntry } from "../types";
+import { EliaButton } from "../components/ui";
 
 function normalizeGeneratedFiles(
   payload?: ConversionResultPayload | null,
@@ -168,33 +169,23 @@ export function ActionsCheckboxList(props: {
       ) : null}
 
       <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
-        <button
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => setSelected((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, true])))}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            border: `1px solid ${c.btnGhostBorder}`,
-            color: c.text,
-            cursor: "pointer",
-          }}
         >
           Incluir todas
-        </button>
-        <button
+        </EliaButton>
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => setSelected((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, false])))}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            border: `1px solid ${c.btnGhostBorder}`,
-            color: c.text,
-            cursor: "pointer",
-          }}
         >
           Excluir todas
-        </button>
-        <button
+        </EliaButton>
+        <EliaButton
+          variant="primary"
+          size="sm"
           onClick={() => {
             if (selectedLines.length < minSelected) {
               setEmptyHint(true);
@@ -202,17 +193,9 @@ export function ActionsCheckboxList(props: {
             }
             void props.onSubmit(selectedLines);
           }}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
         >
           Continuar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

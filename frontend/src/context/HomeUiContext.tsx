@@ -58,6 +58,8 @@ export type HomeUiContextValue = {
   selectApiProject: (project: string) => void;
   pendingApiProject: string | null;
   clearPendingApiProject: () => void;
+  /** Oculta banners de carga de licencia/módulos mientras el splash inicial está activo. */
+  initialBootComplete: boolean;
 };
 
 const HomeUiContext = createContext<HomeUiContextValue | null>(null);

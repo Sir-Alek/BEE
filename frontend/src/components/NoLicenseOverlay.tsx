@@ -1,6 +1,7 @@
 import React from "react";
 import type { LicenseState } from "../app/licenseUtils";
 import { licenseNeedsActivationBanner } from "../app/licenseUtils";
+import { EliaButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -51,23 +52,14 @@ export function NoLicenseOverlay(props: Props) {
             {license?.message ||
               "Introduce tu clave en Configuración → Licencia para usar automatización, API e inteligencia."}
           </div>
-          <button
-            type="button"
+          <EliaButton
+            variant="primary"
+            size="sm"
             data-testid="elia-no-license-open-settings"
             onClick={onOpenLicenseSettings}
-            style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "none",
-              background: c.primary,
-              color: c.primaryFg,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: 14,
-            }}
           >
             Ir a activación de licencia
-          </button>
+          </EliaButton>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import {
   writeProjectFile,
 } from "../api";
 import { FileTree } from "../components/FileTree";
-import { FieldLabel } from "../components/ui";
+import { EliaButton, FieldLabel } from "../components/ui";
 import { useEliaTheme } from "../eliaTheme";
 import { CodeEditorPanel } from "./CodeEditorPanel";
 import { RunConsolePanel } from "./RunConsolePanel";
@@ -155,20 +155,20 @@ export function RunWorkspacePanel(props: Props) {
   const editorToolbar = (
     <>
       {dirty ? <span style={{ color: c.primary, fontSize: 11 }}>● Sin guardar</span> : null}
-      <button type="button" disabled={!selected || !dirty || busy} onClick={saveFile} style={btn(c, undefined, undefined, true)}>
+      <EliaButton variant="ghost" size="sm" disabled={!selected || !dirty || busy} onClick={saveFile}>
         Guardar
-      </button>
-      <button type="button" disabled={!selected || busy} onClick={() => loadFile(selected)} style={btn(c, undefined, undefined, true)}>
+      </EliaButton>
+      <EliaButton variant="ghost" size="sm" disabled={!selected || busy} onClick={() => loadFile(selected)}>
         Recargar
-      </button>
-      <button
-        type="button"
+      </EliaButton>
+      <EliaButton
+        variant="ghost"
+        size="icon"
         title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
         onClick={() => setFullscreen((v) => !v)}
-        style={btn(c, undefined, undefined, true)}
       >
         {fullscreen ? "🡷" : "🡵"}
-      </button>
+      </EliaButton>
     </>
   );
 
@@ -209,21 +209,15 @@ export function RunWorkspacePanel(props: Props) {
       </FieldLabel>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
         <input
+          className="elia-input"
           value={featureFile}
           onChange={(e) => setFeatureFile(e.target.value)}
           placeholder="features o features/mi.feature"
-          style={{
-            flex: "1 1 200px",
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-          }}
+          style={{ flex: "1 1 200px" }}
         />
-        <button type="button" disabled={!canRunJobs || busy} onClick={runBehave} style={btn(c, c.primary, c.primaryFg)}>
+        <EliaButton variant="primary" size="sm" disabled={!canRunJobs || busy} onClick={runBehave}>
           Ejecutar Behave
-        </button>
+        </EliaButton>
         {platform === "web" ? (
           <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
             <input
@@ -237,20 +231,14 @@ export function RunWorkspacePanel(props: Props) {
         {showLocust ? (
           <>
             <input
+              className="elia-input"
               value={loadUsers}
               onChange={(e) => setLoadUsers(e.target.value)}
-              style={{
-                width: 70,
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: `1px solid ${c.inputBorder}`,
-                background: c.inputBg,
-                color: c.text,
-              }}
+              style={{ width: 70 }}
             />
-            <button type="button" disabled={!canRunJobs || busy} onClick={runLocust} style={btn(c)}>
+            <EliaButton variant="ghost" size="sm" disabled={!canRunJobs || busy} onClick={runLocust}>
               Ejecutar Locust
-            </button>
+            </EliaButton>
           </>
         ) : null}
       </div>
@@ -362,24 +350,6 @@ export function RunWorkspacePanel(props: Props) {
       {workspaceBody}
     </div>
   );
-}
-
-function btn(
-  c: Record<string, string>,
-  bg?: string,
-  fg?: string,
-  compact?: boolean,
-): React.CSSProperties {
-  return {
-    padding: compact ? "4px 8px" : "8px 12px",
-    borderRadius: 8,
-    border: bg ? "none" : `1px solid ${c.btnGhostBorder}`,
-    background: bg ?? c.btnGhostBg,
-    color: fg ?? c.text,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: compact ? 12 : 14,
-  };
 }
 
 export function usePlatformProjects(platform: string, refreshKey = 0) {

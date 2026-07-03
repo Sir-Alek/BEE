@@ -3,6 +3,7 @@ import { PROMPT_ANSWER_BACK, sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { promptAllowsBack } from "../../types";
 import { cancelJobFlow } from "../promptNav";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -17,40 +18,27 @@ export function InputTextPrompt(props: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <input
+        className="elia-input"
         value={textValue}
         onChange={(e) => setTextValue(e.target.value)}
         placeholder={activePrompt.message}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: `1px solid ${c.inputBorder}`,
-          background: c.inputBg,
-          color: c.text,
-          outline: "none",
-          fontSize: 14,
-        }}
+        style={{ width: "100%" }}
       />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
+        <EliaButton
+          variant="primary"
+          size="sm"
           onClick={async () => {
             const value = textValue.trim();
             await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: value });
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
         >
           Guardar
-        </button>
+        </EliaButton>
         {promptAllowsBack(activePrompt.payload) && (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={async () => {
               await sendPromptResponse({
                 jobId,
@@ -58,33 +46,20 @@ export function InputTextPrompt(props: Props) {
                 answer: PROMPT_ANSWER_BACK,
               });
             }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
           >
             Regresar
-          </button>
+          </EliaButton>
         )}
-        <button
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void cancelJobFlow(jobId);
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.muted,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
+          style={{ color: c.muted }}
         >
           Cancelar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

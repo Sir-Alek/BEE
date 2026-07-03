@@ -31,6 +31,7 @@ import { parseLicenseDisplayBlocks } from "../licenseTextFormat";
 import type { EliaConnectorProfile } from "../types";
 import { BetaFeedbackLink } from "../components/BetaFeedbackLink";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
+import { EliaButton, EliaModalOverlay, EliaModalPanel } from "../components/ui";
 import { ToolPathsSettingsPanel } from "./ToolPathsSettingsPanel";
 import { QuickGuideSettingsPanel } from "./QuickGuideSettingsPanel";
 // Versión comercial (≥1.0): descomentar y usar en Licencia en lugar de BetaFeedbackLink.
@@ -55,6 +56,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     c,
     dark,
     toggleTheme,
+    hudMode,
+    setHudMode,
     visibleSettingsTabs,
     settingsTab,
     setSettingsTab,
@@ -131,54 +134,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
       .catch(() => setAiMemoryEntries([]));
   }, [props.open, settingsTab, aiLearnOpen, aiMemoryStatus?.entries]);
 
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const t = window.setTimeout(() => {
+      dialogRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      dialogRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [props.open]);
+
   return (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Configuración"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100000,
-            background: "rgba(15, 23, 42, 0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-          onClick={() => onClose()}
-        >
-          <div
-            data-testid="elia-settings-dialog"
-            style={{
-              width: "min(680px, 100%)",
-              maxHeight: "min(92vh, 920px)",
-              overflow: "auto",
-              borderRadius: 16,
-              border: `1px solid ${c.border}`,
-              background: c.surface,
-              boxShadow: c.shadow,
-              padding: 22,
-              color: c.text,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+    <EliaModalOverlay ariaLabel="Configuración" onClose={onClose} zIndex={100000} alignTop>
+      <EliaModalPanel
+        ref={dialogRef}
+        wide
+        testId="elia-settings-dialog"
+        className="elia-settings-shell"
+        onClick={(e) => e.stopPropagation()}
+      >
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 800, flex: 1 }}>Configuración</div>
-              <button
-                type="button"
-                onClick={() => onClose()}
-                style={{
-                  border: `1px solid ${c.btnGhostBorder}`,
-                  background: c.btnGhostBg,
-                  color: c.text,
-                  borderRadius: 10,
-                  padding: "6px 12px",
-                  cursor: "pointer",
-                }}
-              >
+              <EliaButton variant="ghost" size="sm" onClick={() => onClose()}>
                 Cerrar
-              </button>
+              </EliaButton>
             </div>
 
             <div
@@ -194,24 +175,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
               }}
             >
               {visibleSettingsTabs.map((t) => (
-                <button
+                <EliaButton
                   key={t.id}
-                  type="button"
+                  variant="tab"
+                  size="sm"
+                  active={settingsTab === t.id}
                   data-testid={`elia-settings-tab-${t.id}`}
                   onClick={() => setSettingsTab(t.id)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${settingsTab === t.id ? c.primary : c.btnGhostBorder}`,
-                    background: settingsTab === t.id ? c.primary : c.btnGhostBg,
-                    color: settingsTab === t.id ? c.primaryFg : c.text,
-                    fontWeight: settingsTab === t.id ? 700 : 500,
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
                 >
                   {t.label}
-                </button>
+                </EliaButton>
               ))}
             </div>
 
@@ -262,6 +235,56 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       position: "absolute",
                       top: 3,
                       left: dark ? 22 : 3,
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left 160ms ease",
+                    }}
+                  />
+                </span>
+              </label>
+              <label
+                htmlFor="elia-hud-toggle"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  marginTop: 12,
+                }}
+              >
+                <span>
+                  Modo HUD (acentos neón)
+                  <div style={{ fontSize: 12, color: c.muted, fontWeight: 400, marginTop: 4 }}>
+                    Refuerzo sutil en barras y paneles activos. El área de trabajo sigue sobria.
+                  </div>
+                </span>
+                <input
+                  id="elia-hud-toggle"
+                  type="checkbox"
+                  checked={hudMode}
+                  onChange={() => setHudMode(!hudMode)}
+                  style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+                />
+                <span
+                  style={{
+                    position: "relative",
+                    width: 44,
+                    height: 26,
+                    borderRadius: 999,
+                    background: hudMode ? c.primary : c.border,
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: hudMode ? 22 : 3,
                       width: 20,
                       height: 20,
                       borderRadius: "50%",
@@ -456,8 +479,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     {aiCaps.setup.standard_ready ? "✓" : "—"}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    <button
+                    <EliaButton
                       type="button"
+                      variant="primary"
+                      size="sm"
                       disabled={aiDownloadBusy}
                       onClick={() => {
                         setAiDownloadBusy(true);
@@ -491,20 +516,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           }
                         })();
                       }}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.border}`,
-                        background: aiDownloadBusy ? c.buttonDisabledBg : c.primary,
-                        color: "#fff",
-                        cursor: aiDownloadBusy ? "wait" : "pointer",
-                        fontSize: 12,
-                      }}
                     >
                       {aiDownloadBusy ? "Descargando…" : "Descargar perfil recomendado"}
-                    </button>
-                    <button
+                    </EliaButton>
+                    <EliaButton
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       disabled={aiDownloadBusy}
                       onClick={() => {
                         void (async () => {
@@ -519,34 +537,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           }
                         })();
                       }}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.border}`,
-                        background: c.neutralBg,
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
                     >
                       Verificar integridad
-                    </button>
+                    </EliaButton>
                     {(!aiCaps.setup.wizard_completed || !aiCaps.setup.profile_ready) && (
-                      <button
+                      <EliaButton
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         data-testid="elia-ai-reopen-wizard"
                         disabled={aiDownloadBusy}
                         onClick={reopenAiWizard}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 8,
-                          border: `1px solid ${c.border}`,
-                          background: c.neutralBg,
-                          cursor: aiDownloadBusy ? "wait" : "pointer",
-                          fontSize: 12,
-                        }}
                       >
                         Reabrir asistente de IA
-                      </button>
+                      </EliaButton>
                     )}
                   </div>
                   {aiDownloadMsg && (
@@ -566,11 +570,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 overflow: "hidden",
               }}
             >
-              <button
+              <EliaButton
                 type="button"
+                variant="ghost"
+                size="sm"
                 data-testid="elia-ai-learn-toggle"
                 onClick={() => setAiLearnOpen((open) => !open)}
                 aria-expanded={aiLearnOpen}
+                className="elia-settings-accordion-toggle"
                 style={{
                   width: "100%",
                   display: "flex",
@@ -579,8 +586,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   padding: "12px 14px",
                   border: "none",
                   background: "transparent",
-                  color: c.text,
-                  cursor: "pointer",
                   textAlign: "left",
                   fontSize: 14,
                   fontWeight: 700,
@@ -593,7 +598,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     ? `${aiMemoryStatus.entries} guardados · ${aiMemoryStatus.prompt_examples_limit} en prompts`
                     : "—"}
                 </span>
-              </button>
+              </EliaButton>
               {aiLearnOpen && (
                 <div
                   style={{
@@ -634,8 +639,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                                   : "General"}{" "}
                               · {new Date(entry.ts * 1000).toLocaleString()}
                             </span>
-                            <button
+                            <EliaButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
                               disabled={aiMemoryBusy}
                               onClick={() => {
                                 setAiMemoryBusy(true);
@@ -652,16 +659,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                                   }
                                 })();
                               }}
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                color: c.errorBody,
-                                cursor: aiMemoryBusy ? "wait" : "pointer",
-                                fontSize: 11,
-                              }}
+                              style={{ color: c.errorBody, fontSize: 11 }}
                             >
                               Eliminar
-                            </button>
+                            </EliaButton>
                           </div>
                           <div style={{ color: c.text }}>
                             <strong>Feature:</strong> {entry.feature_preview}
@@ -670,8 +671,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       ))}
                     </ul>
                   )}
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     disabled={aiMemoryBusy || !aiMemoryStatus?.entries}
                     onClick={() => {
                       if (!window.confirm("¿Vaciar todos los ejemplos aprendidos en este equipo?")) return;
@@ -689,19 +692,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      alignSelf: "flex-start",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: `1px solid ${c.border}`,
-                      background: c.surface,
-                      color: c.text,
-                      cursor: aiMemoryBusy ? "wait" : "pointer",
-                      fontSize: 12,
-                    }}
+                    style={{ alignSelf: "flex-start" }}
                   >
                     Vaciar memoria local
-                  </button>
+                  </EliaButton>
                 </div>
               )}
             </div>
@@ -716,8 +710,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 overflow: "hidden",
               }}
             >
-              <button
+              <EliaButton
                 type="button"
+                variant="ghost"
+                size="sm"
                 data-testid="elia-ai-memory-toggle"
                 onClick={() => setAiMemoryOpen((open) => !open)}
                 aria-expanded={aiMemoryOpen}
@@ -729,8 +725,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   padding: "12px 14px",
                   border: "none",
                   background: "transparent",
-                  color: c.text,
-                  cursor: "pointer",
                   textAlign: "left",
                   fontSize: 14,
                   fontWeight: 700,
@@ -743,7 +737,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     ? `${aiMemoryStatus.entries}/${aiMemoryStatus.max_entries} ejemplos`
                     : "— ejemplos"}
                 </span>
-              </button>
+              </EliaButton>
               {aiMemoryOpen && (
                 <div
                   style={{
@@ -777,8 +771,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       }}
                     />
                   </label>
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="primary"
+                    size="sm"
                     data-testid="elia-ai-memory-export"
                     disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim()}
                     onClick={() => {
@@ -801,19 +797,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      alignSelf: "flex-start",
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "none",
-                      background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
-                      color: c.primaryFg,
-                      cursor: aiMemoryBusy ? "wait" : "pointer",
-                      fontSize: 13,
-                    }}
+                    style={{ alignSelf: "flex-start" }}
                   >
                     Exportar memoria actual
-                  </button>
+                  </EliaButton>
 
                   <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginTop: 4 }}>
                     Importar base de conocimiento
@@ -858,8 +845,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       onChange={(e) => setAiMemoryImportFile(e.target.files?.[0] ?? null)}
                       style={{ fontSize: 12, color: c.text, maxWidth: "100%" }}
                     />
-                    <button
+                    <EliaButton
                       type="button"
+                      variant="primary"
+                      size="sm"
                       data-testid="elia-ai-memory-import"
                       disabled={aiMemoryBusy || !aiMemoryTeamPassphrase.trim() || !aiMemoryImportFile}
                       onClick={() => {
@@ -887,18 +876,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           }
                         })();
                       }}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: aiMemoryBusy ? c.buttonDisabledBg : c.primary,
-                        color: c.primaryFg,
-                        cursor: aiMemoryBusy ? "wait" : "pointer",
-                        fontSize: 13,
-                      }}
                     >
                       Confirmar importación
-                    </button>
+                    </EliaButton>
                   </div>
                   {aiMemoryMsg && (
                     <div style={{ fontSize: 12, color: c.text, lineHeight: 1.45 }}>{aiMemoryMsg}</div>
@@ -954,8 +934,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
                           {license.machine_fingerprint}
                         </code>
-                        <button
+                        <EliaButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             void (async () => {
                               const ok = await copyTextToClipboard(license.machine_fingerprint);
@@ -967,19 +949,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                               }
                             })();
                           }}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 8,
-                            border: `1px solid ${c.btnGhostBorder}`,
-                            background: c.btnGhostBg,
-                            color: c.text,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
                         >
                           {fpCopyAck ? "Copiado" : "Copiar"}
-                        </button>
+                        </EliaButton>
                       </div>
                     </div>
                   )}
@@ -1013,8 +985,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
                           {license.machine_fingerprint}
                         </code>
-                        <button
+                        <EliaButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             void (async () => {
                               const ok = await copyTextToClipboard(license.machine_fingerprint);
@@ -1026,19 +1000,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                               }
                             })();
                           }}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 8,
-                            border: `1px solid ${c.btnGhostBorder}`,
-                            background: c.btnGhostBg,
-                            color: c.text,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
                         >
                           {fpCopyAck ? "Copiado" : "Copiar"}
-                        </button>
+                        </EliaButton>
                       </div>
                     </div>
                   )}
@@ -1069,8 +1033,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         <code style={{ userSelect: "all", fontWeight: 700, fontSize: 13 }}>
                           {license.machine_fingerprint}
                         </code>
-                        <button
+                        <EliaButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             void (async () => {
                               const ok = await copyTextToClipboard(license.machine_fingerprint);
@@ -1082,19 +1048,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                               }
                             })();
                           }}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 8,
-                            border: `1px solid ${c.btnGhostBorder}`,
-                            background: c.btnGhostBg,
-                            color: c.text,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
                         >
                           {fpCopyAck ? "Copiado" : "Copiar"}
-                        </button>
+                        </EliaButton>
                       </div>
                     </div>
                   )}
@@ -1116,8 +1072,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         fontSize: 14,
                       }}
                     />
-                    <button
+                    <EliaButton
                       type="button"
+                      variant="primary"
                       data-testid="elia-license-activate"
                       disabled={!activationKey.trim()}
                       onClick={() => {
@@ -1141,45 +1098,26 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           }
                         })();
                       }}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: c.primary,
-                        color: c.primaryFg,
-                        fontWeight: 700,
-                        fontSize: 14,
-                        cursor: activationKey.trim() ? "pointer" : "not-allowed",
-                        opacity: activationKey.trim() ? 1 : 0.55,
-                      }}
                     >
                       Activar
-                    </button>
+                    </EliaButton>
                   </div>
                   {licenseActivateMsg && (
                     <div data-testid="elia-license-message" style={{ marginTop: 10, fontSize: 13, color: c.text }}>{licenseActivateMsg}</div>
                   )}
                   {license.activated && !licenseFpVisible && (
-                    <button
+                    <EliaButton
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => {
                         setLicenseActivateMsg(null);
                         void refreshLicense().then(() => setLicenseFpVisible(true));
                       }}
-                      style={{
-                        marginTop: 10,
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.btnGhostBorder}`,
-                        background: c.btnGhostBg,
-                        color: c.text,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
+                      style={{ marginTop: 10 }}
                     >
                       Obtener huella de máquina
-                    </button>
+                    </EliaButton>
                   )}
                   <BetaFeedbackLink url={aboutInfo?.beta_feedback_url} c={c} variant="license" />
                   {/*
@@ -1234,8 +1172,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </option>
                   ))}
                 </select>
-                <button
+                <EliaButton
                   type="button"
+                  variant="primary"
                   onClick={() => {
                     const np = newConnectorProfile(connectorProfiles.length + 1);
                     setConnectorProfiles((l) => [...l, np]);
@@ -1243,50 +1182,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     setSettingsTestMsg(null);
                     setSettingsSaveMsg(null);
                   }}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${c.primary}`,
-                    background: c.primary,
-                    color: c.primaryFg,
-                    cursor: "pointer",
-                    fontWeight: 700,
-                  }}
                 >
                   Añadir nuevo
-                </button>
+                </EliaButton>
                 {connectorProfiles.length > 0 && settingsProfileId && (
                   <>
-                    <button
-                      type="button"
-                      onClick={duplicateConnectorProfile}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: `1px solid ${c.btnGhostBorder}`,
-                        background: c.btnGhostBg,
-                        color: c.text,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
+                    <EliaButton type="button" variant="ghost" onClick={duplicateConnectorProfile}>
                       Duplicar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={deleteConnectorProfile}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: `1px solid ${c.licWarnBorder}`,
-                        background: c.licWarnBg,
-                        color: c.text,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
+                    </EliaButton>
+                    <EliaButton type="button" variant="danger" onClick={deleteConnectorProfile}>
                       Eliminar
-                    </button>
+                    </EliaButton>
                   </>
                 )}
               </div>
@@ -1446,8 +1352,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       style={modalFieldStyle(c)}
                     />
                   </div>
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       const p = connectorProfiles.find((x) => x.id === settingsProfileId);
                       void (async () => {
@@ -1468,17 +1376,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      background: c.btnGhostBg,
-                      cursor: "pointer",
-                    }}
+                    style={{ marginTop: 10 }}
                   >
                     Probar conexión · Jira
-                  </button>
+                  </EliaButton>
 
                   <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Value Edge</div>
                   <div style={{ display: "grid", gap: 10 }}>
@@ -1623,8 +1524,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       style={modalFieldStyle(c)}
                     />
                   </div>
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       const p = connectorProfiles.find((x) => x.id === settingsProfileId);
                       void (async () => {
@@ -1645,17 +1548,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      background: c.btnGhostBg,
-                      cursor: "pointer",
-                    }}
+                    style={{ marginTop: 10 }}
                   >
                     Probar conexión · Value Edge
-                  </button>
+                  </EliaButton>
 
                   <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Git (publicación .feature)</div>
                   <div style={{ display: "grid", gap: 10 }}>
@@ -1709,8 +1605,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       style={modalFieldStyle(c)}
                     />
                   </div>
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       const p = connectorProfiles.find((x) => x.id === settingsProfileId);
                       void (async () => {
@@ -1728,17 +1626,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      background: c.btnGhostBg,
-                      cursor: "pointer",
-                    }}
+                    style={{ marginTop: 10 }}
                   >
                     Probar conexión · Git
-                  </button>
+                  </EliaButton>
 
                   <div style={{ fontWeight: 800, margin: "14px 0 8px" }}>Azure DevOps</div>
                   <div style={{ display: "grid", gap: 10 }}>
@@ -1804,8 +1695,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       style={modalFieldStyle(c)}
                     />
                   </div>
-                  <button
+                  <EliaButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       const p = connectorProfiles.find((x) => x.id === settingsProfileId);
                       void (async () => {
@@ -1825,17 +1718,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         }
                       })();
                     }}
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      background: c.btnGhostBg,
-                      cursor: "pointer",
-                    }}
+                    style={{ marginTop: 10 }}
                   >
                     Probar conexión · Azure DevOps
-                  </button>
+                  </EliaButton>
                 </>
               )}
 
@@ -1856,8 +1742,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                <button
+                <EliaButton
                   type="button"
+                  variant="primary"
                   onClick={() => {
                     void (async () => {
                       setSettingsSaveMsg(null);
@@ -1869,18 +1756,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       }
                     })();
                   }}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: c.primary,
-                    color: c.primaryFg,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
                 >
                   Guardar perfiles
-                </button>
+                </EliaButton>
               </div>
               {settingsSaveMsg && (
                 <div style={{ marginTop: 10, fontSize: 13, color: c.muted }}>{settingsSaveMsg}</div>
@@ -1920,24 +1798,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       Versión: <span style={{ color: c.text }}>{aboutInfo.version_display}</span>
                     </span>
                     {aboutInfo.changelog.length > 0 && (
-                      <button
+                      <EliaButton
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         data-testid="elia-changelog-toggle"
                         aria-expanded={aboutChangelogOpen}
                         onClick={() => setAboutChangelogOpen((open) => !open)}
-                        style={{
-                          border: `1px solid ${c.border}`,
-                          borderRadius: 999,
-                          padding: "2px 10px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: c.muted,
-                          background: c.inputBg,
-                          cursor: "pointer",
-                        }}
                       >
                         {aboutChangelogOpen ? "▾ Ver novedades" : "▸ Ver novedades"}
-                      </button>
+                      </EliaButton>
                     )}
                   </div>
                   {aboutChangelogOpen && aboutInfo.changelog.length > 0 && (
@@ -2185,8 +2055,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               )}
             </div>
             )}
-          </div>
-        </div>
-
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }

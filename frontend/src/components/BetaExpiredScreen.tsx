@@ -1,5 +1,6 @@
 import React from "react";
 import { UPGRADE_CONTACT_EMAIL } from "../app/entitlements";
+import { EliaLinkButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -40,20 +41,9 @@ export function BetaExpiredScreen(props: Props) {
           {reason === "clock_tamper" ? "Reloj del sistema inválido" : "Beta finalizada"}
         </h1>
         <p style={{ margin: "0 0 20px", color: c.muted, lineHeight: 1.6, whiteSpace: "pre-line" }}>{message}</p>
-        <a
-          href={mailto}
-          style={{
-            display: "inline-block",
-            padding: "10px 18px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            textDecoration: "none",
-            fontWeight: 700,
-          }}
-        >
+        <EliaLinkButton href={mailto} variant="primary" size="sm">
           Adquirir suscripción
-        </a>
+        </EliaLinkButton>
       </div>
     </div>
   );

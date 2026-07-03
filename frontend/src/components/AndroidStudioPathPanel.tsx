@@ -1,5 +1,6 @@
 import React from "react";
 import { openMobileAndroidStudio, pickExecutable } from "../api";
+import { EliaButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -90,36 +91,15 @@ export function AndroidStudioPathPanel(props: Props) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
           data-testid="elia-studio-path-input"
+          className="elia-input"
           value={path}
           onChange={(e) => setPath(e.target.value)}
           placeholder="C:\...\Android Studio\bin\studio64.exe"
-          style={{
-            flex: "1 1 220px",
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            fontSize: 13,
-          }}
+          style={{ flex: "1 1 220px" }}
         />
-        <button
-          type="button"
-          data-testid="elia-studio-path-browse"
-          disabled={busy}
-          onClick={handleBrowse}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            cursor: busy ? "wait" : "pointer",
-            fontSize: 13,
-          }}
-        >
+        <EliaButton variant="ghost" size="sm" data-testid="elia-studio-path-browse" disabled={busy} onClick={handleBrowse}>
           Buscar…
-        </button>
+        </EliaButton>
       </div>
       {searched.length > 0 && (
         <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.45 }}>
@@ -130,75 +110,25 @@ export function AndroidStudioPathPanel(props: Props) {
       {error && <div style={{ fontSize: 12, color: c.errorTitle }}>{error}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {onOpenEnvironmentSettings ? (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             data-testid="elia-studio-open-env-settings"
             onClick={onOpenEnvironmentSettings}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: `1px solid ${c.inputBorder}`,
-              background: c.inputBg,
-              color: c.text,
-              cursor: "pointer",
-              fontSize: 13,
-              marginRight: "auto",
-            }}
+            style={{ marginRight: "auto" }}
           >
             Entorno local…
-          </button>
+          </EliaButton>
         ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: `1px solid ${c.btnGhostBorder}`,
-            background: c.btnGhostBg,
-            color: c.text,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
+        <EliaButton variant="ghost" size="sm" onClick={onClose} disabled={busy}>
           Cancelar
-        </button>
-        <button
-          type="button"
-          data-testid="elia-studio-path-open-once"
-          disabled={busy}
-          onClick={() => runOpen(false)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            cursor: busy ? "wait" : "pointer",
-            fontSize: 13,
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" data-testid="elia-studio-path-open-once" disabled={busy} onClick={() => runOpen(false)}>
           Abrir una vez
-        </button>
-        <button
-          type="button"
-          data-testid="elia-studio-path-save-open"
-          disabled={busy}
-          onClick={() => runOpen(true)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "none",
-            background: c.primary,
-            color: c.primaryFg,
-            cursor: busy ? "wait" : "pointer",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="primary" size="sm" data-testid="elia-studio-path-save-open" disabled={busy} onClick={() => runOpen(true)}>
           {busy ? "Abriendo…" : "Guardar y abrir"}
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

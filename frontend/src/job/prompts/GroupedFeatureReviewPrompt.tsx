@@ -2,6 +2,7 @@ import React from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { cancelJobFlow } from "../promptNav";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -38,8 +39,9 @@ export function GroupedFeatureReviewPrompt(props: Props) {
         }}
       />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button
-          type="button"
+        <EliaButton
+          variant="primary"
+          size="sm"
           onClick={async () => {
             await sendPromptResponse({
               jobId,
@@ -47,33 +49,19 @@ export function GroupedFeatureReviewPrompt(props: Props) {
               answer: { action: "accept", feature_text: bddPreviewText },
             });
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
         >
           Aceptar y generar
-        </button>
-        <button
-          type="button"
+        </EliaButton>
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void cancelJobFlow(jobId);
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.muted,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
+          style={{ color: c.muted }}
         >
           Cancelar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

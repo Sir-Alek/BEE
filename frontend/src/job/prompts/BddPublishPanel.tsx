@@ -3,6 +3,7 @@ import { publishBddFeature, testReqPublishTarget } from "../../api";
 import { BDD_PUBLISH_TARGETS, extractFeatureName } from "../../connectorDefaults";
 import { useConnectorContext } from "../../context/ConnectorContext";
 import type { BddPublishTarget } from "../../types";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -28,15 +29,7 @@ export function BddPublishPanel(props: Props) {
 
   const featureName = useMemo(() => extractFeatureName(gherkinText), [gherkinText]);
 
-  const fieldStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: `1px solid ${c.inputBorder}`,
-    background: c.inputBg,
-    color: c.text,
-    fontSize: 14,
-  };
+  const fieldClass = "elia-input";
 
   async function handlePublish() {
     if (!reqConnectorProfileId) {
@@ -92,7 +85,7 @@ export function BddPublishPanel(props: Props) {
       </div>
 
       <label style={{ fontSize: 13, fontWeight: 600 }}>Destino</label>
-      <select value={target} onChange={(e) => setTarget(e.target.value as BddPublishTarget)} style={fieldStyle}>
+      <select value={target} onChange={(e) => setTarget(e.target.value as BddPublishTarget)} className={fieldClass} style={{ width: "100%" }}>
         {BDD_PUBLISH_TARGETS.map((t) => (
           <option key={t.id} value={t.id}>
             {t.label}
@@ -102,106 +95,61 @@ export function BddPublishPanel(props: Props) {
 
       {target === "jira_vanilla" || target === "jira_xray" ? (
         <input
+          className={fieldClass}
           placeholder={target === "jira_xray" ? "Issue key (opcional)" : "Issue key (ej. QA-104)"}
           value={issueKey}
           onChange={(e) => setIssueKey(e.target.value)}
-          style={fieldStyle}
+          style={{ width: "100%" }}
         />
       ) : null}
 
       {target === "value_edge" ? (
         <input
+          className={fieldClass}
           placeholder="ID story / requerimiento VE"
           value={requirementId}
           onChange={(e) => setRequirementId(e.target.value)}
-          style={fieldStyle}
+          style={{ width: "100%" }}
         />
       ) : null}
 
       {target === "azure_devops" ? (
         <input
+          className={fieldClass}
           placeholder="Work item ID"
           value={workItemId}
           onChange={(e) => setWorkItemId(e.target.value)}
-          style={fieldStyle}
+          style={{ width: "100%" }}
         />
       ) : null}
 
       {target === "git" ? (
         <>
-          <input placeholder="Ruta relativa (opcional)" value={filePath} onChange={(e) => setFilePath(e.target.value)} style={fieldStyle} />
-          <input placeholder="Rama" value={branch} onChange={(e) => setBranch(e.target.value)} style={fieldStyle} />
+          <input className={fieldClass} placeholder="Ruta relativa (opcional)" value={filePath} onChange={(e) => setFilePath(e.target.value)} style={{ width: "100%" }} />
+          <input className={fieldClass} placeholder="Rama" value={branch} onChange={(e) => setBranch(e.target.value)} style={{ width: "100%" }} />
           <input
+            className={fieldClass}
             placeholder="Mensaje de commit (opcional)"
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
-            style={fieldStyle}
+            style={{ width: "100%" }}
           />
         </>
       ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void handleTest()}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
+        <EliaButton variant="ghost" size="sm" disabled={busy} onClick={() => void handleTest()}>
           Probar destino
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void handlePublish()}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="primary" size="sm" disabled={busy} onClick={() => void handlePublish()}>
           Publicar
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onSkip}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" disabled={busy} onClick={onSkip}>
           Continuar sin publicar
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onDone}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="primary" size="sm" disabled={busy} onClick={onDone}>
           Finalizar y continuar job
-        </button>
+        </EliaButton>
       </div>
 
       {statusMsg ? (

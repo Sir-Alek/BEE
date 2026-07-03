@@ -3,6 +3,7 @@ import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { GeneratedFilesResultView } from "../jobUiComponents";
 import type { JobProgressState } from "../useJobProgress";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -62,38 +63,24 @@ export function MessageAckPrompt(props: Props) {
           paddingTop: 8,
         }}
       >
-        <button
-          type="button"
+        <EliaButton
+          variant="primary"
+          size="sm"
           onClick={async () => {
             await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: true });
-          }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
           }}
         >
           Aceptar
-        </button>
-        <button
-          type="button"
+        </EliaButton>
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={async () => {
             await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: true });
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
         >
           Cerrar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

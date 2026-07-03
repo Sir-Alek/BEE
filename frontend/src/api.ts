@@ -1650,6 +1650,107 @@ export async function uploadApiDataFile(
   return res.json();
 }
 
+export type JmxImportReport = {
+  source_file: string;
+  thread_group_index: number;
+  thread_group_name: string;
+  thread_groups: { index: number; name: string; enabled: boolean; sampler_count: number }[];
+  imported_http: number;
+  imported_extractors: number;
+  imported_variables: Record<string, string>;
+  csv_refs: { filename: string; variable_names: string[]; enabled: boolean; delimiter: string }[];
+  load_suggestion: Record<string, unknown>;
+  continue_on_failure?: boolean;
+  suggested_csv?: string | null;
+  include_disabled_controllers?: boolean;
+  groovy_translations?: { kind: string; element: string; sampler?: string | null; message: string }[];
+  imported: { kind: string; element: string; sampler?: string | null; message: string }[];
+  warnings: { kind: string; element: string; sampler?: string | null; message: string }[];
+  skipped: { kind: string; element: string; sampler?: string | null; message: string }[];
+  structural_coverage_pct: number;
+  executability_pct: number;
+  scenario_names: string[];
+};
+
+export type JmxImportMeta = {
+  source_file?: string;
+  thread_group_index?: number;
+  thread_group_name?: string;
+  collection_id?: string;
+  collection_name?: string;
+  scenario_ids?: string[];
+  flow_id?: string;
+  flow_name?: string;
+  load_suggestion?: Record<string, unknown>;
+  csv_basename?: string | null;
+  include_disabled_controllers?: boolean;
+  jmx_path?: string;
+  updated_at?: string;
+};
+
+export type JmxImportResult = {
+  ok: boolean;
+  report: JmxImportReport;
+  collection_id: string;
+  collection_name: string;
+  scenario_ids: string[];
+  count: number;
+  variables_imported: number;
+  jmx_path: string;
+  load_suggestion: Record<string, unknown>;
+  flow_id: string;
+  flow_name: string;
+  csv_basename?: string | null;
+};
+
+async function jmxApiError(res: Response, fallback: string): Promise<never> {
+  const data = await res.json().catch(() => ({}));
+  const detail = typeof (data as { detail?: string })?.detail === "string" ? (data as { detail: string }).detail : fallback;
+  throw new Error(detail);
+}
+
+export async function previewJmxPlan(
+  project: string,
+  file: File,
+  threadGroupIndex = 0,
+  includeDisabledControllers = false,
+): Promise<{ ok: boolean; report: JmxImportReport }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("thread_group_index", String(threadGroupIndex));
+  form.append("include_disabled_controllers", includeDisabledControllers ? "true" : "false");
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/jmx/preview`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) await jmxApiError(res, `No se pudo analizar el JMX: ${res.status}`);
+  return res.json();
+}
+
+export async function getJmxImportMeta(project: string): Promise<{ ok: boolean; meta: JmxImportMeta | null }> {
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/jmx/meta`);
+  if (!res.ok) await jmxApiError(res, `No se pudo leer meta JMX: ${res.status}`);
+  return res.json();
+}
+
+export async function importJmxPlan(
+  project: string,
+  file: File,
+  threadGroupIndex = 0,
+  includeDisabledControllers = false,
+): Promise<JmxImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("thread_group_index", String(threadGroupIndex));
+  form.append("include_disabled_controllers", includeDisabledControllers ? "true" : "false");
+  const res = await fetch(`/api/api/projects/${encodeURIComponent(project)}/jmx/import`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) await jmxApiError(res, `No se pudo importar el JMX: ${res.status}`);
+  return res.json();
+}
+
 export async function getLoadTestMetrics(runId: string): Promise<{
   run_id: string;
   state: string;

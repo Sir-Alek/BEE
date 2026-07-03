@@ -3,6 +3,7 @@ import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
 import { cancelJobFlow } from "../promptNav";
 import { BddPublishPanel } from "./BddPublishPanel";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -87,71 +88,40 @@ export function BddPreviewPrompt(props: Props) {
         />
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button
-          type="button"
-          onClick={() => setPhase("publish")}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
+        <EliaButton variant="primary" size="sm" onClick={() => setPhase("publish")}>
           {ap.payload.can_manual ? "Aceptar escenario" : "Aceptar"}
-        </button>
+        </EliaButton>
         {!ap.payload.can_manual ? (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={async () => {
               await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: { action: "reject" } });
             }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
           >
             Rechazar (regenerar)
-          </button>
+          </EliaButton>
         ) : (
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             onClick={async () => {
               await sendPromptResponse({ jobId, promptId: ap.prompt_id, answer: { action: "use_heuristic" } });
             }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
           >
             Usar generación heurística
-          </button>
+          </EliaButton>
         )}
-        <button
-          type="button"
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void cancelJobFlow(jobId);
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.muted,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
+          style={{ color: c.muted }}
         >
           Cancelar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

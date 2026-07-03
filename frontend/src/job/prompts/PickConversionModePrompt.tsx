@@ -1,6 +1,7 @@
 import React from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -14,24 +15,17 @@ export function PickConversionModePrompt(props: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {activePrompt.options.map((opt) => (
-        <button
+        <EliaButton
           key={opt.value}
-          type="button"
+          variant="ghost"
+          size="sm"
           onClick={async () => {
             await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: opt.value });
           }}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
+          style={{ textAlign: "left", justifyContent: "flex-start" }}
         >
           {opt.label}
-        </button>
+        </EliaButton>
       ))}
     </div>
   );

@@ -1,6 +1,7 @@
 import React from "react";
 import type { EntitlementBanner as BannerKind } from "../app/entitlementPhase";
 import { LoadingStatusRow } from "./LoadingStatusRow";
+import { EliaButton } from "./ui";
 
 const COPY: Record<BannerKind, string | null> = {
   verifying: "Comprobando tu plan…",
@@ -45,20 +46,9 @@ export function EntitlementBanner(props: Props) {
       >
         <span style={{ flex: 1 }}>{text}</span>
         {onDismissOffline ? (
-          <button
-            type="button"
-            onClick={onDismissOffline}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: c.muted,
-              cursor: "pointer",
-              fontSize: 12,
-              padding: "2px 6px",
-            }}
-          >
+          <EliaButton variant="ghost" size="sm" onClick={onDismissOffline} style={{ padding: "2px 6px", fontSize: 12, color: c.muted }}>
             Ocultar
-          </button>
+          </EliaButton>
         ) : null}
       </div>
     );

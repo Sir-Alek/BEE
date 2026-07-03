@@ -1,0 +1,618 @@
+/**
+ * ELIA Design Language — primitivos UI (light + dark).
+ * Regla: 90% estable, 10% movimiento. Neón = feedback semántico.
+ */
+
+/* ── Tokens oscuro ── */
+html[data-elia-theme="dark"] {
+  --elia-page-bg: #030712;
+  --elia-surface: #080f1e;
+  --elia-surface-raised: #0b132b;
+  --elia-border: #1e293b;
+  --elia-border-subtle: rgba(0, 210, 255, 0.1);
+  --elia-border-focus: rgba(0, 210, 255, 0.55);
+  --elia-text: #f1f5f9;
+  --elia-muted: #64748b;
+  --elia-primary: #00d2ff;
+  --elia-primary-fg: #030712;
+  --elia-accent-cyan: #00d2ff;
+  --elia-accent-blue: #38bdf8;
+  --elia-accent-violet: #a855f7;
+  --elia-accent-gradient: linear-gradient(90deg, #00d2ff 0%, #38bdf8 52%, #a855f7 100%);
+  --elia-glow-soft: 0 0 24px rgba(0, 210, 255, 0.06);
+  --elia-panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 40px rgba(0, 210, 255, 0.03);
+  --elia-panel-highlight: linear-gradient(180deg, rgba(0, 210, 255, 0.07) 0%, transparent 100%);
+  --elia-chrome-bg: #060b16;
+  --elia-chrome-line: rgba(0, 210, 255, 0.12);
+  --elia-input-bg: #080f1e;
+  --elia-input-border: #334155;
+  --elia-focus-ring: 0 0 0 1px rgba(0, 210, 255, 0.35), 0 0 12px rgba(0, 210, 255, 0.12);
+  --elia-spinner-track: #334155;
+  --elia-spinner-active: #00d2ff;
+  --elia-btn-ghost-bg: rgba(11, 19, 43, 0.6);
+  --elia-btn-ghost-border: #334155;
+  --elia-splash-bg: #030712;
+  --elia-splash-glow: rgba(0, 210, 255, 0.07);
+  --elia-splash-particle: rgba(0, 210, 255, 0.35);
+  --elia-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+
+/* ── Tokens claro ── */
+html[data-elia-theme="light"] {
+  --elia-page-bg: #f8fafc;
+  --elia-surface: #ffffff;
+  --elia-surface-raised: #f1f5f9;
+  --elia-border: #e2e8f0;
+  --elia-border-subtle: rgba(8, 145, 178, 0.14);
+  --elia-border-focus: rgba(8, 145, 178, 0.45);
+  --elia-text: #0f172a;
+  --elia-muted: #64748b;
+  --elia-primary: #0891b2;
+  --elia-primary-fg: #ffffff;
+  --elia-accent-cyan: #0891b2;
+  --elia-accent-blue: #0284c7;
+  --elia-accent-violet: #7c3aed;
+  --elia-accent-gradient: linear-gradient(90deg, #0891b2 0%, #0284c7 52%, #7c3aed 100%);
+  --elia-glow-soft: 0 0 20px rgba(8, 145, 178, 0.08);
+  --elia-panel-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 0 32px rgba(8, 145, 178, 0.04);
+  --elia-panel-highlight: linear-gradient(180deg, rgba(8, 145, 178, 0.06) 0%, transparent 100%);
+  --elia-chrome-bg: #ffffff;
+  --elia-chrome-line: rgba(8, 145, 178, 0.16);
+  --elia-input-bg: #ffffff;
+  --elia-input-border: #cbd5e1;
+  --elia-focus-ring: 0 0 0 1px rgba(8, 145, 178, 0.35), 0 0 10px rgba(8, 145, 178, 0.1);
+  --elia-spinner-track: #cbd5e1;
+  --elia-spinner-active: #0891b2;
+  --elia-btn-ghost-bg: rgba(255, 255, 255, 0.85);
+  --elia-btn-ghost-border: #cbd5e1;
+  --elia-splash-bg: #f8fafc;
+  --elia-splash-glow: rgba(8, 145, 178, 0.05);
+  --elia-splash-particle: rgba(8, 145, 178, 0.28);
+  --elia-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+
+/* ── Tipografía técnica ── */
+.elia-mono,
+.elia-mono input,
+.elia-mono textarea,
+.elia-mono code {
+  font-family: var(--elia-font-mono);
+  font-size: 0.92em;
+  letter-spacing: 0.01em;
+}
+
+/* ── Paneles ── */
+.elia-panel {
+  position: relative;
+  background: var(--elia-surface);
+  border: 1px solid var(--elia-border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--elia-panel-shadow);
+  overflow: hidden;
+}
+
+.elia-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--elia-panel-highlight);
+  pointer-events: none;
+}
+
+.elia-panel--padded {
+  padding: 18px;
+}
+
+.elia-panel--inset {
+  background: var(--elia-surface-raised);
+}
+
+.elia-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--elia-border-subtle);
+  background: var(--elia-surface-raised);
+}
+
+/* ── Botones ── */
+.elia-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--elia-btn-ghost-border);
+  background: var(--elia-btn-ghost-bg);
+  color: var(--elia-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.elia-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.elia-btn:not(:disabled):hover {
+  border-color: var(--elia-border-focus);
+  box-shadow: var(--elia-glow-soft);
+}
+
+.elia-btn--ghost {
+  background: transparent;
+}
+
+.elia-btn--primary:not(:disabled) {
+  border-color: transparent;
+  background: var(--elia-primary);
+  color: var(--elia-primary-fg);
+}
+
+.elia-btn--primary:not(:disabled):hover {
+  border-color: transparent;
+  background: var(--elia-accent-gradient);
+  color: var(--elia-primary-fg);
+  box-shadow: var(--elia-glow-soft);
+}
+
+.elia-btn--tab {
+  padding: 10px 14px;
+  font-weight: 700;
+  background: transparent;
+}
+
+.elia-btn--tab.is-active {
+  border-color: var(--elia-border-focus);
+  box-shadow: inset 0 0 0 1px rgba(0, 210, 255, 0.08), var(--elia-glow-soft);
+  background: var(--elia-surface);
+}
+
+html[data-elia-theme="light"] .elia-btn--tab.is-active {
+  border-color: var(--elia-border-focus);
+  color: var(--elia-accent-cyan);
+}
+
+.elia-btn--sm {
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.elia-btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* ── Inputs ── */
+.elia-input,
+input.elia-input,
+select.elia-input,
+textarea.elia-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--elia-input-border);
+  background: var(--elia-input-bg);
+  color: var(--elia-text);
+  font-size: 13px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.elia-input:focus,
+input.elia-input:focus,
+select.elia-input:focus,
+textarea.elia-input:focus {
+  outline: none;
+  border-color: var(--elia-border-focus);
+  box-shadow: var(--elia-focus-ring);
+}
+
+.elia-input::placeholder,
+textarea.elia-input::placeholder {
+  color: var(--elia-muted);
+}
+
+/* ── Chrome / header consola ── */
+.elia-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--elia-chrome-bg);
+  border-bottom: 1px solid var(--elia-chrome-line);
+}
+
+.elia-chrome__status {
+  font-size: 12px;
+  color: var(--elia-muted);
+  text-align: right;
+  flex: 1 1 160px;
+  min-width: 120px;
+}
+
+.elia-chrome__status--running {
+  font-family: var(--elia-font-mono);
+  color: var(--elia-accent-cyan);
+}
+
+.elia-chrome--handoff {
+  animation: eliaChromeHandoff 420ms ease-out forwards;
+}
+
+@keyframes eliaChromeHandoff {
+  from {
+    border-bottom-color: var(--elia-accent-cyan);
+    box-shadow: inset 0 -1px 0 rgba(0, 210, 255, 0.35), 0 4px 24px rgba(0, 210, 255, 0.08);
+  }
+  to {
+    border-bottom-color: var(--elia-chrome-line);
+    box-shadow: none;
+  }
+}
+
+html[data-elia-theme="light"] .elia-chrome--handoff {
+  animation-name: eliaChromeHandoffLight;
+}
+
+@keyframes eliaChromeHandoffLight {
+  from {
+    border-bottom-color: var(--elia-accent-cyan);
+    box-shadow: inset 0 -1px 0 rgba(8, 145, 178, 0.28), 0 4px 18px rgba(8, 145, 178, 0.06);
+  }
+  to {
+    border-bottom-color: var(--elia-chrome-line);
+    box-shadow: none;
+  }
+}
+
+/* ── App shell handoff ── */
+.elia-app-shell {
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
+.elia-app-shell--handoff {
+  animation: eliaAppEnter 380ms ease-out forwards;
+}
+
+@keyframes eliaAppEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Spinner operativo ── */
+.elia-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--elia-spinner-track);
+  border-top-color: var(--elia-spinner-active);
+  animation: elia-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.elia-spinner--md {
+  width: 18px;
+  height: 18px;
+}
+
+.elia-spinner--overlay {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Fila de carga ── */
+.elia-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid var(--elia-border-subtle);
+  background: var(--elia-surface-raised);
+  color: var(--elia-text);
+}
+
+.elia-loading-row--info {
+  border-color: rgba(56, 189, 248, 0.22);
+  background: var(--elia-surface-raised);
+}
+
+html[data-elia-theme="light"] .elia-loading-row--info {
+  border-color: rgba(8, 145, 178, 0.2);
+}
+
+.elia-loading-row--success {
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.elia-loading-row--error {
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+/* ── Toolbar secundaria ── */
+.elia-toolbar {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--elia-border-subtle);
+}
+
+.elia-toolbar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--elia-border-subtle);
+  background: var(--elia-surface-raised);
+}
+
+.elia-toolbar__title {
+  font-size: 12px;
+  color: var(--elia-muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+/* ── Badge consola ── */
+.elia-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--elia-border-subtle);
+  background: var(--elia-surface-raised);
+  color: var(--elia-muted);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.elia-badge--active {
+  border-color: var(--elia-border-focus);
+  color: var(--elia-accent-cyan);
+}
+
+/* ── Modales ── */
+.elia-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1100;
+}
+
+html[data-elia-theme="light"] .elia-modal-overlay {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.elia-modal-overlay--top {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: max(16px, 4vh);
+  padding-bottom: max(16px, 4vh);
+  overflow-y: auto;
+}
+
+.elia-settings-apply-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.35);
+  pointer-events: none;
+  animation: eliaAppEnter 280ms ease-out forwards;
+}
+
+html[data-elia-theme="light"] .elia-settings-apply-overlay {
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.elia-modal-panel {
+  position: relative;
+  background: var(--elia-surface);
+  border: 1px solid var(--elia-border-subtle);
+  border-radius: 14px;
+  padding: 22px 24px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: var(--elia-panel-shadow), 0 16px 48px rgba(0, 0, 0, 0.22);
+  color: var(--elia-text);
+}
+
+.elia-modal-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--elia-panel-highlight);
+  pointer-events: none;
+}
+
+.elia-modal-panel--wide {
+  max-width: min(680px, 96vw);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(92vh, 920px);
+  overflow: hidden;
+}
+
+.elia-modal-panel--wide .elia-modal-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+.elia-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--elia-border-subtle);
+}
+
+.elia-modal-header__title {
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--elia-text);
+}
+
+.elia-modal-header__subtitle {
+  font-size: 13px;
+  color: var(--elia-muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.elia-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.elia-modal-body-text {
+  font-size: 14px;
+  color: var(--elia-muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+  white-space: pre-wrap;
+}
+
+.elia-settings-shell {
+  max-width: min(680px, 96vw) !important;
+  width: min(680px, 96vw);
+  min-height: min(72vh, 640px);
+  max-height: min(92vh, 920px);
+  overflow: auto;
+  padding: 22px;
+}
+
+.elia-modal-panel--guide {
+  max-width: min(920px, 96vw) !important;
+  width: min(920px, 96vw);
+  min-height: min(62vh, 560px);
+  max-height: min(88vh, 900px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.elia-settings-section {
+  border: 1px solid var(--elia-border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--elia-surface-raised);
+}
+
+.elia-select-card {
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--elia-border-subtle);
+  background: var(--elia-input-bg);
+  color: var(--elia-text);
+  cursor: pointer;
+  width: 100%;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.elia-select-card.is-active {
+  border-color: var(--elia-border-focus);
+  box-shadow: var(--elia-glow-soft);
+  background: var(--elia-surface);
+}
+
+.elia-btn--danger:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+}
+
+html[data-elia-theme="light"] .elia-btn--danger:not(:disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.elia-btn--danger:not(:disabled):hover {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
+}
+
+.elia-btn--warn:not(:disabled) {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--elia-surface-raised);
+  color: var(--elia-text);
+}
+
+.elia-btn--warn:not(:disabled):hover {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+/* ── HUD mode amplificación ── */
+html[data-elia-hud="1"] .elia-panel.elia-hud-panel,
+html[data-elia-hud="1"] .elia-hud-panel {
+  border-color: rgba(0, 210, 255, 0.18);
+  box-shadow: var(--elia-glow-soft), var(--elia-panel-shadow);
+}
+
+html[data-elia-hud="1"][data-elia-theme="light"] .elia-panel.elia-hud-panel,
+html[data-elia-hud="1"][data-elia-theme="light"] .elia-hud-panel {
+  border-color: rgba(8, 145, 178, 0.22);
+}
+
+html[data-elia-hud="1"] .elia-chrome {
+  box-shadow: inset 0 -1px 0 var(--elia-chrome-line);
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .elia-spinner {
+    animation: elia-pulse-cyan 1.4s ease-in-out infinite;
+  }
+
+  .elia-app-shell--handoff,
+  .elia-chrome--handoff {
+    animation: none !important;
+  }
+
+  .elia-btn {
+    transition: none;
+  }
+}

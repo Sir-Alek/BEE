@@ -1,5 +1,6 @@
 import React from "react";
 import { cancelJobFlow, goBackPrompt } from "../promptNav";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -22,39 +23,26 @@ export function PromptNavButtons(props: Props) {
       }}
     >
       {showBack ? (
-        <button
-          type="button"
+        <EliaButton
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void goBackPrompt(jobId, promptId);
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.btnGhostBg,
-            color: c.text,
-            border: `1px solid ${c.btnGhostBorder}`,
-            cursor: "pointer",
-          }}
         >
           Regresar
-        </button>
+        </EliaButton>
       ) : null}
-      <button
-        type="button"
+      <EliaButton
+        variant="ghost"
+        size="sm"
         onClick={() => {
           void cancelJobFlow(jobId);
         }}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: c.btnGhostBg,
-          color: c.muted,
-          border: `1px solid ${c.btnGhostBorder}`,
-          cursor: "pointer",
-        }}
+        style={{ color: c.muted }}
       >
         Cancelar
-      </button>
+      </EliaButton>
     </div>
   );
 }

@@ -15,7 +15,7 @@ import {
   licenseSoftExpiryDismissKey,
   type LicenseState,
 } from "../app/licenseUtils";
-import { OutlinedButton, SecondaryToolbar } from "../components/ui";
+import { EliaButton, OutlinedButton, SecondaryToolbar } from "../components/ui";
 import { EntitlementBanner } from "../components/EntitlementBanner";
 import { NoLicenseOverlay } from "../components/NoLicenseOverlay";
 import { ProjectManageToolbar } from "../components/ProjectManageToolbar";
@@ -45,7 +45,7 @@ export function HomeSurface() {
     setLinkRecordings, linkMapping, setLinkMapping, recordingMapping, setRecordingMapping,
     availableRecordings, setAvailableScenarios, setAvailableRecordings, setHomeHint,
     homeDataRefresh, pendingRunProject, clearPendingRunProject,
-    refreshHomeData, selectRunProject, selectApiProject,
+    refreshHomeData, selectRunProject, selectApiProject, initialBootComplete,
   } = useHomeUiContext();
   const {
     connectorProfiles, reqConnectorProfileId, setReqConnectorProfileId,
@@ -121,68 +121,32 @@ export function HomeSurface() {
   if (!initialChecked) return null;
 
   return (
-          <div
-            data-testid="elia-home"
-            style={{
-              background: c.surface,
-              border: `1px solid ${c.border}`,
-              borderRadius: 14,
-              padding: 18,
-              boxShadow: c.shadow,
-            }}
-          >
+          <div data-testid="elia-home" className="elia-panel elia-hud-panel elia-panel--padded">
             <h2 style={{ margin: "0 0 10px 0", fontSize: 20, color: c.text }}>ELIA Web UI</h2>
             <div style={{ color: c.text, marginBottom: 14 }}>
               Pestaña principal: cada operación se abre en una <b>nueva pestaña</b> (avisos, prompts y resultado) sin cerrar
               esta vista.
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                padding: 6,
-                borderRadius: 12,
-                border: `1px solid ${c.border}`,
-                background: c.neutralBg,
-                marginBottom: 14,
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
+            <div className="elia-tab-bar" style={{ marginBottom: 14 }}>
+              <EliaButton
+                variant="tab"
                 data-testid="elia-home-tab-ui"
                 onClick={() => setHomeTab("ui")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: `1px solid ${homeTab === "ui" ? c.primary : c.btnGhostBorder}`,
-                  background: homeTab === "ui" ? c.primary : c.btnGhostBg,
-                  color: homeTab === "ui" ? c.primaryFg : c.text,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
+                active={homeTab === "ui"}
               >
                 Automatización UI
-              </button>
-              <button
-                type="button"
+              </EliaButton>
+              <EliaButton
+                variant="tab"
                 data-testid="elia-home-tab-api"
                 onClick={() => setHomeTab("api")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: `1px solid ${homeTab === "api" ? c.primary : c.btnGhostBorder}`,
-                  background: homeTab === "api" ? c.primary : c.btnGhostBg,
-                  color: homeTab === "api" ? c.primaryFg : c.text,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
+                active={homeTab === "api"}
               >
                 Pruebas API
-              </button>
-              <button
-                type="button"
+              </EliaButton>
+              <EliaButton
+                variant="tab"
                 data-testid="elia-home-tab-req"
                 onClick={() => {
                   if (docAccess === "denied" && showDocLock) {
@@ -192,23 +156,12 @@ export function HomeSurface() {
                   if (docAccess !== "granted") return;
                   setHomeTab("req");
                 }}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: `1px solid ${homeTab === "req" ? c.primary : c.btnGhostBorder}`,
-                  background: homeTab === "req" ? c.primary : c.btnGhostBg,
-                  color: homeTab === "req" ? c.primaryFg : c.text,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
+                active={homeTab === "req"}
               >
                 {showDocLock ? <span style={{ fontSize: 12 }}>🔒</span> : null}
                 Inteligencia de Requerimientos
                 {showDocLock ? <TierBadge c={c} label="Tester" /> : null}
-              </button>
+              </EliaButton>
             </div>
 
             {homeHint && (
@@ -228,12 +181,18 @@ export function HomeSurface() {
               </div>
             )}
 
-            <EntitlementBanner
-              c={c}
-              banner={entitlementBanner}
-              offlineDismissed={offlineBannerDismissed}
-              onDismissOffline={() => setOfflineBannerDismissed(true)}
-            />
+            {(entitlementBanner !== "none" &&
+              !(
+                !initialBootComplete &&
+                (entitlementBanner === "modules_loading" || entitlementBanner === "verifying")
+              )) && (
+              <EntitlementBanner
+                c={c}
+                banner={entitlementBanner}
+                offlineDismissed={offlineBannerDismissed}
+                onDismissOffline={() => setOfflineBannerDismissed(true)}
+              />
+            )}
 
             {license && licenseNeedsActivationBanner(license) && (
               <div
@@ -257,27 +216,18 @@ export function HomeSurface() {
                 <span>
                   ELIA requiere una clave de activación. Configuración → Licencia (huella de máquina necesaria).
                 </span>
-                <button
-                  type="button"
+                <EliaButton
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setLicenseActivateMsg(null);
                     setSettingsTab("license");
                     setSettingsOpen(true);
                   }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${c.btnGhostBorder}`,
-                    background: c.btnGhostBg,
-                    color: c.text,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
+                  style={{ whiteSpace: "nowrap" }}
                 >
                   Configuración →
-                </button>
+                </EliaButton>
               </div>
             )}
 
@@ -326,8 +276,9 @@ export function HomeSurface() {
                     {Math.max(0, Math.ceil((license.expires_at * 1000 - Date.now()) / 86400000))} día(s)). Renueva a
                     tiempo para evitar interrupciones.
                   </span>
-                  <button
-                    type="button"
+                  <EliaButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       try {
                         localStorage.setItem(licenseSoftExpiryDismissKey(license.expires_at!), "1");
@@ -336,20 +287,10 @@ export function HomeSurface() {
                       }
                       setSoftExpiryDismissed(true);
                     }}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      background: c.btnGhostBg,
-                      color: c.text,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     Entendido
-                  </button>
+                  </EliaButton>
                 </div>
               )}
 
@@ -393,32 +334,30 @@ export function HomeSurface() {
                     const badge = p === "mobile" ? "Tester" : p === "legacy" ? "Architect" : null;
                     const active = platform === p;
                     return (
-                      <button
+                      <EliaButton
                         key={p}
+                        variant="tab"
+                        size="sm"
                         data-testid={`elia-platform-${p}`}
+                        active={active}
                         onClick={() => {
                           if (locked) { setShowLockModal(p); return; }
                           if (access === "denied" || access === "pending") return;
                           setPlatform(p);
                         }}
                         style={{
-                          padding: "7px 18px",
-                          borderRadius: 8,
-                          border: active ? `2px solid ${c.primary}` : `1px solid ${c.btnGhostBorder}`,
-                          background: active ? c.primary : c.btnGhostBg,
-                          color: active ? c.primaryFg : locked || pending ? c.muted : c.text,
-                          fontWeight: active ? 700 : 400,
-                          cursor: "pointer",
                           opacity: locked ? 0.6 : pending ? 0.5 : 1,
-                          fontSize: 14,
-                          display: "flex", alignItems: "center", gap: 5,
+                          color: active ? undefined : locked || pending ? c.muted : c.text,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
                         }}
                       >
                         {locked && <span style={{ fontSize: 12 }}>🔒</span>}
                         {pending && !locked && <span style={{ fontSize: 10, opacity: 0.7 }}>…</span>}
                         {labels[p]}
                         {locked && badge ? <TierBadge c={c} label={badge} /> : null}
-                      </button>
+                      </EliaButton>
                     );
                   })}
                 </div>
@@ -595,7 +534,8 @@ export function HomeSurface() {
                 )}
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
+                  <EliaButton
+                    variant="primary"
                     data-testid="elia-btn-record"
                     disabled={
                       !actionsEnabled ||
@@ -609,28 +549,11 @@ export function HomeSurface() {
                       else if (platform === "mobile") void startJob("mobile_recorder");
                       else void startJob("legacy_recorder");
                     }}
-                    style={{
-                      padding: "10px 14px", borderRadius: 10,
-                      background:
-                        !actionsEnabled
-                          ? c.buttonDisabledBg
-                          : platform === "web" && recorderPreflight && !recorderPreflight.ok
-                            ? c.buttonDisabledBg
-                            : platform === "mobile" && mobilePreflight && !mobilePreflight.ok
-                              ? c.buttonDisabledBg
-                              : c.primary,
-                      color: c.primaryFg, border: "none",
-                      cursor:
-                        !actionsEnabled ||
-                        (platform === "web" && recorderPreflight && !recorderPreflight.ok) ||
-                        (platform === "mobile" && mobilePreflight && !mobilePreflight.ok)
-                          ? "not-allowed"
-                          : "pointer",
-                    }}
                   >
                     Grabar Interacciones
-                  </button>
-                  <button
+                  </EliaButton>
+                  <EliaButton
+                    variant="ghost"
                     disabled={
                       !actionsEnabled ||
                       (platform === "mobile" && !features.mobile_recording) ||
@@ -641,30 +564,17 @@ export function HomeSurface() {
                       else if (platform === "mobile") void startJob("mobile_to_behave");
                       else void startJob("legacy_to_behave");
                     }}
-                    style={{
-                      padding: "10px 14px", borderRadius: 10,
-                      background: c.btnGhostBg, color: c.text,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
-                      opacity: !actionsEnabled ? 0.5 : 1,
-                    }}
                   >
                     Convertir a Behave
-                  </button>
+                  </EliaButton>
                   {platform === "web" && (
-                  <button
+                  <EliaButton
+                    variant="ghost"
                     disabled={!actionsEnabled}
                     onClick={() => void startJob("puppeteer_to_step_by_step")}
-                    style={{
-                      padding: "10px 14px", borderRadius: 10,
-                      background: c.btnGhostBg, color: c.text,
-                      border: `1px solid ${c.btnGhostBorder}`,
-                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
-                      opacity: !actionsEnabled ? 0.5 : 1,
-                    }}
                   >
                     Convertir a step by step
-                  </button>
+                  </EliaButton>
                   )}
                 </div>
 
@@ -714,25 +624,16 @@ export function HomeSurface() {
                       projects={runProjects}
                     />
                     {platform === "web" && (
-                    <button
-                      type="button"
+                    <EliaButton
+                      variant="ghost"
+                      size="sm"
                       data-testid="elia-new-from-template-btn"
                       disabled={!actionsEnabled}
                       onClick={() => setTemplateModalOpen(true)}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        border: `1px solid ${c.primary}`,
-                        background: "transparent",
-                        color: c.primary,
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: !actionsEnabled ? "not-allowed" : "pointer",
-                        opacity: !actionsEnabled ? 0.5 : 1,
-                      }}
+                      style={{ color: "var(--elia-accent-cyan)", borderColor: "var(--elia-border-focus)" }}
                     >
                       Nueva plantilla…
-                    </button>
+                    </EliaButton>
                     )}
                   </div>
                   {runProject ? (
@@ -829,14 +730,15 @@ export function HomeSurface() {
                         <span style={{ flex: 1, color: c.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {doc.name}
                         </span>
-                        <button
+                        <EliaButton
+                          variant="ghost"
+                          size="icon"
                           onClick={() => setLoadedDocs((prev) => prev.filter((_, j) => j !== i))}
-                          style={{
-                            background: "none", border: "none", color: c.muted,
-                            cursor: "pointer", fontSize: 14, padding: "0 4px",
-                          }}
+                          style={{ background: "none", border: "none", color: c.muted, fontSize: 14, padding: "0 4px" }}
                           title="Quitar"
-                        >✕</button>
+                        >
+                          ✕
+                        </EliaButton>
                       </div>
                     ))}
                   </div>
@@ -946,19 +848,14 @@ export function HomeSurface() {
 
                 {/* Botón de acción principal */}
                 <div style={{ marginTop: 4 }}>
-                  <button
+                  <EliaButton
+                    variant="primary"
                     data-testid="elia-btn-doc-bdd"
                     disabled={!actionsEnabled}
                     onClick={() => void startJob("doc_to_bdd")}
-                    style={{
-                      padding: "10px 20px", borderRadius: 10,
-                      background: !actionsEnabled ? c.buttonDisabledBg : c.primary,
-                      color: c.primaryFg, border: "none", fontWeight: 600, fontSize: 14,
-                      cursor: !actionsEnabled ? "not-allowed" : "pointer",
-                    }}
                   >
                     Procesar y Convertir a BDD
-                  </button>
+                  </EliaButton>
                 </div>
 
                 <SecondaryToolbar c={c} title="Integraciones y utilidades">
@@ -966,11 +863,8 @@ export function HomeSurface() {
                   <select
                     value={reqConnectorProfileId}
                     onChange={(e) => setReqConnectorProfileId(e.target.value)}
-                    style={{
-                      flex: "1 1 180px", minWidth: 160, padding: "7px 10px",
-                      borderRadius: 8, border: `1px solid ${c.inputBorder}`,
-                      background: c.inputBg, color: c.text, fontSize: 13,
-                    }}
+                    className="elia-input"
+                    style={{ flex: "1 1 180px", minWidth: 160, width: "auto" }}
                   >
                     {connectorProfiles.length === 0 ? (
                       <option value="">Sin perfiles — Configuración (⚙)</option>

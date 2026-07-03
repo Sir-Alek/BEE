@@ -1,4 +1,5 @@
 import React from "react";
+import { LoadingStatusRow } from "../components/LoadingStatusRow";
 import {
   getProjectRunHistoryEntry,
   listProjectRunHistory,
@@ -70,7 +71,7 @@ export function RunHistoryPanel(props: Props) {
 
       {expanded ? (
         loading ? (
-          <div style={{ fontSize: 13, color: c.muted }}>Cargando historial…</div>
+          <LoadingStatusRow c={c} text="Cargando historial…" loading />
         ) : runs.length === 0 ? (
           <div style={{ fontSize: 13, color: c.muted }}>
             Aún no hay ejecuciones guardadas (máximo 5 por proyecto en{" "}

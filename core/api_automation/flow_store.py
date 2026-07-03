@@ -47,3 +47,21 @@ def save_flow(project: str, flow: ApiFlow, *, flow_id: Optional[str] = None) -> 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(flow.to_dict(), f, ensure_ascii=False, indent=2)
     return fid
+
+
+def delete_flow(project: str, flow_id: str) -> bool:
+    fid = os.path.basename(flow_id)
+    if not fid.lower().endswith(".json"):
+        fid += ".json"
+    path = flows_dir(project) / fid
+    if not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
+def flow_exists(project: str, flow_id: str) -> bool:
+    fid = os.path.basename(flow_id)
+    if not fid.lower().endswith(".json"):
+        fid += ".json"
+    return (flows_dir(project) / fid).is_file()

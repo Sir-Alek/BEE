@@ -1,5 +1,6 @@
 import React from "react";
 import { inferBehaveProjectFromProgress, returnToHomeFromJobTab } from "../app/homeNavigation";
+import { EliaButton } from "../components/ui";
 import { GeneratedFilesResultView } from "./jobUiComponents";
 import type { JobProgressState } from "./useJobProgress";
 
@@ -29,8 +30,9 @@ export function JobDonePanel(props: Props) {
         pone al frente la de inicio con el proyecto actualizado. Si abriste solo esta URL, esta pestaña mostrará el inicio.
       </div>
       <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
+        <EliaButton
+          variant="primary"
+          size="sm"
           title="Cierra esta pestaña de trabajo y enfoca la de inicio, si existe."
           onClick={() => {
             const inferred = inferBehaveProjectFromProgress(job.progress);
@@ -40,17 +42,9 @@ export function JobDonePanel(props: Props) {
               project: inferred.project,
             });
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
         >
           Volver al inicio
-        </button>
+        </EliaButton>
       </div>
     </div>
   );
@@ -70,20 +64,9 @@ export function JobCancelledPanel(props: { c: Record<string, string> }) {
     >
       <b style={{ color: c.text }}>Operación cancelada</b>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
-          onClick={() => returnToHomeFromJobTab()}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
+        <EliaButton variant="primary" size="sm" onClick={() => returnToHomeFromJobTab()}>
           Volver al inicio
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

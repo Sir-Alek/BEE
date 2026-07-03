@@ -4,6 +4,7 @@ import {
   tierDisplayName,
   UPGRADE_CONTACT_EMAIL,
 } from "../app/entitlements";
+import { EliaButton, EliaLinkButton, EliaModalActions, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -19,32 +20,8 @@ export function AvdArchitectUpsellModal(props: Props) {
   )}`;
 
   return (
-    <div
-      data-testid="elia-avd-architect-upsell"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.42)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1100,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 18,
-          padding: "26px 28px",
-          maxWidth: 420,
-          width: "100%",
-          boxShadow: "0 16px 48px rgba(0,0,0,0.28)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <EliaModalOverlay testId="elia-avd-architect-upsell" ariaLabel="Creación automática de AVD" onClose={onClose}>
+      <EliaModalPanel onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, padding: "26px 28px" }}>
         <div
           style={{
             width: 44,
@@ -92,81 +69,39 @@ export function AvdArchitectUpsellModal(props: Props) {
           Con Architect, ELIA descarga la system image, acepta licencias y crea el AVD en un
           solo clic. Mientras tanto, puedes abrir Android Studio y usar Device Manager.
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
+        <EliaModalActions>
+          <EliaButton variant="ghost" size="sm" onClick={onClose}>
             Entendido
-          </button>
+          </EliaButton>
           {onOpenEnvironmentSettings ? (
-            <button
-              type="button"
+            <EliaButton
+              variant="ghost"
+              size="sm"
               data-testid="elia-avd-upsell-env-settings"
               onClick={() => {
                 onOpenEnvironmentSettings();
                 onClose();
               }}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                background: c.inputBg,
-                color: c.text,
-                border: `1px solid ${c.inputBorder}`,
-                cursor: "pointer",
-                fontSize: 13,
-              }}
             >
               Entorno local…
-            </button>
+            </EliaButton>
           ) : null}
-          <button
-            type="button"
+          <EliaButton
+            variant="ghost"
+            size="sm"
             data-testid="elia-avd-upsell-open-studio"
             onClick={() => {
               onOpenStudio();
               onClose();
             }}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              background: c.inputBg,
-              color: c.text,
-              border: `1px solid ${c.inputBorder}`,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
           >
             Abrir Android Studio
-          </button>
-          <a
-            href={mailto}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              background: c.primary,
-              color: c.primaryFg,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 13,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-            }}
-          >
+          </EliaButton>
+          <EliaLinkButton href={mailto} variant="primary" size="sm">
             Conocer Architect
-          </a>
-        </div>
-      </div>
-    </div>
+          </EliaLinkButton>
+        </EliaModalActions>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }

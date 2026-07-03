@@ -9,8 +9,8 @@ import {
   type ToolPathEntryStatus,
   type ToolPathsStatusResponse,
 } from "../api";
-import { modalFieldStyle } from "../app/utils";
 import { LoadingStatusRow } from "../components/LoadingStatusRow";
+import { EliaButton } from "../components/ui";
 import { truncatePathForDisplay } from "../mobileEnvUi";
 
 const GROUPS: { id: string; label: string; keys: readonly string[] }[] = [
@@ -69,21 +69,22 @@ function PathField(props: {
         </div>
       ) : null}
       <input
+        className="elia-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={entry.kind === "dir" ? "Carpeta…" : "Ruta al ejecutable…"}
-        style={{ ...modalFieldStyle(c), width: "100%", marginBottom: 8, fontSize: 13 }}
+        style={{ width: "100%", marginBottom: 8, fontSize: 13 }}
       />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" onClick={onBrowse} style={ghostBtn(c)}>
+        <EliaButton variant="ghost" size="sm" onClick={onBrowse}>
           Buscar…
-        </button>
-        <button type="button" onClick={onTest} style={ghostBtn(c)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={onTest}>
           Probar
-        </button>
-        <button type="button" onClick={onClear} style={ghostBtn(c)}>
+        </EliaButton>
+        <EliaButton variant="ghost" size="sm" onClick={onClear}>
           Limpiar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );
@@ -219,23 +220,15 @@ export function ToolPathsSettingsPanel(props: Props) {
       </div>
 
       <div style={{ marginBottom: 14 }}>
-        <button
-          type="button"
+        <EliaButton
+          variant="ghost"
+          size="sm"
           data-testid="elia-tool-paths-diagnostic"
           disabled={diagnosticBusy}
           onClick={handleDiagnostic}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: `1px solid ${c.inputBorder}`,
-            background: c.inputBg,
-            color: c.text,
-            cursor: diagnosticBusy ? "wait" : "pointer",
-            fontSize: 13,
-          }}
         >
           {diagnosticBusy ? "Diagnosticando…" : "Ejecutar diagnóstico"}
-        </button>
+        </EliaButton>
         {diagnosticMsg ? (
           <div style={{ fontSize: 12, color: c.muted, marginTop: 8 }}>{diagnosticMsg}</div>
         ) : null}
@@ -300,39 +293,13 @@ export function ToolPathsSettingsPanel(props: Props) {
       {msg ? <div style={{ fontSize: 12, color: c.text, marginTop: 8 }}>{msg}</div> : null}
 
       <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
-        <button type="button" onClick={() => void refresh()} style={ghostBtn(c)}>
+        <EliaButton variant="ghost" size="sm" onClick={() => void refresh()}>
           Recargar
-        </button>
-        <button
-          type="button"
-          data-testid="elia-tool-paths-save"
-          disabled={saving}
-          onClick={handleSave}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: c.primary,
-            color: c.primaryFg,
-            cursor: saving ? "wait" : "pointer",
-            fontWeight: 600,
-          }}
-        >
+        </EliaButton>
+        <EliaButton variant="primary" size="sm" data-testid="elia-tool-paths-save" disabled={saving} onClick={handleSave}>
           {saving ? "Guardando…" : "Guardar rutas"}
-        </button>
+        </EliaButton>
       </div>
     </div>
   );
-}
-
-function ghostBtn(c: Record<string, string>): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    borderRadius: 8,
-    border: `1px solid ${c.btnGhostBorder}`,
-    background: c.btnGhostBg,
-    color: c.text,
-    cursor: "pointer",
-    fontSize: 12,
-  };
 }

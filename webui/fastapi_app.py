@@ -289,6 +289,7 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
     logo_path = os.path.join(base_dir, "resources", "logo_elia.png")
     logo_icon_path = os.path.join(base_dir, "resources", "logo_elia_icon.png")
     logo_letters_path = os.path.join(base_dir, "resources", "logo_letras.png")
+    logo_elia_full_path = os.path.join(base_dir, "resources", "logo_elia_full.png")
     logo_ico_path = os.path.join(base_dir, "resources", "logo_elia.ico")
     exit_flag = {"value": False}
     ui_session = {"last_ping": 0.0, "ever": False}
@@ -1938,6 +1939,12 @@ def create_app(*, job_manager: Optional[JobManager] = None) -> FastAPI:
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="logo letters not found")
         return FileResponse(path, media_type="image/png")
+
+    @app.get("/logo_elia_full.png")
+    def logo_elia_full_png(_: None = Depends(_require_localhost)) -> Any:
+        if not os.path.exists(logo_elia_full_path):
+            raise HTTPException(status_code=404, detail="logo full not found")
+        return FileResponse(logo_elia_full_path, media_type="image/png")
 
     @app.get("/favicon.ico")
     def favicon_ico(_: None = Depends(_require_localhost)) -> Any:

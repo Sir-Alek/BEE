@@ -1,0 +1,459 @@
+.elia-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--elia-splash-bg);
+  color: var(--elia-text);
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.elia-splash--fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.elia-splash__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, var(--elia-splash-glow), transparent 38%),
+    radial-gradient(circle at 18% 12%, rgba(168, 85, 247, 0.06), transparent 28%),
+    radial-gradient(circle at 82% 18%, rgba(236, 72, 153, 0.05), transparent 26%),
+    var(--elia-splash-bg);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.elia-splash__dots-bg {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(100, 116, 139, 0.22) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(circle at 50% 45%, black 20%, transparent 72%);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.elia-splash__particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.elia-splash__particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--elia-splash-particle);
+  box-shadow: 0 0 8px var(--elia-splash-particle);
+  animation: eliaParticle 4s ease-in-out infinite;
+}
+
+.elia-splash__particle--tl {
+  top: 12%;
+  left: 14%;
+  animation-delay: 0s;
+}
+
+.elia-splash__particle--tr {
+  top: 16%;
+  right: 12%;
+  animation-delay: 1.1s;
+}
+
+.elia-splash__particle--bl {
+  bottom: 18%;
+  left: 10%;
+  animation-delay: 2.2s;
+}
+
+.elia-splash__particle--br {
+  bottom: 14%;
+  right: 14%;
+  animation-delay: 0.7s;
+}
+
+.elia-splash__stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin-top: -20px;
+}
+
+.elia-splash__hud {
+  position: relative;
+  width: min(480px, 90vw);
+  height: min(480px, 90vw);
+}
+
+.elia-splash__hud-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.elia-splash__svg-ring {
+  transform-origin: 200px 200px;
+  will-change: transform;
+}
+
+.elia-splash__svg-ring--outer {
+  animation: elia-splash-spin 14s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(0, 210, 255, 0.5));
+}
+
+.elia-splash__flare {
+  transform-origin: 200px 200px;
+  filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.85));
+}
+
+.elia-splash__svg-ring--mid {
+  animation: elia-splash-spin-rev 9s linear infinite;
+}
+
+.elia-splash__svg-ring--speed-1 {
+  animation-duration: 11s;
+}
+
+.elia-splash__svg-ring--speed-2 {
+  animation-duration: 8s;
+}
+
+.elia-splash__svg-ring--speed-3 {
+  animation-duration: 5.5s;
+}
+
+.elia-splash__svg-ring--inner {
+  animation: elia-splash-spin 6s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.45));
+}
+
+.elia-splash[data-phase="4"] .elia-splash__svg-ring--outer,
+.elia-splash[data-phase="4"] .elia-splash__svg-ring--mid,
+.elia-splash[data-phase="4"] .elia-splash__svg-ring--inner {
+  animation-duration: 18s;
+}
+
+.elia-splash__brand-stack {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-top: 8px;
+  animation: eliaBrandFloat 4s ease-in-out infinite;
+}
+
+.elia-splash__brand-glow {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(0, 210, 255, 0.28) 0%,
+    rgba(0, 210, 255, 0.12) 45%,
+    rgba(168, 85, 247, 0.05) 70%,
+    transparent 85%
+  );
+  filter: blur(38px);
+  animation: eliaGlow 3.5s ease-in-out infinite;
+}
+
+.elia-splash__logo-full {
+  position: relative;
+  width: 342px;
+  max-width: 72%;
+  height: auto;
+  z-index: 3;
+  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.05)) drop-shadow(0 0 20px rgba(0, 210, 255, 0.22));
+}
+
+.elia-splash[data-phase="2"] .elia-splash__logo-full,
+.elia-splash[data-phase="3"] .elia-splash__logo-full {
+  animation: eliaIrisPulse 2.4s ease-in-out infinite;
+}
+
+.elia-splash__loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.elia-splash__loading {
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  font-weight: 700;
+  background: linear-gradient(90deg, #f472b6 0%, #38bdf8 52%, #a855f7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-align: center;
+  max-width: 92vw;
+}
+
+.elia-splash__progress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.elia-splash__progress-seg {
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: #1e293b;
+  box-shadow: inset 0 0 0 1px rgba(51, 65, 85, 0.8);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.elia-splash__progress-seg.is-active {
+  background: linear-gradient(90deg, #00d2ff, #a855f7);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.45);
+}
+
+.elia-splash__status {
+  font-size: 12px;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  text-align: center;
+  min-height: 1.2em;
+}
+
+.elia-splash__pillars {
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 0 16px;
+}
+
+.elia-splash__pillar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 72px;
+  opacity: 0.45;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.elia-splash__pillar.is-active {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.elia-splash__pillar-icon {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  color: #64748b;
+  transition: color 0.25s ease, filter 0.25s ease;
+}
+
+.elia-splash__pillar.is-active .elia-splash__pillar-icon {
+  color: #94a3b8;
+  filter: drop-shadow(0 0 8px rgba(0, 210, 255, 0.35));
+}
+
+.elia-splash__pillar-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.elia-splash__pillar-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: #475569;
+  transition: color 0.25s ease;
+}
+
+.elia-splash__pillar.is-active .elia-splash__pillar-label {
+  color: #94a3b8;
+}
+
+.elia-splash__pillar-sep {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+.elia-splash__scanner {
+  position: absolute;
+  inset: 18% 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.elia-splash__scanner--pulse::after {
+  content: "";
+  position: absolute;
+  left: -30%;
+  top: 0;
+  width: 18%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 210, 255, 0.08),
+    rgba(255, 255, 255, 0.22),
+    rgba(0, 210, 255, 0.08),
+    transparent
+  );
+  transform: skewX(-18deg);
+  animation: eliaScannerOnce 1.15s ease-out forwards;
+}
+
+@keyframes elia-splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes elia-splash-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes eliaBrandFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes eliaGlow {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes eliaIrisPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.05)) drop-shadow(0 0 20px rgba(0, 210, 255, 0.22));
+  }
+  50% {
+    transform: scale(1.025);
+    filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.08)) drop-shadow(0 0 28px rgba(0, 210, 255, 0.38));
+  }
+}
+
+@keyframes eliaScannerOnce {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 120%;
+  }
+}
+
+@keyframes eliaParticle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.35);
+  }
+}
+
+@media (max-width: 520px) {
+  .elia-splash__pillars {
+    gap: 8px 10px;
+  }
+
+  .elia-splash__pillar {
+    min-width: 64px;
+  }
+
+  .elia-splash__pillar-label {
+    font-size: 8px;
+  }
+
+  .elia-splash__logo-full {
+    max-width: 76%;
+  }
+
+  .elia-splash__loading {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+  }
+}
+
+/* Tema claro — misma coreografía, menos contraste */
+html[data-elia-theme="light"] .elia-splash__svg-ring--outer {
+  filter: drop-shadow(0 0 4px rgba(8, 145, 178, 0.25));
+  opacity: 0.85;
+}
+
+html[data-elia-theme="light"] .elia-splash__logo-full {
+  filter: drop-shadow(0 0 12px rgba(8, 145, 178, 0.12));
+}
+
+html[data-elia-theme="light"] .elia-splash__loading {
+  background: var(--elia-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+html[data-elia-theme="light"] .elia-splash__dots-bg {
+  opacity: 0.28;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elia-splash__svg-ring,
+  .elia-splash__brand-stack,
+  .elia-splash__brand-glow,
+  .elia-splash__particle,
+  .elia-splash__logo-full {
+    animation: none !important;
+  }
+
+  .elia-splash__scanner--pulse::after {
+    animation: none;
+    left: 40%;
+    opacity: 0.35;
+  }
+
+  .elia-splash__progress-seg.is-active {
+    background: #00d2ff;
+  }
+}

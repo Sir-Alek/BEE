@@ -1,6 +1,7 @@
 import React from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
+import { EliaButton } from "../../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -12,36 +13,24 @@ export function YesNoPrompt(props: Props) {
   const { c, jobId, activePrompt } = props;
   return (
     <div style={{ display: "flex", gap: 10 }}>
-      <button
+      <EliaButton
+        variant="primary"
+        size="sm"
         onClick={async () => {
           await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: true });
         }}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: c.primary,
-          color: c.primaryFg,
-          border: "none",
-          cursor: "pointer",
-        }}
       >
         Sí
-      </button>
-      <button
+      </EliaButton>
+      <EliaButton
+        variant="ghost"
+        size="sm"
         onClick={async () => {
           await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer: false });
         }}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: c.btnGhostBg,
-          color: c.text,
-          border: `1px solid ${c.btnGhostBorder}`,
-          cursor: "pointer",
-        }}
       >
         No
-      </button>
+      </EliaButton>
     </div>
   );
 }

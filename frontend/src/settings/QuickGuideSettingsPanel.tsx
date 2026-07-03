@@ -4,6 +4,7 @@ import {
   resetAllQuickGuideDismissCards,
   setQuickGuidesEnabled,
 } from "../app/platformGuidePrefs";
+import { EliaButton } from "../components/ui";
 
 type Props = {
   c: Record<string, string>;
@@ -89,25 +90,16 @@ export function QuickGuideSettingsPanel(props: Props) {
           />
         </span>
       </label>
-      <button
-        type="button"
+      <EliaButton
+        variant="ghost"
+        size="sm"
         onClick={handleResetCards}
         disabled={!enabled}
         data-testid="elia-quick-guides-reset-cards"
-        style={{
-          padding: "8px 12px",
-          borderRadius: 8,
-          border: `1px solid ${c.btnGhostBorder}`,
-          background: c.btnGhostBg,
-          color: enabled ? c.text : c.muted,
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: enabled ? "pointer" : "not-allowed",
-          opacity: enabled ? 1 : 0.6,
-        }}
+        style={{ opacity: enabled ? 1 : 0.6 }}
       >
         Restablecer tarjetas ocultas
-      </button>
+      </EliaButton>
       <div style={{ fontSize: 11, color: c.muted, marginTop: 8, lineHeight: 1.4 }}>
         «No volver a mostrar» solo oculta la tarjeta expandida; el enlace «Guía rápida» seguía visible. Usa
         restablecer para volver a ver las tarjetas sin reactivar todo desde cero.

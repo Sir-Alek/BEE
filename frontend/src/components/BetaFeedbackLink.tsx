@@ -1,11 +1,5 @@
-/**
- * Enlaces al formulario beta (Configuración y errores de job).
- * Versión comercial (≥1.0):
- * - Licencia: sustituir variant="license" por SupportSettingsContact en SettingsDialog.tsx.
- * - Acerca de: quitar variant="about"; mantener solo la línea Contacto.
- * - Job: ver JobErrorPanel.tsx → SupportContactLink.
- */
 import React from "react";
+import { EliaLinkButton } from "./ui";
 
 export const BETA_FEEDBACK_LINK_LABEL = "Ayúdanos a mejorar llenando el formulario de la Beta";
 
@@ -22,24 +16,13 @@ export function BetaFeedbackLink(props: Props) {
 
   if (variant === "about") {
     return (
-      <div
-        data-testid="elia-beta-feedback-about"
-        style={{
-          marginBottom: 12,
-          padding: "12px 14px",
-          borderRadius: 10,
-          border: `1px solid ${c.border}`,
-          background: c.inputBg,
-          fontSize: 13,
-          lineHeight: 1.5,
-        }}
-      >
+      <div className="elia-settings-section" data-testid="elia-beta-feedback-about" style={{ fontSize: 13, lineHeight: 1.5 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>¿Feedback o Errores?</div>
         <a
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: c.primary, fontWeight: 600 }}
+          style={{ color: "var(--elia-accent-cyan)", fontWeight: 600 }}
         >
           {BETA_FEEDBACK_LINK_LABEL} →
         </a>
@@ -59,7 +42,7 @@ export function BetaFeedbackLink(props: Props) {
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: c.primary, fontWeight: 600 }}
+          style={{ color: "var(--elia-accent-cyan)", fontWeight: 600 }}
         >
           Compartir feedback en el Formulario de la Beta →
         </a>
@@ -68,24 +51,14 @@ export function BetaFeedbackLink(props: Props) {
   }
 
   return (
-    <a
+    <EliaLinkButton
       data-testid="elia-beta-feedback-job"
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      style={{
-        display: "inline-block",
-        padding: "10px 14px",
-        borderRadius: 10,
-        background: c.btnGhostBg,
-        color: c.text,
-        border: `1px solid ${c.btnGhostBorder}`,
-        fontWeight: 600,
-        fontSize: 13,
-        textDecoration: "none",
-      }}
+      variant="ghost"
     >
       Enviar feedback beta →
-    </a>
+    </EliaLinkButton>
   );
 }

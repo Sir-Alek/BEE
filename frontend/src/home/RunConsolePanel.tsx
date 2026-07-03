@@ -3,6 +3,7 @@ import { getProjectReportUrl, getRunDiagnostic, getTestRun, openProjectFolder, t
 import { FOLDER_OPEN_HINT } from "../app/folderOpenHint";
 import { closeWithoutStoppingServer } from "../app/sessionGuard";
 import { InlineActionHint } from "../components/InlineActionHint";
+import { EliaButton, EliaLinkButton } from "../components/ui";
 import { useAutoDismissHint } from "../hooks/useAutoDismissHint";
 import { RunDiagnosticPanel } from "./RunDiagnosticPanel";
 import { RunHistoryPanel } from "./RunHistoryPanel";
@@ -200,13 +201,9 @@ export function RunConsolePanel(props: Props) {
           Consola de ejecución — {statusLabel}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ border: "none", background: "transparent", color: c.primary, cursor: "pointer" }}
-          >
+          <EliaButton variant="ghost" size="sm" onClick={onClose} style={{ color: c.primary }}>
             Cerrar
-          </button>
+          </EliaButton>
         </div>
       </div>
 
@@ -276,42 +273,21 @@ export function RunConsolePanel(props: Props) {
               )}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                <a
-                  href={pdfPreviewUrl}
-                  download={selectedPdf}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: c.primary,
-                    color: c.primaryFg,
-                    textDecoration: "none",
-                    fontWeight: 600,
-                    fontSize: 13,
-                  }}
-                >
+                <EliaLinkButton href={pdfPreviewUrl} download={selectedPdf} variant="primary" size="sm">
                   Descargar PDF
-                </a>
-                <button
-                  type="button"
+                </EliaLinkButton>
+                <EliaButton
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     void openProjectFolder(platform, project, "outputs").then((r) => {
                       setReportFolder(r.path);
                       setOutputsHint(r.hint ?? FOLDER_OPEN_HINT);
                     });
                   }}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${c.btnGhostBorder}`,
-                    background: c.btnGhostBg,
-                    color: c.text,
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: 13,
-                  }}
                 >
                   Abrir carpeta outputs
-                </button>
+                </EliaButton>
               </div>
               <InlineActionHint c={c} message={outputsHint} testId="elia-run-open-outputs-hint" />
 

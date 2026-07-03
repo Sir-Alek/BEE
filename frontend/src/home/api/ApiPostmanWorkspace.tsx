@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import { getApiScriptsGuide } from "../../api";
+import { fetchApiScriptsGuideCached, peekApiScriptsGuide } from "../../app/guidesCache";
 import type { AssertionRow, ExtractorRow } from "../ApiAdvancedPanels";
 import { AssertionEditor, ExtractorEditor } from "../ApiAdvancedPanels";
 import { SegmentedTabs } from "../../components/ui";
 import { ApiScriptsGuideModal } from "./ApiScriptsGuideModal";
 import { ApiScriptEditor } from "./ApiScriptEditor";
 import { JsonResponseView, isLikelyJsonBody } from "./JsonResponseView";
-import { ApiSection, EnvVarEditor, HeaderEditor, apiBtn, apiInputStyle, apiMonoArea, type HeaderRow } from "./apiUi";
+import { EliaButton } from "../../components/ui";
+import { ApiSection, EnvVarEditor, HeaderEditor, apiInputStyle, apiMonoArea, type HeaderRow } from "./apiUi";
 
 type ExecResult = {
   ok: boolean;
@@ -119,10 +120,18 @@ export function ApiPostmanWorkspace(props: Props) {
 
   const openScriptsGuide = () => {
     setGuideOpen(true);
+    const hit = peekApiScriptsGuide();
+    if (hit) {
+      setGuideTitle(hit.title || "Guía de scripts API");
+      setGuideContent(hit.content);
+      setGuideLoading(false);
+      setGuideError(null);
+      return;
+    }
     if (guideContent) return;
     setGuideLoading(true);
     setGuideError(null);
-    void getApiScriptsGuide()
+    void fetchApiScriptsGuideCached()
       .then((r) => {
         setGuideTitle(r.title || "Guía de scripts API");
         setGuideContent(r.content);
@@ -164,16 +173,16 @@ export function ApiPostmanWorkspace(props: Props) {
             collapseThreshold={3}
           />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-            <button type="button" disabled={busy} onClick={onSaveEnvironment} style={apiBtn(c)}>
+            <EliaButton variant="ghost" size="sm" disabled={busy} onClick={onSaveEnvironment}>
               Guardar entorno
-            </button>
-            <button type="button" disabled={busy} onClick={onSaveGlobalConfig} style={apiBtn(c)}>
+            </EliaButton>
+            <EliaButton variant="ghost" size="sm" disabled={busy} onClick={onSaveGlobalConfig}>
               Guardar config proyecto
-            </button>
+            </EliaButton>
             {webOriginAvailable ? (
-              <button type="button" disabled={busy} onClick={onSyncFromWeb} style={apiBtn(c, undefined, undefined, true)}>
+              <EliaButton variant="ghost" size="sm" disabled={busy} onClick={onSyncFromWeb}>
                 Sincronizar base_url desde grabación web
-              </button>
+              </EliaButton>
             ) : null}
           </div>
         </ApiSection>
@@ -215,9 +224,9 @@ export function ApiPostmanWorkspace(props: Props) {
               <code style={{ fontSize: 11 }}>pm.response.json()</code>,{" "}
               <code style={{ fontSize: 11 }}>pm.test</code>.
             </div>
-            <button type="button" onClick={openScriptsGuide} style={apiBtn(c, c.primary, c.primaryFg)}>
+            <EliaButton variant="primary" size="sm" onClick={openScriptsGuide}>
               Ver guía de scripts
-            </button>
+            </EliaButton>
           </div>
 
           <SegmentedTabs
@@ -264,12 +273,12 @@ export function ApiPostmanWorkspace(props: Props) {
                 style={apiMonoArea(c)}
               />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                <button type="button" disabled={!canRunJobs || busy} onClick={onSend} style={apiBtn(c, c.primary, c.primaryFg)}>
+                <EliaButton variant="primary" size="sm" disabled={!canRunJobs || busy} onClick={onSend}>
                   Enviar
-                </button>
-                <button type="button" disabled={!canRunJobs || busy} onClick={onSaveScenario} style={apiBtn(c)}>
+                </EliaButton>
+                <EliaButton variant="ghost" size="sm" disabled={!canRunJobs || busy} onClick={onSaveScenario}>
                   Guardar escenario
-                </button>
+                </EliaButton>
               </div>
             </>
           ) : null}
@@ -296,9 +305,9 @@ export function ApiPostmanWorkspace(props: Props) {
           {requestSubTab === "scripts" ? (
             <>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-                <button type="button" onClick={openScriptsGuide} style={apiBtn(c)}>
+                <EliaButton variant="ghost" size="sm" onClick={openScriptsGuide}>
                   Abrir guía completa
-                </button>
+                </EliaButton>
               </div>
               <div style={{ fontSize: 12, color: c.muted, marginBottom: 6 }}>Pre-request (antes de enviar)</div>
               <ApiScriptEditor
@@ -332,12 +341,12 @@ export function ApiPostmanWorkspace(props: Props) {
                 {execResult.ok ? "OK" : "Falló"} — HTTP {execResult.status_code} ({execResult.elapsed_ms} ms)
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <button type="button" disabled={busy} onClick={() => onExportEvidence("pdf")} style={apiBtn(c)}>
+                <EliaButton variant="ghost" size="sm" disabled={busy} onClick={() => onExportEvidence("pdf")}>
                   Exportar evidencia (PDF)
-                </button>
-                <button type="button" disabled={busy} onClick={() => onExportEvidence("json")} style={apiBtn(c)}>
+                </EliaButton>
+                <EliaButton variant="ghost" size="sm" disabled={busy} onClick={() => onExportEvidence("json")}>
                   Exportar evidencia (JSON)
-                </button>
+                </EliaButton>
               </div>
               {execResult.headers && Object.keys(execResult.headers).length > 0 ? (
                 <details style={{ marginBottom: 8 }}>

@@ -7,6 +7,7 @@ import {
   upsellBenefits,
   UPGRADE_CONTACT_EMAIL,
 } from "../app/entitlements";
+import { EliaButton, EliaLinkButton, EliaModalActions, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -58,39 +59,14 @@ export function UpsellModal(props: Props) {
   const mailto = `mailto:${UPGRADE_CONTACT_EMAIL}?subject=${encodeURIComponent(`Upgrade ELIA — ${tierDisplayName(tier)}`)}`;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        data-testid="elia-upsell-modal"
-        aria-label="elia-lock-modal"
-        style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 16,
-          padding: "28px 32px",
-          maxWidth: 440,
-          textAlign: "left",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <EliaModalOverlay onClose={onClose} zIndex={1000}>
+      <EliaModalPanel testId="elia-upsell-modal" onClick={(e) => e.stopPropagation()}>
         <div style={{ fontSize: 28, marginBottom: 8 }}>🚀</div>
-        <div style={{ fontWeight: 800, fontSize: 17, color: c.text, marginBottom: 8 }}>
+        <div className="elia-modal-header__title" style={{ marginBottom: 8 }}>
           Sube de nivel tu automatización
         </div>
-        <div style={{ fontSize: 14, color: c.muted, marginBottom: 16, lineHeight: 1.5 }}>
-          <b>{featureTitle(requiredTier)}</b> es exclusivo del{" "}
-          <b>{tierDisplayName(tier)}</b>.
+        <div className="elia-modal-body-text" style={{ marginBottom: 16 }}>
+          <b>{featureTitle(requiredTier)}</b> es exclusivo del <b>{tierDisplayName(tier)}</b>.
         </div>
         {audience ? (
           <div style={{ fontSize: 12, color: c.muted, marginBottom: 12, lineHeight: 1.5 }}>{audience}</div>
@@ -105,60 +81,20 @@ export function UpsellModal(props: Props) {
             </ul>
           </div>
         ) : null}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
-          >
+        <EliaModalActions>
+          <EliaButton variant="ghost" size="sm" onClick={onClose}>
             Cancelar
-          </button>
-          <a
-            href={mailto}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: c.primary,
-              color: c.primaryFg,
-              border: "none",
-              cursor: "pointer",
-              textDecoration: "none",
-              fontWeight: 600,
-              fontSize: 14,
-            }}
-          >
+          </EliaButton>
+          <EliaLinkButton href={mailto} variant="primary" size="sm">
             Contactar para Upgrade
-          </a>
-        </div>
-      </div>
-    </div>
+          </EliaLinkButton>
+        </EliaModalActions>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }
 
 export function TierBadge(props: { label: string; c: Record<string, string> }) {
-  const { label, c } = props;
-  return (
-    <span
-      style={{
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: 0.4,
-        textTransform: "uppercase",
-        padding: "2px 6px",
-        borderRadius: 4,
-        background: c.hintBg,
-        color: c.muted,
-        border: `1px solid ${c.hintBorder}`,
-      }}
-    >
-      {label}
-    </span>
-  );
+  const { label } = props;
+  return <span className="elia-badge">{label}</span>;
 }

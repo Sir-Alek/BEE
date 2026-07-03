@@ -1,4 +1,5 @@
 import React from "react";
+import { EliaButton } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -88,24 +89,9 @@ export function FileDropZone(props: Props) {
     >
       Arrastra tus archivos aquí · <strong>{acceptLabel}</strong>
       <div style={{ marginTop: 8 }}>
-        <button
-          type="button"
-          disabled={blocked}
-          onClick={openBrowse}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: `1px solid ${c.btnGhostBorder}`,
-            background: c.btnGhostBg,
-            color: c.text,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: blocked ? "not-allowed" : "pointer",
-            opacity: blocked ? 0.65 : 1,
-          }}
-        >
+        <EliaButton variant="ghost" size="sm" disabled={blocked} onClick={openBrowse}>
           Buscar archivo
-        </button>
+        </EliaButton>
       </div>
       {hintText ? (
         <div style={{ fontSize: 11, marginTop: 8, color: c.muted }}>{hintText}</div>

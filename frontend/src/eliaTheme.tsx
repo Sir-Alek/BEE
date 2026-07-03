@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "elia_theme";
+const HUD_STORAGE_KEY = "elia_hud_mode";
 const BC_NAME = "elia-theme";
 
 function migrateLegacyThemePrefs(): void {
@@ -78,12 +79,12 @@ export type EliaPalette = {
 };
 
 const LIGHT: EliaPalette = {
-  pageBg: "#f9fafb",
+  pageBg: "#f8fafc",
   surface: "#ffffff",
-  border: "#e5e7eb",
-  text: "#111827",
-  muted: "#6b7280",
-  primary: "#0ea5e9",
+  border: "#e2e8f0",
+  text: "#0f172a",
+  muted: "#64748b",
+  primary: "#0891b2",
   primaryFg: "#ffffff",
   errorBg: "#fef2f2",
   errorBorder: "#fecaca",
@@ -140,59 +141,59 @@ const LIGHT: EliaPalette = {
 };
 
 const DARK: EliaPalette = {
-  pageBg: "#0b1220",
-  surface: "#111827",
-  border: "#334155",
-  text: "#e5e7eb",
-  muted: "#94a3b8",
-  primary: "#38bdf8",
-  primaryFg: "#0f172a",
-  errorBg: "#450a0a",
+  pageBg: "#030712",
+  surface: "#080f1e",
+  border: "#1e293b",
+  text: "#f1f5f9",
+  muted: "#64748b",
+  primary: "#00d2ff",
+  primaryFg: "#030712",
+  errorBg: "#2d0606",
   errorBorder: "#7f1d1d",
   errorTitle: "#fecaca",
   errorBody: "#fca5a5",
-  successBg: "#052e16",
-  successBorder: "#166534",
+  successBg: "#022c22",
+  successBorder: "#064e3b",
   successTitle: "#bbf7d0",
   successBody: "#86efac",
   successHint: "#4ade80",
-  hintBg: "#172554",
+  hintBg: "#0b132b",
   hintBorder: "#1e40af",
-  hintText: "#bfdbfe",
+  hintText: "#93c5fd",
   warnBg: "#422006",
   warnBorder: "#b45309",
   warnText: "#fde68a",
-  licOkBg: "#052e16",
-  licOkBorder: "#166534",
+  licOkBg: "#022c22",
+  licOkBorder: "#064e3b",
   licWarnBg: "#422006",
   licWarnBorder: "#b45309",
-  neutralBg: "#0f172a",
-  processingBg: "#1e293b",
+  neutralBg: "#0b132b",
+  processingBg: "#0f172a",
   processingBorder: "#334155",
   processingText: "#cbd5e1",
-  chromeBg: "#111827",
-  chromeHint: "#94a3b8",
-  inputBg: "#0f172a",
-  inputBorder: "#475569",
-  btnGhostBg: "#1e293b",
-  btnGhostText: "#e5e7eb",
-  btnGhostBorder: "#475569",
-  stickyBarBg: "#111827",
-  codeBg: "#1e293b",
-  msgInfoBg: "#172554",
+  chromeBg: "#060b16",
+  chromeHint: "#64748b",
+  inputBg: "#080f1e",
+  inputBorder: "#334155",
+  btnGhostBg: "#0b132b",
+  btnGhostText: "#f1f5f9",
+  btnGhostBorder: "#334155",
+  stickyBarBg: "#080f1e",
+  codeBg: "#0b132b",
+  msgInfoBg: "#0b132b",
   msgInfoBorder: "#1e40af",
-  msgInfoText: "#bfdbfe",
+  msgInfoText: "#93c5fd",
   msgWarnBg: "#422006",
   msgWarnBorder: "#b45309",
   msgWarnText: "#fde68a",
-  msgErrBg: "#450a0a",
-  msgErrBorder: "#991b1b",
+  msgErrBg: "#2d0606",
+  msgErrBorder: "#7f1d1d",
   msgErrText: "#fecaca",
-  actionDesc: "#cbd5e1",
-  shadow: "0 1px 2px rgba(0,0,0,0.25)",
-  buttonDisabledBg: "#475569",
-  toolbarBg: "#0f172a",
-  severityErrorBorder: "#991b1b",
+  actionDesc: "#94a3b8",
+  shadow: "0 1px 2px rgba(0,0,0,0.35)",
+  buttonDisabledBg: "#334155",
+  toolbarBg: "#060b16",
+  severityErrorBorder: "#7f1d1d",
   severityErrorText: "#fecaca",
   severityWarnBorder: "#b45309",
   severityWarnText: "#fde68a",
@@ -205,6 +206,9 @@ type Ctx = {
   dark: boolean;
   setDark: (v: boolean) => void;
   toggle: () => void;
+  hudMode: boolean;
+  setHudMode: (v: boolean) => void;
+  toggleHudMode: () => void;
   c: EliaPalette;
 };
 
@@ -215,11 +219,44 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
     migrateLegacyThemePrefs();
     try {
       const v = localStorage.getItem(STORAGE_KEY);
-      return v === "dark";
+      if (v === "light") return false;
+      if (v === "dark") return true;
+      return true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [hudMode, setHudModeState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HUD_STORAGE_KEY) === "1";
     } catch {
       return false;
     }
   });
+
+  const applyHudMode = useCallback((v: boolean) => {
+    try {
+      document.documentElement.setAttribute("data-elia-hud", v ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setHudMode = useCallback(
+    (v: boolean) => {
+      setHudModeState(v);
+      try {
+        localStorage.setItem(HUD_STORAGE_KEY, v ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      applyHudMode(v);
+    },
+    [applyHudMode],
+  );
+
+  const toggleHudMode = useCallback(() => setHudMode(!hudMode), [hudMode, setHudMode]);
 
   const setDark = useCallback((v: boolean) => {
     setDarkState(v);
@@ -230,7 +267,7 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       document.documentElement.setAttribute("data-elia-theme", v ? "dark" : "light");
-      document.body.style.background = v ? "#0b1220" : "#f9fafb";
+      document.body.style.background = v ? DARK.pageBg : LIGHT.pageBg;
     } catch {
       // ignore
     }
@@ -246,11 +283,15 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       document.documentElement.setAttribute("data-elia-theme", dark ? "dark" : "light");
-      document.body.style.background = dark ? "#0b1220" : "#f9fafb";
+      document.body.style.background = dark ? DARK.pageBg : LIGHT.pageBg;
     } catch {
       // ignore
     }
   }, [dark]);
+
+  useEffect(() => {
+    applyHudMode(hudMode);
+  }, [hudMode, applyHudMode]);
 
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
@@ -266,7 +307,7 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
           }
           try {
             document.documentElement.setAttribute("data-elia-theme", ev.data.dark ? "dark" : "light");
-            document.body.style.background = ev.data.dark ? "#0b1220" : "#f9fafb";
+            document.body.style.background = ev.data.dark ? DARK.pageBg : LIGHT.pageBg;
           } catch {
             // ignore
           }
@@ -287,7 +328,10 @@ export function EliaThemeProvider({ children }: { children: React.ReactNode }) {
   const c = useMemo(() => (dark ? DARK : LIGHT), [dark]);
   const toggle = useCallback(() => setDark(!dark), [dark, setDark]);
 
-  const value = useMemo(() => ({ dark, setDark, toggle, c }), [dark, setDark, toggle, c]);
+  const value = useMemo(
+    () => ({ dark, setDark, toggle, hudMode, setHudMode, toggleHudMode, c }),
+    [dark, setDark, toggle, hudMode, setHudMode, toggleHudMode, c],
+  );
 
   return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
 }

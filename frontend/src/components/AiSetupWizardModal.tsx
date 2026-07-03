@@ -8,6 +8,7 @@ import {
   startProfileDownload,
   verifyProfileInstall,
 } from "../hooks/aiModelSetup";
+import { EliaButton, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -103,31 +104,8 @@ export function AiSetupWizardModal(props: Props) {
   };
 
   return (
-    <div
-      data-testid="elia-ai-setup-wizard"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1200,
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 16,
-          padding: "24px 28px",
-          maxWidth: 520,
-          width: "100%",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <EliaModalOverlay testId="elia-ai-setup-wizard" ariaLabel="Configuración de IA local" onClose={() => {}} zIndex={1200}>
+      <EliaModalPanel onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, padding: "24px 28px" }}>
         <div style={{ fontWeight: 800, fontSize: 18, color: c.text, marginBottom: 6 }}>
           Configuración de IA local
         </div>
@@ -186,41 +164,26 @@ export function AiSetupWizardModal(props: Props) {
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "flex-end" }}>
           {isOff ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void finishWizard()}
-              style={primaryBtn(c, busy)}
-            >
+            <EliaButton variant="primary" size="sm" disabled={busy} onClick={() => void finishWizard()}>
               Entendido, continuar
-            </button>
+            </EliaButton>
           ) : step === "done" ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void finishWizard()}
-              style={primaryBtn(c, busy)}
-            >
+            <EliaButton variant="primary" size="sm" disabled={busy} onClick={() => void finishWizard()}>
               Empezar a usar ELIA
-            </button>
+            </EliaButton>
           ) : (
             <>
-              <button type="button" disabled={busy} onClick={onClose} style={ghostBtn(c, busy)}>
+              <EliaButton variant="ghost" size="sm" disabled={busy} onClick={onClose}>
                 Configurar más tarde
-              </button>
+              </EliaButton>
               {!busy && step === "intro" && (
-                <button type="button" onClick={runVerifyManual} style={ghostBtn(c, false)}>
+                <EliaButton variant="ghost" size="sm" onClick={runVerifyManual}>
                   Ya los instalé
-                </button>
+                </EliaButton>
               )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={runDownload}
-                style={primaryBtn(c, busy)}
-              >
+              <EliaButton variant="primary" size="sm" disabled={busy} onClick={runDownload}>
                 {busy ? "Descargando…" : "Descargar ahora"}
-              </button>
+              </EliaButton>
             </>
           )}
         </div>
@@ -232,32 +195,7 @@ export function AiSetupWizardModal(props: Props) {
             Puedes reanudar desde Configuración → Inteligencia.
           </div>
         )}
-      </div>
-    </div>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
-}
-
-function primaryBtn(c: Record<string, string>, disabled: boolean) {
-  return {
-    padding: "9px 16px",
-    borderRadius: 8,
-    border: "none",
-    background: disabled ? c.buttonDisabledBg : c.primary,
-    color: "#fff",
-    cursor: disabled ? "wait" : "pointer",
-    fontWeight: 600,
-    fontSize: 13,
-  } as const;
-}
-
-function ghostBtn(c: Record<string, string>, disabled: boolean) {
-  return {
-    padding: "9px 16px",
-    borderRadius: 8,
-    border: `1px solid ${c.border}`,
-    background: c.neutralBg,
-    color: c.text,
-    cursor: disabled ? "wait" : "pointer",
-    fontSize: 13,
-  } as const;
 }

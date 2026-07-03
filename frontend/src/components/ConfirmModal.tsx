@@ -1,4 +1,5 @@
 import React from "react";
+import { EliaButton, EliaModalActions, EliaModalOverlay, EliaModalPanel } from "./ui";
 
 type Props = {
   c: Record<string, string>;
@@ -13,7 +14,6 @@ type Props = {
 
 export function ConfirmModal(props: Props) {
   const {
-    c,
     title,
     message,
     confirmLabel = "Confirmar",
@@ -24,68 +24,21 @@ export function ConfirmModal(props: Props) {
   } = props;
 
   return (
-    <div
-      data-testid="elia-confirm-modal"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1100,
-        padding: 16,
-      }}
-      onClick={onCancel}
-    >
-      <div
-        style={{
-          background: c.surface,
-          border: `1px solid ${c.border}`,
-          borderRadius: 14,
-          padding: "22px 24px",
-          maxWidth: 440,
-          width: "100%",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontWeight: 800, fontSize: 16, color: c.text, marginBottom: 10 }}>{title}</div>
-        <div style={{ fontSize: 14, color: c.muted, lineHeight: 1.5, marginBottom: 20, whiteSpace: "pre-wrap" }}>
-          {message}
+    <EliaModalOverlay testId="elia-confirm-modal" ariaLabel={title} onClose={onCancel} zIndex={1100}>
+      <EliaModalPanel onClick={(e) => e.stopPropagation()}>
+        <div className="elia-modal-header__title" style={{ marginBottom: 10 }}>
+          {title}
         </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: c.btnGhostBg,
-              color: c.text,
-              border: `1px solid ${c.btnGhostBorder}`,
-              cursor: "pointer",
-            }}
-          >
+        <div className="elia-modal-body-text">{message}</div>
+        <EliaModalActions>
+          <EliaButton variant="ghost" size="sm" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: destructive ? "#c0392b" : c.primary,
-              color: destructive ? "#fff" : c.primaryFg,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
+          </EliaButton>
+          <EliaButton variant={destructive ? "danger" : "primary"} size="sm" onClick={onConfirm}>
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </EliaButton>
+        </EliaModalActions>
+      </EliaModalPanel>
+    </EliaModalOverlay>
   );
 }

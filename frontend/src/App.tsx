@@ -18,6 +18,9 @@ import type { RecordingConfig } from "./recording/types";
 import { buildConvertJobBody, validateRecordingStart } from "./recording/validateRecordingConfig";
 import { ELIA_UI_BC, HOME_ERROR_DISMISS_MS } from "./app/constants";
 import { resolveEntitlements, canExecuteHomeActions } from "./app/entitlementPhase";
+import { areModulesReadyForBoot, isInitialBootPending } from "./app/bootState";
+import { prefetchAllBundledGuides } from "./app/guidesCache";
+import { areQuickGuidesEnabled } from "./app/platformGuidePrefs";
 import { cacheTierMismatch, invalidateModulesCache, readCachedModules, writeCachedModules } from "./app/modulesCache";
 import {
   inferBehaveProjectFromProgress,
@@ -44,12 +47,14 @@ import { useMobileRecording } from "./hooks/useMobileRecording";
 import { HomeSurface } from "./home/HomeSurface";
 import { AppHeader, ErrorAlert } from "./layout/AppShell";
 import { BetaExpiredScreen } from "./components/BetaExpiredScreen";
+import { EliaSplashScreen } from "./components/EliaSplashScreen";
+import { useEliaBootSequence } from "./hooks/useEliaBootSequence";
 import { AiSetupWizardModal } from "./components/AiSetupWizardModal";
 import { JobWorkspace } from "./job/JobWorkspace";
 import { SettingsDialog } from "./settings/SettingsDialog";
 
 export default function App() {
-  const { c, dark, toggle } = useEliaTheme();
+  const { c, dark, toggle, hudMode, setHudMode } = useEliaTheme();
 
   const [isHomeSurface] = useState(() => !new URLSearchParams(window.location.search).get("job_id"));
   const [homeTab, setHomeTab] = useState<"ui" | "req" | "api">("ui");
@@ -125,6 +130,76 @@ export default function App() {
     [licenseLoading, license, modulesLoading, modules, modulesFetchFailed],
   );
   const mobileActionsEnabled = canExecuteHomeActions(entitlement.phase, canRunJobs);
+
+  const modulesReady = areModulesReadyForBoot(canRunJobs, modulesLoading, modules);
+  const initialBootPending = isHomeSurface && isInitialBootPending(licenseLoading, canRunJobs, modulesLoading, modules);
+  const initialBootDoneRef = useRef(false);
+  const [initialBootComplete, setInitialBootComplete] = useState(false);
+  const [splashVisible, setSplashVisible] = useState(() => isHomeSurface);
+  const [splashFading, setSplashFading] = useState(false);
+  const [appHandoff, setAppHandoff] = useState(false);
+  const [settingsApplyVisible, setSettingsApplyVisible] = useState(false);
+  const settingsPrefsAtOpenRef = useRef<{ dark: boolean; hudMode: boolean } | null>(null);
+  const reducedMotion = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+  const betaBlocked =
+    license?.reason === "beta_expired" || license?.reason === "clock_tamper";
+  const bootSequence = useEliaBootSequence({
+    enabled: isHomeSurface && splashVisible && !splashFading,
+    licenseLoading,
+    modulesLoading,
+    modulesReady,
+    canRunJobs,
+    licenseBlocked: betaBlocked,
+    reducedMotion,
+  });
+
+  useEffect(() => {
+    if (settingsOpen) {
+      settingsPrefsAtOpenRef.current = { dark, hudMode };
+      return;
+    }
+    const opened = settingsPrefsAtOpenRef.current;
+    settingsPrefsAtOpenRef.current = null;
+    if (!opened) return;
+    const prefsChanged = opened.dark !== dark || opened.hudMode !== hudMode;
+    if (!prefsChanged) return;
+    setSettingsApplyVisible(true);
+    const t = window.setTimeout(() => setSettingsApplyVisible(false), 420);
+    return () => window.clearTimeout(t);
+  }, [settingsOpen, dark, hudMode]);
+
+  useEffect(() => {
+    if (!isHomeSurface) {
+      setSplashVisible(false);
+      return;
+    }
+    if (initialBootDoneRef.current) return;
+
+    if (initialBootPending) {
+      setSplashVisible(true);
+      setSplashFading(false);
+      return;
+    }
+
+    if (bootSequence.phase < 4) return;
+
+    if (!splashVisible) return;
+    initialBootDoneRef.current = true;
+    setSplashFading(true);
+    setAppHandoff(true);
+    const t = window.setTimeout(() => {
+      setSplashVisible(false);
+      setInitialBootComplete(true);
+    }, 180);
+    const t2 = window.setTimeout(() => setAppHandoff(false), 480);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(t2);
+    };
+  }, [initialBootPending, bootSequence.phase, isHomeSurface, splashVisible]);
 
   const connectorState = useConnectors({ isHomeSurface });
   const {
@@ -209,6 +284,11 @@ export default function App() {
     if (!isHomeSurface) return;
     void refreshAiCapabilities();
   }, [isHomeSurface, refreshAiCapabilities]);
+
+  useEffect(() => {
+    if (!isHomeSurface || !areQuickGuidesEnabled()) return;
+    prefetchAllBundledGuides();
+  }, [isHomeSurface]);
 
   useEffect(() => {
     if (!isHomeSurface || !aiCaps?.setup?.show_wizard) return;
@@ -718,7 +798,7 @@ export default function App() {
 
   const settingsUiCtx = useMemo(
     () => ({
-      c, dark, toggleTheme: toggle, visibleSettingsTabs, settingsTab, setSettingsTab,
+      c, dark, toggleTheme: toggle, hudMode, setHudMode, visibleSettingsTabs, settingsTab, setSettingsTab,
       aiCaps, aiPrefsSaving, setAiPrefsSaving, setAiCaps, aiMemoryOpen, setAiMemoryOpen,
       aiMemoryStatus, aiMemoryTeamPassphrase, setAiMemoryTeamPassphrase, aiMemoryImportMode,
       setAiMemoryImportMode, aiMemoryImportFile, setAiMemoryImportFile, aiMemoryBusy, setAiMemoryBusy,
@@ -726,7 +806,7 @@ export default function App() {
       aboutInfo, aboutChangelogOpen, setAboutChangelogOpen, reopenAiWizard,
     }),
     [
-      c, dark, toggle, visibleSettingsTabs, settingsTab, aiCaps, aiPrefsSaving, aiMemoryOpen,
+      c, dark, toggle, hudMode, setHudMode, visibleSettingsTabs, settingsTab, aiCaps, aiPrefsSaving, aiMemoryOpen,
       aiMemoryStatus, aiMemoryTeamPassphrase, aiMemoryImportMode, aiMemoryImportFile, aiMemoryBusy,
       aiMemoryMsg, refreshAiMemoryStatus, aboutInfo, aboutChangelogOpen, reopenAiWizard,
     ],
@@ -752,18 +832,16 @@ export default function App() {
       pendingRunProject, clearPendingRunProject: () => setPendingRunProject(null),
       selectApiProject: (project: string) => setPendingApiProject(project),
       pendingApiProject, clearPendingApiProject: () => setPendingApiProject(null),
+      initialBootComplete,
     }),
     [
       c, dark, initialChecked, homeTab, homeHint, aiCaps, license, licenseLoading, canRunJobs, modules, modulesLoading,
-      entitlement, offlineBannerDismissed,
+      entitlement, offlineBannerDismissed, initialBootComplete,
       showLockModal, showHomeError, autoLinkToScenario, autoLinkScenarioRef, availableScenarios,
       loadedDocs, docUploadError, linkRecordings, linkMapping, recordingMapping,
       availableRecordings, startJob, homeDataRefresh, pendingRunProject, pendingApiProject,
     ],
   );
-
-  const betaBlocked =
-    license?.reason === "beta_expired" || license?.reason === "clock_tamper";
 
   return (
     <LicenseProvider value={licenseCtx}>
@@ -771,6 +849,17 @@ export default function App() {
         <RecordingProvider value={recordingCtx}>
           <SettingsUiProvider value={settingsUiCtx}>
             <HomeUiProvider value={homeUiCtx}>
+              {splashVisible && isHomeSurface ? (
+                <EliaSplashScreen {...bootSequence} fading={splashFading} />
+              ) : null}
+              {settingsApplyVisible ? (
+                <div className="elia-settings-apply-overlay" role="status" aria-live="polite">
+                  <div className="elia-loading-row elia-loading-row--info">
+                    <span className="elia-spinner" aria-hidden />
+                    <span>Aplicando preferencias…</span>
+                  </div>
+                </div>
+              ) : null}
               {betaBlocked ? (
                 <BetaExpiredScreen
                   c={c}
@@ -780,6 +869,7 @@ export default function App() {
                 />
               ) : (
               <div
+                className={`elia-app-shell${appHandoff ? " elia-app-shell--handoff" : ""}`}
                 style={{
                   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
                   background: c.pageBg,
@@ -797,6 +887,7 @@ export default function App() {
                   aiCaps={aiCaps}
                   onOpenSettings={openSettings}
                   onOpenAiSettings={openAiSettings}
+                  handoff={appHandoff}
                 />
 
                 <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />

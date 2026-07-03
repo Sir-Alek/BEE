@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { sendPromptResponse } from "../../api";
 import type { ActivePrompt } from "../../types";
+import { EliaButton } from "../../components/ui";
 
 type RecordingOptionDef = {
   key: string;
@@ -66,22 +67,15 @@ export function RecordingOptionsPrompt(props: Props) {
         ))}
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          type="button"
+        <EliaButton
+          variant="primary"
+          size="sm"
           onClick={async () => {
             await sendPromptResponse({ jobId, promptId: activePrompt.prompt_id, answer });
           }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: c.primary,
-            color: c.primaryFg,
-            border: "none",
-            cursor: "pointer",
-          }}
         >
           Continuar
-        </button>
+        </EliaButton>
       </div>
     </div>
   );

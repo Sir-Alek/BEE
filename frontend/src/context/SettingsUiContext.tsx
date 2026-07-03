@@ -11,6 +11,8 @@ export type SettingsUiContextValue = {
   c: Record<string, string>;
   dark: boolean;
   toggleTheme: () => void;
+  hudMode: boolean;
+  setHudMode: (v: boolean) => void;
   visibleSettingsTabs: { id: SettingsTabId; label: string }[];
   settingsTab: SettingsTabId;
   setSettingsTab: (tab: SettingsTabId) => void;
